@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WORKERS_AI_MODEL } from '../../src/lib/coach/ai-models';
 import { createCronBudget } from '../../src/lib/jobs/cron-budget';
 import { INSIGHTS_MAX_ANALYSES_PER_TICK, runAnalyzerStage } from '../../src/lib/insights/analyzer-stage';
+import { setConsents } from '../../src/lib/insights/consent-store';
+import { deleteAllReports } from '../../src/lib/insights/learner-report-queries';
 import type { StoredAiTutorReport } from '../../src/lib/insights/insight-types';
 import type { QueuedTurn } from '../../src/lib/insights/turn-filters';
 import { fakeEnv, openRouterFetch, type FakeEnv } from './learning-fake-env';
@@ -122,6 +124,40 @@ describe('runAnalyzerStage', () => {
     expect(result).toMatchObject({ analysed: 0, revoked: 1 });
     expect(await reports()).toEqual([]);
     expect(await events()).toEqual([]);
+  });
+
+  it('opt-out mid-flight through the consent switch (which purges the queue itself) counts as revoked, not a lost lease', async () => {
+    await event(turn());
+    let revoke: Promise<unknown> = Promise.resolve();
+    const { fetchImpl } = openRouterFetch(() => {
+      revoke = setConsents(env.DB, 'lrn_a', { analysis: false });
+      return report();
+    });
+    const wrapped = (async (url: string, init?: RequestInit) => {
+      const res = await fetchImpl(url, init);
+      await revoke;
+      return res;
+    }) as unknown as typeof fetch;
+    const result = await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl: wrapped });
+    expect(result).toMatchObject({ analysed: 0, revoked: 1 });
+    expect(await reports()).toEqual([]);
+    expect(await events()).toEqual([]);
+  });
+
+  it('turns deleted by the learner during the model call count as revoked, not a lost lease', async () => {
+    await event(turn());
+    let purge: Promise<unknown> = Promise.resolve();
+    const { fetchImpl } = openRouterFetch(() => {
+      purge = deleteAllReports(env.DB, 'lrn_a');
+      return report();
+    });
+    const wrapped = (async (url: string, init?: RequestInit) => {
+      const res = await fetchImpl(url, init);
+      await purge;
+      return res;
+    }) as unknown as typeof fetch;
+    expect(await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl: wrapped })).toMatchObject({ analysed: 0, revoked: 1 });
+    expect(await reports()).toEqual([]);
   });
 
   it('skips a window the model judges irrelevant as not_learning, and counts it as an analysis', async () => {
