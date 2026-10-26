@@ -1,0 +1,167 @@
+schema_version: 1
+id: plan-weekend
+version: 1
+locale: vi
+status: published
+title: Lên kế hoạch cuối tuần cùng AI
+tagline: Nhờ AI lên lịch cuối tuần thật, rồi tự kiểm chứng những gì nó nói.
+emoji: "🗓️"
+outcome: Bạn có một kế hoạch cuối tuần dùng được ngay, và biết chỗ nào AI nói đúng, chỗ nào phải tự tra lại.
+why_it_matters: >-
+  AI viết kế hoạch rất nhanh và nghe rất thuyết phục, nhưng nó có thể bịa giờ mở cửa, giá vé hay quãng đường.
+  Biết nói rõ mình cần gì và biết kiểm lại là hai kỹ năng dùng được cho mọi việc khác với AI.
+persona_tags: [beginner, basic, everyday-life]
+estimated_minutes: 15
+risk_tier: low
+safety_notes:
+  - Không cần nhập địa chỉ nhà, số điện thoại hay thông tin cá nhân của ai khi hỏi AI.
+competency_targets:
+  - { id: describe, weight: 2 }
+  - { id: verify, weight: 2 }
+  - { id: reflect, weight: 1 }
+concept_refs: [prompt, context, hallucination]
+steps:
+  - id: intro
+    type: intro
+    title: Mình sẽ làm gì?
+    body: >-
+      Trong 15 phút, bạn sẽ (1) ghi ra cuối tuần này bạn muốn gì, (2) nhờ AI lên lịch, (3) kiểm tra vài điều AI nói,
+      và (4) rút ra một bài học nhỏ. Dùng ChatGPT, Gemini, Claude hay chat ngay trong app đều được.
+    hints:
+      - Không có đáp án đúng duy nhất. Cứ nghĩ về một cuối tuần thật của bạn.
+      - Bước tiếp theo là ghi ra mong muốn, chưa cần mở AI.
+      - Ví dụ một người viết "Thứ Bảy đi cà phê với chồng, Chủ Nhật dọn nhà và nấu một món mới".
+      - Bấm "Bắt đầu" để sang bước ghi mong muốn và ràng buộc.
+  - id: constraints
+    type: guided-input
+    title: Cuối tuần này bạn cần gì?
+    prompt: AI chỉ giỏi khi biết rõ bạn cần gì. Ghi ra mục tiêu và các ràng buộc (giờ, tiền, người đi cùng, sức khoẻ...).
+    fields:
+      - { id: goal, label: Mục tiêu cuối tuần, placeholder: "Ví dụ: nghỉ ngơi nhưng vẫn ra ngoài một chút", kind: text, min: 10 }
+      - { id: constraints, label: Ràng buộc (mỗi dòng một ý), placeholder: "Ngân sách dưới 500k\nPhải về nhà trước 18h Chủ Nhật\nĐi cùng bé 5 tuổi", kind: list, min: 3 }
+      - { id: location, label: Bạn ở khu vực nào? (chỉ cần quận/thành phố), placeholder: "Quận 7, TP.HCM", kind: text, min: 2 }
+    hints:
+      - Hãy nghĩ điều gì sẽ làm cuối tuần này "hỏng" nếu AI không biết?
+      - Ràng buộc thường là thời gian, tiền, người đi cùng, sức khoẻ, thời tiết. Thử viết mỗi loại một dòng.
+      - Ví dụ "Ngân sách 500k", "Chồng làm đến 12h thứ Bảy", "Không đi xa quá 30 phút".
+      - Bạn cần ít nhất 3 ràng buộc. Hãy viết ngân sách, khung giờ và một điều về người đi cùng.
+  - id: ask-ai
+    type: ai-task
+    title: Nhờ AI lên lịch
+    instruction: >-
+      Mở AI bạn hay dùng (hoặc chat ngay trong app). Gửi mục tiêu và ràng buộc vừa viết, xin một lịch theo giờ
+      cho cả hai ngày. Sau đó dán câu trả lời của AI vào ô bên dưới (hoặc chụp màn hình).
+    prompt_suggestions:
+      - "Mình muốn lên kế hoạch cuối tuần. Mục tiêu: [mục tiêu]. Ràng buộc: [ràng buộc]. Mình ở [khu vực]. Hãy lập lịch theo giờ cho thứ Bảy và Chủ Nhật, ghi rõ chi phí ước tính từng mục."
+      - "Với mỗi địa điểm bạn gợi ý, hãy ghi rõ điều nào bạn chắc chắn và điều nào mình nên tự kiểm tra lại."
+    allow_in_app_chat: true
+    capture: { id: ai_answer, label: Câu trả lời của AI (dán vào đây), min: 80, allow_image: true }
+    hints:
+      - AI có biết các ràng buộc bạn vừa viết không? Hãy dán chúng vào tin nhắn.
+      - Dùng gợi ý câu lệnh đầu tiên, thay phần trong ngoặc vuông bằng thông tin của bạn.
+      - Ví dụ "...Ràng buộc - ngân sách 500k, về nhà trước 18h, đi cùng bé 5 tuổi. Mình ở Quận 7..."
+      - Bấm "Sao chép" ở gợi ý đầu, dán vào ChatGPT, sửa phần trong ngoặc, gửi đi rồi dán câu trả lời lại đây.
+  - id: verify
+    type: verification
+    title: Kiểm chứng điều AI nói
+    instruction: >-
+      Với mỗi nhận định dưới đây (kiểu câu AI hay viết trong kế hoạch), chọn mức độ tin cậy phù hợp. Sau đó chọn
+      ít nhất một chi tiết trong kế hoạch của BẠN, tra lại (Google Maps, website, gọi điện) và ghi kết quả.
+    claims:
+      - id: claim-hours
+        text: "Quán cà phê X mở cửa từ 7h sáng mỗi ngày."
+        answer: needs_lookup
+        explanation: Giờ mở cửa thay đổi thường xuyên và AI không xem được dữ liệu mới. Hãy tra Google Maps hoặc trang của quán.
+      - id: claim-walk
+        text: "Đi bộ ngoài trời 30 phút buổi sáng giúp thư giãn."
+        answer: verified
+        explanation: Đây là kiến thức phổ biến, có căn cứ rộng rãi và rủi ro thấp nếu sai.
+      - id: claim-price
+        text: "Vé vào khu vui chơi Y là 120.000đ cho trẻ em."
+        answer: needs_lookup
+        explanation: Giá vé là "dữ kiện thời điểm" và AI hay bịa con số nghe hợp lý. Luôn kiểm tra nguồn chính thức.
+      - id: claim-weather
+        text: "Chủ Nhật này trời sẽ nắng đẹp cả ngày."
+        answer: insufficient
+        explanation: AI chat thường không có dự báo thời tiết thật. Hãy xem ứng dụng thời tiết gần ngày đi.
+    notes: { id: check_notes, label: Bạn đã kiểm tra chi tiết nào trong kế hoạch? Kết quả thế nào?, min: 40 }
+    hints:
+      - Điều nào trong câu có thể thay đổi theo thời gian hoặc AI không thể tự biết?
+      - Giờ mở cửa, giá vé và thời tiết là các "dữ kiện thời điểm". Kiến thức chung thì ít rủi ro hơn.
+      - Ví dụ ghi chú "AI nói bảo tàng mở 8h, Google Maps ghi 8h30 và đóng cửa thứ Hai, nên mình dời sang chiều".
+      - Chọn "Cần tra cứu" cho giờ mở cửa và giá vé, "Không đủ dữ liệu" cho thời tiết. Rồi tra một địa điểm trong lịch của bạn và ghi lại.
+  - id: adjust
+    type: guided-input
+    title: Đổi một ràng buộc
+    prompt: >-
+      Kế hoạch tốt phải chịu được thay đổi. Hãy nói với AI một tình huống mới (ví dụ "trời mưa", "giảm ngân sách
+      còn 200k") và ghi lại AI đã thay đổi kế hoạch thế nào.
+    fields:
+      - { id: change, label: Bạn đã đổi điều gì?, placeholder: "Nếu Chủ Nhật trời mưa thì sao?", kind: text, min: 10 }
+      - { id: revised, label: AI đã sửa kế hoạch ra sao? Bạn thấy hợp lý không?, kind: textarea, min: 40 }
+    hints:
+      - Điều gì dễ xảy ra nhất khiến kế hoạch phải đổi?
+      - Gõ tiếp vào cùng cuộc trò chuyện để AI nhớ kế hoạch cũ.
+      - Ví dụ "Nếu Chủ Nhật mưa, đổi hoạt động ngoài trời thành gì? Giữ ngân sách như cũ."
+      - Gửi câu "Nếu trời mưa Chủ Nhật thì đổi thế nào?" và ghi lại phần AI thay đổi cùng nhận xét của bạn.
+  - id: reflect
+    type: reflection
+    title: Đúc kết
+    prompt: Lần sau nhờ AI lên kế hoạch, bạn sẽ làm gì khác? Vì sao?
+    field_id: lesson
+    min: 30
+    hints:
+      - Lần này điều gì làm bạn bất ngờ, tốt hay xấu?
+      - Nghĩ về hai việc - cách bạn hỏi AI, và cách bạn kiểm tra kết quả.
+      - Ví dụ "Lần sau mình sẽ ghi ngân sách ngay từ đầu và luôn hỏi AI chỗ nào cần tự tra lại."
+      - Viết 1–2 câu - một điều về cách hỏi, một điều về cách kiểm tra.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: clear-constraints
+      label: Nêu rõ mục tiêu và ràng buộc
+      weight: 25
+      competency: describe
+      method: deterministic
+      check: { kind: list_min, step: constraints, field: constraints, min: 3 }
+    - id: realistic-plan
+      label: Kế hoạch thực tế, bám đúng ràng buộc
+      weight: 20
+      competency: delegate
+      method: ai
+      guidance: >-
+        The AI answer the learner pasted should be an hour-by-hour plan for two days that respects the learner's
+        stated constraints (budget, time limits, companions). Score lower when constraints are ignored or the
+        pasted text is not a plan.
+      step_refs: [constraints, ask-ai]
+    - id: verified-vs-unverified
+      label: Phân biệt điều đã kiểm và cần kiểm
+      weight: 15
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: verify }
+    - id: real-check
+      label: Tự kiểm chứng một chi tiết thật
+      weight: 15
+      competency: verify
+      method: ai
+      guidance: >-
+        The learner's notes should describe checking at least one concrete detail of THEIR plan against an outside
+        source (map, website, phone call, someone they know) and what they found. Generic statements without a
+        specific detail score low.
+      step_refs: [verify, ask-ai]
+    - id: adapt
+      label: Đổi ràng buộc và đánh giá lại
+      weight: 15
+      competency: operate
+      method: ai
+      guidance: >-
+        The learner changed one condition, reports how the AI revised the plan, and gives their own judgement of
+        whether the revision is sensible.
+      step_refs: [adjust]
+    - id: lesson
+      label: Đúc kết cho lần sau
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 30 }

@@ -1,0 +1,50 @@
+---
+/** Shell for every learner page: header, content column, bottom navigation, PWA meta. */
+import '../styles/global.css';
+import BottomNav from '../components/layout/BottomNav.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Hide the bottom nav (onboarding, mission runner, public certificate). */
+  bare?: boolean;
+}
+const { title, description = 'Học dùng AI bằng cách tự làm việc thật và tự kiểm chứng.', bare = false } = Astro.props;
+const learner = Astro.locals.learner;
+const pageTitle = title === 'AI Unlocked' ? title : `${title} · AI Unlocked`;
+---
+<!doctype html>
+<html lang="vi" data-reduced-motion={learner?.profile.reducedMotion ? 'true' : undefined}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#fbf8f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16140f" media="(prefers-color-scheme: dark)" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <slot name="head" />
+  </head>
+  <body class="min-h-dvh">
+    <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 btn-primary">Bỏ qua tới nội dung</a>
+    {!bare && (
+      <header class="mx-auto flex max-w-2xl items-center justify-between px-4 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2">
+        <a href="/home" class="font-bold text-lg">🔓 AI Unlocked</a>
+        <a href="/settings" class="btn-ghost min-h-[40px] px-3 text-sm" aria-label="Cài đặt">
+          {learner?.kind === 'member' ? (learner.displayName ?? 'Tài khoản') : 'Khách'} ⚙️
+        </a>
+      </header>
+    )}
+    <main id="main" class:list={['mx-auto w-full max-w-2xl px-4', bare ? 'py-6' : 'pb-28 md:pb-10']}>
+      <slot />
+    </main>
+    {!bare && <BottomNav current={Astro.url.pathname} />}
+  </body>
+</html>

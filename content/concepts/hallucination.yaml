@@ -1,0 +1,23 @@
+id: hallucination
+label_vi: Ảo giác (AI bịa)
+label_en: Hallucination
+emoji: "🫥"
+layer: foundation
+group: fundamentals
+one_liner: AI có thể nói sai một cách rất tự tin, nhất là về con số, nguồn và dữ kiện mới.
+beginner_explanation: >-
+  AI tạo ra câu trả lời "nghe hợp lý nhất", không phải tra cứu sự thật. Vì vậy nó có thể bịa giờ mở cửa, giá vé,
+  tên sách hay đường link. Câu trả lời trôi chảy không có nghĩa là đúng.
+analogy: Như một người kể chuyện rất duyên, nhưng khi không nhớ thì tự "điền vào chỗ trống" thay vì nói "tôi không biết".
+rigorous_explanation: >-
+  Mô hình ngôn ngữ tối ưu xác suất chuỗi token, không có cơ chế nội tại để kiểm chứng sự thật. Lỗi tăng với dữ kiện
+  hiếm, thông tin sau mốc huấn luyện, chi tiết số và trích dẫn. Grounding bằng tìm kiếm hoặc tài liệu giảm nhưng không loại bỏ lỗi này.
+misconceptions:
+  - AI có trích dẫn nguồn thì chắc chắn đúng. Thực tế nguồn cũng có thể bị bịa hoặc không nói điều đó.
+examples:
+  - AI nói quán mở 7h nhưng Google Maps ghi 7h30.
+when_you_need_it: Khi câu trả lời có con số, tên riêng, ngày giờ, giá, lời khuyên sức khoẻ, pháp lý hoặc tài chính.
+related: [context, prompt]
+lab: hallucination-detective
+last_reviewed_at: "2026-10-26"
+confidence: high

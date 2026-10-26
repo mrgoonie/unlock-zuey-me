@@ -1,0 +1,23 @@
+id: context
+label_vi: Ngữ cảnh (context)
+label_en: Context
+emoji: "🧠"
+layer: foundation
+group: fundamentals
+one_liner: Tất cả những gì AI "nhìn thấy" trong cuộc trò chuyện lúc trả lời.
+beginner_explanation: >-
+  AI chỉ biết những gì có trong cuộc trò chuyện hiện tại, cộng với kiến thức nó học từ trước. Cuộc trò chuyện quá
+  dài thì phần đầu có thể bị "quên". Mở cuộc trò chuyện mới thì AI không nhớ cuộc cũ, trừ khi ứng dụng có tính năng ghi nhớ.
+analogy: Như mặt bàn làm việc. AI chỉ dùng được giấy tờ đang bày trên bàn, và bàn có kích thước giới hạn.
+rigorous_explanation: >-
+  Context window là số token tối đa mô hình xử lý trong một lần sinh, gồm system prompt, lịch sử hội thoại, tài liệu
+  đính kèm và đầu ra. Nội dung vượt giới hạn sẽ bị cắt hoặc tóm tắt, và thông tin ở giữa ngữ cảnh dài có thể bị chú ý kém hơn.
+misconceptions:
+  - AI nhớ mọi cuộc trò chuyện trước đây với bạn. Thường thì không, trừ khi có tính năng bộ nhớ riêng.
+examples:
+  - Dán lại ràng buộc vào cuộc trò chuyện mới để AI không đưa ra kế hoạch lệch.
+when_you_need_it: Khi AI "quên" điều bạn đã dặn, hoặc khi bạn làm việc với tài liệu dài.
+related: [prompt, hallucination]
+lab: context-lab
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens: warm, friendly exploration. Values are "R G B" so Tailwind can apply opacity. */
+:root {
+  --bg: 251 248 243;
+  --surface: 255 255 255;
+  --line: 231 223 210;
+  --ink: 29 27 24;
+  --ink-muted: 107 100 90;
+  --accent: 232 89 46;        /* primary action (passes 4.5:1 with white text) */
+  --accent-ink: 255 255 255;
+  --calm: 47 125 109;         /* progress, success */
+  --calm-ink: 255 255 255;
+  --warn: 183 121 31;
+  --danger: 190 50 50;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: 22 20 15;
+    --surface: 33 30 24;
+    --line: 58 53 44;
+    --ink: 242 237 228;
+    --ink-muted: 164 155 141;
+    --accent: 255 138 99;
+    --accent-ink: 29 20 15;
+    --calm: 92 196 174;
+    --calm-ink: 15 30 26;
+    --warn: 224 176 80;
+    --danger: 240 110 110;
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body { @apply bg-bg text-ink font-sans antialiased; }
+  :focus-visible { @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-bg; }
+}
+
+@layer components {
+  .card { @apply bg-surface border border-line rounded-card shadow-card p-4; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 min-h-[44px] font-semibold transition; }
+  .btn-primary { @apply btn bg-accent text-accent-ink hover:opacity-90 disabled:opacity-50; }
+  .btn-ghost { @apply btn border border-line text-ink hover:bg-line/40; }
+  .field { @apply w-full rounded-xl border border-line bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-muted; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full bg-line/60 px-2.5 py-1 text-xs font-medium; }
+}
+
+/* Respect the OS setting and the in-app "giảm chuyển động" toggle (html[data-reduced-motion]). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+html[data-reduced-motion='true'] *, html[data-reduced-motion='true'] *::before, html[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+}

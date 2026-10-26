@@ -1,0 +1,35 @@
+{
+  // AI Unlocked — Astro SSR on Cloudflare Workers (static assets + custom entrypoint in src/worker.ts).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unlock-zuey-me",
+  "main": "dist/_worker.js/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "account_id": "009dc0fcd0da3e503fbf38eb2b586e4b",
+  "assets": { "directory": "dist", "binding": "ASSETS" },
+  "routes": [{ "pattern": "unlock.zuey.me", "custom_domain": true }],
+  "observability": { "enabled": true },
+  // Push reminders: every 15 minutes the scheduled handler sends due reminders (src/lib/push).
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "unlock_zuey_me_db", "database_id": "86d8c2b0-f690-40a0-91b2-5c7685db7404", "migrations_dir": "migrations" }
+  ],
+  "kv_namespaces": [
+    // Grants, clients and tokens of the /mcp OAuth provider (@cloudflare/workers-oauth-provider).
+    { "binding": "OAUTH_KV", "id": "8faa58e5e2eb4276877b15411200f2d5" },
+    // Rate-limit counters and short-lived caches.
+    { "binding": "CACHE", "id": "b050a22b97df47608060ac04cf5c15b3" }
+  ],
+  // Private evidence screenshots; served only to the owner (and consenting observers) through the app.
+  "r2_buckets": [{ "binding": "EVIDENCE", "bucket_name": "unlock-evidence" }],
+  "ai": { "binding": "AI" },
+  "vars": {
+    "PUBLIC_SITE_URL": "https://unlock.zuey.me",
+    "ZUEY_ISSUER": "https://zuey.me",
+    "ADMIN_EMAILS": "digitop.vn@gmail.com,goon.nguyen@gmail.com,duynguyen@wearetopgroup.com,duy@wearetopgroup.com",
+    "AI_DAILY_BUDGET_USD_PER_LEARNER": "0.30",
+    "AI_DAILY_BUDGET_USD_GLOBAL": "5",
+    "VAPID_SUBJECT": "mailto:digitop.vn@gmail.com"
+  }
+  // Secrets (wrangler secret put / CI): OPENROUTER_API_KEY, SESSION_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+}

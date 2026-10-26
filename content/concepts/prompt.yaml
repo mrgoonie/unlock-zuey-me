@@ -1,0 +1,22 @@
+id: prompt
+label_vi: Câu lệnh (prompt)
+label_en: Prompt
+emoji: "💬"
+layer: foundation
+group: prompt-knowledge
+one_liner: Những gì bạn gõ cho AI. Nói càng rõ mình cần gì, kết quả càng sát.
+beginner_explanation: >-
+  Prompt là tin nhắn bạn gửi cho AI. AI không đọc được suy nghĩ của bạn, nên nó chỉ dựa vào những gì bạn viết.
+  Một prompt tốt thường có mục tiêu, bối cảnh, ràng buộc và kiểu kết quả bạn muốn.
+analogy: Giống như dặn việc cho một người giúp việc mới rất nhanh nhẹn nhưng chưa biết gì về nhà bạn.
+rigorous_explanation: >-
+  Prompt là chuỗi văn bản đầu vào (cùng lịch sử hội thoại và chỉ dẫn hệ thống) mà mô hình dùng làm điều kiện để
+  sinh token tiếp theo. Chất lượng đầu ra phụ thuộc mạnh vào thông tin và ràng buộc có trong ngữ cảnh đó.
+misconceptions:
+  - Phải dùng "câu thần chú" đặc biệt mới hiệu quả. Thực ra nói rõ ràng như với người thật là đủ.
+examples:
+  - "Thay vì \"lên kế hoạch cuối tuần\", hãy viết \"lên lịch theo giờ cho thứ Bảy, ngân sách 500k, đi cùng bé 5 tuổi\"."
+when_you_need_it: Mỗi lần bạn nhờ AI làm một việc cụ thể.
+related: [context]
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,27 @@
+---
+/** Mobile-first bottom tab bar (top bar on wide screens). Every primary route is reachable from here. */
+interface Props { current?: string }
+const { current = '' } = Astro.props;
+const items = [
+  { href: '/home', label: 'Hôm nay', icon: '🏠' },
+  { href: '/missions', label: 'Mission', icon: '🎯' },
+  { href: '/labs', label: 'Lab', icon: '🧪' },
+  { href: '/concepts', label: 'Từ điển', icon: '📖' },
+  { href: '/progress', label: 'Tiến độ', icon: '📈' },
+];
+---
+<nav aria-label="Điều hướng chính" class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)] md:static md:border-0 md:bg-transparent">
+  <ul class="mx-auto flex max-w-2xl justify-around">
+    {items.map((it) => {
+      const active = current === it.href || current.startsWith(`${it.href}/`);
+      return (
+        <li class="flex-1">
+          <a href={it.href} aria-current={active ? 'page' : undefined}
+             class:list={['flex min-h-[56px] flex-col items-center justify-center gap-0.5 text-xs', active ? 'text-accent font-semibold' : 'text-ink-muted']}>
+            <span aria-hidden="true" class="text-lg">{it.icon}</span>{it.label}
+          </a>
+        </li>
+      );
+    })}
+  </ul>
+</nav>

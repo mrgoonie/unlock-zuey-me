@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Unlocked – Preview</title>
+<style>
+:root{--bg:#fbf8f3;--fg:#1d1b18;--muted:#6b645a;--card:#fff;--line:#e7dfd2;--acc:#ff6b3d;--acc2:#2f7d6d;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#16140f;--fg:#f2ede4;--muted:#a49b8d;--card:#211e18;--line:#3a352c;--acc:#ff8a63;--acc2:#5cc4ae;--warn:#e0b050}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 12px}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.hyp{background:var(--warn);color:#fff;border:0}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.phone{width:280px;max-width:100%;border:10px solid #2a2620;border-radius:34px;background:var(--card);padding:14px;min-height:500px;margin:auto}
+.phone h3{margin:6px 0 10px;font-size:16px}
+.btn{display:block;text-align:center;background:var(--acc);color:#fff;border-radius:10px;padding:10px;margin-top:10px;font-weight:600}
+.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+.bar{height:8px;border-radius:9px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--acc2)}
+.chip{display:inline-block;font-size:12px;background:var(--line);border-radius:8px;padding:3px 8px;margin:2px}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.flow span{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.flow b{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+.assume{border-left:4px solid var(--warn);padding:8px 12px;background:var(--card);margin:8px 0;font-size:14px}
+small{color:var(--muted)}
+</style>
+</head>
+<body><main>
+<span class="tag hyp">BẢN XEM TRƯỚC KẾT QUẢ DỰ KIẾN — chưa phải code</span>
+<h1>AI Unlocked · unlock.zuey.me</h1>
+<p><small>Học AI bằng cách tự làm việc thật, tự kiểm chứng, nhận phản hồi dựa trên bằng chứng. Mobile-first, tiếng Việt.</small></p>
+
+<h2>1. Hành trình của người học mới (trên điện thoại)</h2>
+<div class="flow">
+<span>Mở link / cài PWA</span><b>→</b><span>3 câu hỏi (bỏ qua được)</span><b>→</b><span>Gợi ý 3 mission</span><b>→</b><span>Làm với AI (trong app hoặc ChatGPT)</span><b>→</b><span>Nộp bằng chứng (text/ảnh chụp)</span><b>→</b><span>Chấm theo rubric + feedback</span><b>→</b><span>XP, badge, confetti 🎉</span><b>→</b><span>Lưu tiến độ: Sign in with zuey.me</span><b>→</b><span>Nhắc nhẹ ngày mai (push)</span>
+</div>
+
+<div class="grid" style="margin-top:16px">
+<div class="phone">
+<small>Trang chủ · Hành trình của tôi</small>
+<h3>Chào chị 👋 Hôm nay thử gì?</h3>
+<div class="card" style="padding:10px"><b>🗓️ Lên kế hoạch cuối tuần</b><br><small>~15 phút · rủi ro thấp · luyện: mô tả, kiểm chứng</small></div>
+<div class="card" style="padding:10px;margin-top:8px"><b>💬 Soạn tin nhắn khó nói</b><br><small>~10 phút</small></div>
+<div class="card" style="padding:10px;margin-top:8px"><b>🧪 Lab: Máy đoán chữ</b><br><small>AI "đoán từ tiếp theo" thế nào?</small></div>
+<p style="margin:12px 0 4px"><small>Cấp L0 Explorer → L1 User</small></p><div class="bar"><i style="width:40%"></i></div>
+<p><span class="chip">🔥 3 ngày (1 ngày nghỉ)</span><span class="chip">⭐ 120 XP</span><span class="chip">🏅 First Verified Win</span></p>
+</div>
+<div class="phone">
+<small>Mission runner · bước 3/4 Kiểm chứng</small>
+<h3>AI đề xuất quán cà phê mở 7h sáng. Đúng không?</h3>
+<div class="card" style="padding:10px">○ Tin có căn cứ<br>● Cần tra cứu<br>○ Không đủ dữ liệu<br>○ Cần chuyên gia</div>
+<p><small>Dán ghi chú kiểm chứng hoặc ảnh chụp Google Maps:</small></p>
+<div class="card" style="padding:10px;min-height:56px"><small>"Maps ghi mở 7h30, AI nói 7h…"</small></div>
+<span class="btn">Nộp bằng chứng</span>
+<span class="btn ghost">💡 Gợi ý nhỏ (nấc 1/4)</span>
+</div>
+<div class="phone">
+<small>Kết quả</small>
+<h3>Đạt 84% · Mission hoàn thành ✅</h3>
+<table><tr><td>Làm rõ ràng buộc</td><td>25/25</td></tr><tr><td>Lịch trình thực tế</td><td>20/25</td></tr><tr><td>Phân biệt đã kiểm/chưa kiểm</td><td>25/25</td></tr><tr><td>Đổi ràng buộc</td><td>6/15</td></tr><tr><td>Đúc kết</td><td>8/10</td></tr></table>
+<p><small>Điểm cần cải thiện: thử hỏi AI "nếu trời mưa thì sao?"</small></p>
+<span class="btn">Thử biến thể mới (chứng minh transfer)</span>
+</div>
+</div>
+
+<h2>2. Dashboard quan sát của anh (chỉ admin, cần người học đồng ý)</h2>
+<div class="card">
+<table>
+<tr><th>Thời điểm</th><th>Sự kiện</th><th>Chi tiết</th></tr>
+<tr><td>20:05</td><td>mission.started plan-weekend v1</td><td>bỏ qua khảo sát</td></tr>
+<tr><td>20:11</td><td>hint.requested nấc 1 → 2</td><td>vướng ở bước "ràng buộc" 6 phút</td></tr>
+<tr><td>20:19</td><td>evidence.submitted</td><td>text + 1 ảnh · xem nội dung</td></tr>
+<tr><td>20:19</td><td>evaluation.completed 0.84</td><td>độ tự tin dự đoán 90% vs thực tế 84%</td></tr>
+<tr><td>20:21</td><td>reflection</td><td>"Lần sau mình sẽ hỏi AI nguồn trước"</td></tr>
+</table>
+<p><small>Kèm: phễu bỏ dở theo bước, mức phụ thuộc gợi ý theo thời gian, radar 6 năng lực, time-to-first-verified-win.</small></p>
+</div>
+
+<h2>3. Kiến trúc dự kiến</h2>
+<div class="flow">
+<span>Web (Astro + React, PWA)</span><b>+</b><span>/mcp (Streamable HTTP, OAuth)</span><b>→</b><span>Learning engine chung</span><b>→</b><span>D1 · R2 (ảnh bằng chứng) · KV</span>
+</div>
+<div class="flow" style="margin-top:8px">
+<span>Coach & chấm rubric → OpenRouter (fallback Workers AI)</span><span>Đăng nhập → zuey.me OAuth (PR mới: userinfo + client unlock)</span><span>Cron → Web Push nhắc nhở</span><span>CI GitHub Actions → Cloudflare</span>
+</div>
+
+<h2>4. Phạm vi</h2>
+<div class="grid">
+<div class="card"><b>Trong phạm vi</b><ul>
+<li>Onboarding ≤3 câu, chế độ khách, Sign in with zuey.me</li>
+<li>8 mission đời sống/công việc (content-as-data, kiểm schema trong CI)</li>
+<li>3 lab: Máy đoán chữ, Phòng thí nghiệm ngữ cảnh, Thám tử ảo giác</li>
+<li>Buzzword decoder ~40 khái niệm từ brief</li>
+<li>Coach 4 nấc gợi ý + chat luyện tập trong app (có hạn mức)</li>
+<li>Chấm rubric (deterministic + AI), XP/badge/streak mềm/recap/chứng nhận</li>
+<li>PWA + push nhắc nhẹ, SFX bật/tắt, reduced-motion, bàn phím</li>
+<li>/mcp 7 tools dùng chung engine</li>
+<li>Dashboard quan sát có đồng ý, export/xoá dữ liệu</li>
+</ul></div>
+<div class="card"><b>Ngoài phạm vi lượt này</b><ul>
+<li>3D model, cartoon, BGM sản xuất</li>
+<li>Leaderboard, lộ trình agent/autonomous chuyên sâu</li>
+<li>Pipeline tự phát hiện & tạo issue <code>ai-handle</code></li>
+<li>Thanh toán, bản tiếng Anh (chỉ sẵn i18n), app native</li>
+</ul></div>
+</div>
+
+<h2>5. Giả định cần anh sửa nếu sai</h2>
+<div class="assume">Stack giống zuey-me (Astro 5 + React + Tailwind + D1) để anh dễ bảo trì; chạy trên Cloudflare Workers.</div>
+<div class="assume">Mở cho mọi tài khoản zuey.me; hạn mức AI mỗi người/ngày để không cháy tiền OpenRouter.</div>
+<div class="assume">Âm thanh tắt mặc định, người học tự bật.</div>
+<div class="assume">Repo mới: commit khởi tạo lên main, các phần sau qua PR có review độc lập.</div>
+</main></body></html>

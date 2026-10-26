@@ -1,0 +1,46 @@
+name: Deploy
+
+# Production deploy of https://unlock.zuey.me. Runs only from main, after the same gates as CI.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run content:check
+      - run: bun run test
+      - run: bun run build
+      - name: Apply D1 migrations
+        run: bunx wrangler d1 migrations apply unlock_zuey_me_db --remote
+      - name: Deploy worker
+        run: bunx wrangler deploy
+      - name: Sync OpenRouter key
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -n "$OPENROUTER_API_KEY" ]; then
+            printf '%s' "$OPENROUTER_API_KEY" | bunx wrangler secret put OPENROUTER_API_KEY
+          fi
+      - name: Smoke check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://unlock.zuey.me/api/health) && [ "$code" = 200 ] && exit 0
+            sleep 10
+          done
+          echo "health check failed (last status $code)"; exit 1

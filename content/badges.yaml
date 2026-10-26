@@ -1,0 +1,10 @@
+- id: first-verified-win
+  name: Chiến thắng đầu tiên
+  emoji: "🏅"
+  description: Hoàn thành mission đầu tiên với bằng chứng đạt yêu cầu.
+  rule: { kind: first_pass }
+- id: fact-checker
+  name: Thám tử kiểm chứng
+  emoji: "🔎"
+  description: Đạt điểm kiểm chứng cao (năng lực Kiểm chứng từ 0.8).
+  rule: { kind: competency_score, competency: verify, min: 0.8 }
