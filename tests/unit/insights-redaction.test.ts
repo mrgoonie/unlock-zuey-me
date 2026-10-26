@@ -96,6 +96,9 @@ describe('redactText: positives', () => {
 
 describe('redactText: negatives', () => {
   const untouched = [
+    'Password is Required for this form',
+    'my password was Changed yesterday',
+    'account number of steps: 12345678',
     'Mình đang học cách viết prompt rõ ràng hơn cho nhiệm vụ lập kế hoạch cuối tuần.',
     'Hãy kiểm chứng câu trả lời của AI bằng hai nguồn độc lập trước khi tin.',
     'Token là đơn vị nhỏ nhất mà mô hình xử lý; mỗi câu có khoảng 20 token.',

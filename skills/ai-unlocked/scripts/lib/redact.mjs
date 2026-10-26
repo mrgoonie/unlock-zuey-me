@@ -40,7 +40,7 @@ function looksRandomBase64(s) {
  * words ("Mật khẩu là gì?", "the password is secret") stay readable.
  */
 function looksLikePassword(s) {
-  return /[0-9]/.test(s) || /[^\p{L}\p{N}]/u.test(s) || (/\p{Lu}/u.test(s) && /\p{Ll}/u.test(s));
+  return /[0-9]/.test(s) || /[^\p{L}\p{N}]/u.test(s);
 }
 
 /**
@@ -120,7 +120,7 @@ const RULES = [
   // number): 8–19 digits, optional single space/dot/dash separators. Runs before cards, ids and phones.
   {
     kind: 'bank_account',
-    re: /((?<![\p{L}\p{N}])(?:STK|số tài khoản|so tai khoan|tài khoản ngân hàng|tai khoan ngan hang|account (?:no\.?|number))[^0-9\n]{0,32})(\d(?:[ .-]?\d){7,18})(?!\d)/giu,
+    re: /((?<![\p{L}\p{N}])(?:STK|số tài khoản|so tai khoan|tài khoản ngân hàng|tai khoan ngan hang|account (?:no\.?|number))(?![ \t]+of\b)[^0-9\n]{0,32})(\d(?:[ .-]?\d){7,18})(?!\d)/giu,
     replace: (_m, label) => `${label}${MARK('bank_account')}`,
   },
   // Payment cards: 13–19 digits (optional single space or dash separators) passing Luhn.
