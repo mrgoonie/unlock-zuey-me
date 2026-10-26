@@ -115,7 +115,9 @@ describe('redactText: idempotence and limits', () => {
     expect(redactText('a'.repeat(REDACT_MAX_INPUT + 100)).text.length).toBe(REDACT_MAX_INPUT);
   });
 
-  it('runs 32 KB of adversarial input per rule family in under 50 ms each', () => {
+  // Guards against catastrophic (super-linear) regex backtracking, which costs seconds on 32 KB. The bound is
+  // loose and uses the fastest of 3 runs so a slow or busy CI runner cannot fail it on wall-clock noise.
+  it('runs 32 KB of adversarial input per rule family in well under a second each', () => {
     const inputs = [
       '1'.repeat(32_768),
       '1 '.repeat(16_384),
@@ -131,9 +133,13 @@ describe('redactText: idempotence and limits', () => {
       'CCCD '.repeat(6_553),
     ];
     for (const input of inputs) {
-      const t0 = performance.now();
-      redactText(input);
-      expect(performance.now() - t0, input.slice(0, 12)).toBeLessThan(50);
+      let best = Infinity;
+      for (let run = 0; run < 3; run++) {
+        const t0 = performance.now();
+        redactText(input);
+        best = Math.min(best, performance.now() - t0);
+      }
+      expect(best, input.slice(0, 12)).toBeLessThan(250);
     }
   });
 });
