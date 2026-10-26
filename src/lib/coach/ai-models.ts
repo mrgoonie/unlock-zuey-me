@@ -25,6 +25,11 @@ export const WORKERS_AI_TIMEOUT_MS = 30_000;
 /** Defaults when the wrangler vars are missing or malformed. */
 export const DEFAULT_BUDGET_USD_PER_LEARNER = 0.3;
 export const DEFAULT_BUDGET_USD_GLOBAL = 5;
+/**
+ * Fraction of the global daily USD budget and Workers AI cap that practice chat and hints together may use
+ * (wrangler var AI_DAILY_COACH_SHARE); the rest stays available to grading.
+ */
+export const DEFAULT_COACH_SHARE = 0.5;
 
 /** OpenRouter may answer with a dated variant (e.g. "...-20261001"); price it like its base slug. */
 function priceFor(model: string): { input: number; output: number } {

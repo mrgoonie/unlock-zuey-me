@@ -1,18 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestD1 } from '../helpers/d1-sqlite';
 import { findInactiveGuests, removeInactiveGuests } from '../../src/lib/jobs/inactive-guest-cleanup';
-import { deleteOrphanEvidence, EVIDENCE_GC_CURSOR_KEY } from '../../src/lib/jobs/orphan-evidence-cleanup';
+import { guestMergeStatements } from '../../src/lib/identity/guest-merge';
+import { createCronBudget } from '../../src/lib/jobs/cron-budget';
+import { deleteOrphanEvidence, EVIDENCE_GC_POSITION_KEY } from '../../src/lib/jobs/orphan-evidence-cleanup';
 
 const NOW = new Date('2026-10-26T03:00:00Z');
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
-/** R2 stand-in with upload times, prefix listing (sorted, paginated by a numeric cursor) and batch delete. */
+/** R2 stand-in with upload times, prefix listing (sorted, paginated by a numeric cursor or startAfter) and batch delete. */
 function datedBucket(objects: Record<string, Date>, pageSize = 1000) {
   const store = new Map(Object.entries(objects));
   const bucket = {
-    list: vi.fn(async (opts: { prefix?: string; cursor?: string; limit?: number }) => {
-      const keys = [...store.keys()].filter((k) => k.startsWith(opts.prefix ?? '')).sort();
+    list: vi.fn(async (opts: { prefix?: string; cursor?: string; startAfter?: string; limit?: number }) => {
+      const keys = [...store.keys()].filter((k) => k.startsWith(opts.prefix ?? '') && (!opts.startAfter || k > opts.startAfter)).sort();
       const start = opts.cursor ? Number(opts.cursor) : 0;
       const size = Math.min(opts.limit ?? 1000, pageSize);
       const page = keys.slice(start, start + size);
@@ -73,7 +75,7 @@ describe('inactive guest cleanup', () => {
 
     expect((await findInactiveGuests(db, NOW)).sort()).toEqual(['g_norun', 'g_run_old']);
     const r2 = datedBucket({ 'ev/g_norun/a.png': hoursAgo(200), 'ev/g_seen/a.png': hoursAgo(200) });
-    expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW)).toEqual({ removed: 2, failed: 0 });
+    expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW)).toEqual({ removed: 2, skipped: 0, failed: 0, deferred: false });
     for (const id of ['g_norun', 'g_run_old']) expect(await exists(id), id).toBe(false);
     for (const id of ['g_new', 'g_seen', 'g_run_young', 'g_progress', 'm_member', 'g_merged']) expect(await exists(id), id).toBe(true);
     expect([...r2.store.keys()]).toEqual(['ev/g_seen/a.png']);
@@ -85,6 +87,69 @@ describe('inactive guest cleanup', () => {
     await guest('g_cert', 60);
     await db.prepare(`INSERT INTO certificates (code, learner_id, level, display_name, snapshot_json, issued_at) VALUES ('c1', 'g_cert', 'L1', 'A', '{}', ?)`).bind(daysAgo(59)).run();
     expect(await findInactiveGuests(db, NOW)).toEqual([]);
+  });
+
+  /** Runs `between` right after the cleanup's scan query returns, i.e. between the scan and the deletion. */
+  function raceAfterScan(between: () => Promise<void>): D1Database {
+    return {
+      ...db,
+      prepare: (sql: string) => {
+        const stmt = db.prepare(sql);
+        if (!sql.includes('ORDER BY l.created_at')) return stmt;
+        return {
+          bind: (...values: unknown[]) => {
+            const bound = stmt.bind(...values);
+            return { all: async () => { const r = await bound.all(); await between(); return r; } };
+          },
+        } as unknown as D1PreparedStatement;
+      },
+      batch: (stmts: D1PreparedStatement[]) => db.batch(stmts),
+    } as D1Database;
+  }
+
+  it('skips a guest that was merged into a member between the scan and the deletion', async () => {
+    await guest('g_race', 10);
+    await guest('m_race', 400, { kind: 'member', seenDaysAgo: 0 });
+    const racing = raceAfterScan(async () => {
+      await db.batch(guestMergeStatements(db, 'g_race', 'm_race', NOW.toISOString()));
+    });
+    const r2 = datedBucket({ 'ev/g_race/a.png': hoursAgo(200) });
+    expect(await findInactiveGuests(db, NOW)).toEqual(['g_race']);
+
+    expect(await removeInactiveGuests({ DB: racing, EVIDENCE: r2.bucket }, NOW)).toEqual({ removed: 0, skipped: 1, failed: 0, deferred: false });
+    expect(await exists('g_race')).toBe(true);
+    const row = await db.prepare(`SELECT merged_into, deleted_at FROM learners WHERE id = 'g_race'`).first<{ merged_into: string; deleted_at: string | null }>();
+    expect(row).toEqual({ merged_into: 'm_race', deleted_at: null });
+    expect(r2.bucket.list).not.toHaveBeenCalled();
+    expect(r2.bucket.delete).not.toHaveBeenCalled();
+    expect([...r2.store.keys()]).toEqual(['ev/g_race/a.png']);
+  });
+
+  it('skips a guest that came back (session seen) between the scan and the deletion', async () => {
+    await guest('g_back', 10);
+    const racing = raceAfterScan(async () => {
+      await db.prepare(`UPDATE sessions SET last_seen_at = ? WHERE learner_id = 'g_back'`).bind(NOW.toISOString()).run();
+      await db.prepare(`INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, started_at, updated_at)
+        VALUES ('run_new', 'g_back', 'plan-weekend', 1, 'started', ?1, ?1)`).bind(NOW.toISOString()).run();
+    });
+    const r2 = datedBucket({ 'ev/g_back/a.png': hoursAgo(200) });
+    expect(await removeInactiveGuests({ DB: racing, EVIDENCE: r2.bucket }, NOW)).toMatchObject({ removed: 0, skipped: 1 });
+    expect(await exists('g_back')).toBe(true);
+    const runs = await db.prepare(`SELECT COUNT(*) AS n FROM mission_runs WHERE learner_id = 'g_back'`).first<{ n: number }>();
+    expect(runs?.n).toBe(1);
+    expect(r2.store.size).toBe(1);
+  });
+
+  it('stops when the cron budget is spent and leaves the rest for the next run', async () => {
+    for (let i = 0; i < 4; i++) await guest(`g_${i}`, 10 + i);
+    const r2 = datedBucket({});
+    // 1 scan + 3 per guest: room for exactly two guests.
+    const res = await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW, 50, createCronBudget({ subrequests: 7 }));
+    expect(res).toMatchObject({ removed: 2, deferred: false });
+    expect((await findInactiveGuests(db, NOW)).length).toBe(2);
+    expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW, 50, createCronBudget({ subrequests: 0 })))
+      .toMatchObject({ removed: 0, deferred: true });
+    expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW)).toMatchObject({ removed: 2 });
   });
 
   it('respects the batch limit', async () => {
@@ -130,19 +195,41 @@ describe('orphan evidence cleanup', () => {
     expect([...r2.store.keys()]).toEqual(['ev/g_old/x.png']);
   });
 
-  it('walks a large bucket across runs with a saved cursor', async () => {
+  it('walks a large bucket across runs from the last examined key', async () => {
     const objects: Record<string, Date> = {};
     for (let i = 0; i < 5; i++) objects[`ev/lrn_gone/${i}.png`] = hoursAgo(30);
+    objects['ev/lrn_a/kept.png'] = hoursAgo(30);
     const r2 = datedBucket(objects, 2);
     const { kv, store } = memoryKv();
     const env = { DB: db, EVIDENCE: r2.bucket, CACHE: kv };
     expect(await deleteOrphanEvidence(env, NOW, 1)).toMatchObject({ scanned: 2, completedPass: false });
-    expect(store.get(EVIDENCE_GC_CURSOR_KEY)).toBe('2');
-    // Deleting shifts the fake's offsets, which is fine: the pass ends and the next pass starts over.
-    await deleteOrphanEvidence(env, NOW, 1);
-    await deleteOrphanEvidence(env, NOW, 5);
-    await deleteOrphanEvidence(env, NOW, 5);
+    expect(store.get(EVIDENCE_GC_POSITION_KEY)).toBe('ev/lrn_gone/0.png');
+    expect(await deleteOrphanEvidence(env, NOW, 1)).toMatchObject({ scanned: 2, completedPass: false });
+    expect(await deleteOrphanEvidence(env, NOW, 5)).toMatchObject({ scanned: 2, completedPass: true });
+    expect([...r2.store.keys()]).toEqual(['ev/lrn_a/kept.png']);
+    expect(store.has(EVIDENCE_GC_POSITION_KEY)).toBe(false);
+  });
+
+  it('stops mid-page when the cron budget is spent and resumes at the next object', async () => {
+    const objects: Record<string, Date> = {};
+    for (const owner of ['gone_1', 'gone_2', 'gone_3', 'gone_4']) objects[`ev/${owner}/x.png`] = hoursAgo(30);
+    const r2 = datedBucket(objects);
+    const { kv, store } = memoryKv();
+    const env = { DB: db, EVIDENCE: r2.bucket, CACHE: kv };
+    // 2 KV + 1 list + 2 owner lookups (3 each) = 9: the third owner lookup does not fit.
+    const first = await deleteOrphanEvidence(env, NOW, 5, createCronBudget({ subrequests: 9 }));
+    expect(first).toMatchObject({ scanned: 2, deleted: 2, completedPass: false, deferred: true });
+    expect(store.get(EVIDENCE_GC_POSITION_KEY)).toBe('ev/gone_2/x.png');
+    expect([...r2.store.keys()]).toEqual(['ev/gone_3/x.png', 'ev/gone_4/x.png']);
+    expect(await deleteOrphanEvidence(env, NOW)).toMatchObject({ scanned: 2, deleted: 2, completedPass: true, deferred: false });
     expect(r2.store.size).toBe(0);
-    expect(store.has(EVIDENCE_GC_CURSOR_KEY)).toBe(false);
+  });
+
+  it('does nothing when the budget is already spent', async () => {
+    const r2 = datedBucket({ 'ev/gone/x.png': hoursAgo(30) });
+    const { kv } = memoryKv();
+    const res = await deleteOrphanEvidence({ DB: db, EVIDENCE: r2.bucket, CACHE: kv }, NOW, 5, createCronBudget({ subrequests: 0 }));
+    expect(res).toMatchObject({ scanned: 0, deferred: true });
+    expect(r2.bucket.list).not.toHaveBeenCalled();
   });
 });
