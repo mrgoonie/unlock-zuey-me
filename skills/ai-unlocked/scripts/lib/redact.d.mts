@@ -10,7 +10,7 @@ export declare const REDACT_MAX_INPUT: number;
 export type RedactionKind =
   | 'private_key' | 'ingest_token' | 'api_key' | 'github_token' | 'aws_key' | 'aws_secret' | 'slack_token'
   | 'google_key' | 'jwt' | 'bearer' | 'url_secret' | 'secret' | 'email' | 'home_path' | 'national_id'
-  | 'card' | 'phone' | 'iban' | 'ip' | 'high_entropy';
+  | 'card' | 'phone' | 'iban' | 'ip' | 'high_entropy' | 'stripe_key' | 'azure_key' | 'url_credentials' | 'bank_account';
 
 export interface RedactTextResult {
   text: string;

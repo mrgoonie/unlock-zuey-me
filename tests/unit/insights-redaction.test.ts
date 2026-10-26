@@ -42,6 +42,21 @@ const positives: Array<{ name: string; input: string; kind: string; secret: stri
   { name: 'IPv4', input: 'server 203.162.4.191 down', kind: 'ip', secret: '203.162.4.191' },
   { name: 'long hex', input: 'hash 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08', kind: 'high_entropy', secret: '9f86d081884c7d659a2feaa0c55ad015' },
   { name: 'long base64', input: `blob ${KEY}Qz9+/=`, kind: 'high_entropy', secret: KEY },
+  { name: 'Postgres URL credentials', input: 'DATABASE_URL postgres://admin:Sup3rS3cret@localhost:5432/app', kind: 'url_credentials', secret: 'Sup3rS3cret' },
+  { name: 'HTTPS URL credentials', input: 'curl https://user:Passw0rd!@example.com/x', kind: 'url_credentials', secret: 'Passw0rd!' },
+  { name: 'Redis URL password only', input: 'redis://:pass@10.0.0.5:6379', kind: 'url_credentials', secret: ':pass@' },
+  { name: 'English prose password', input: 'my password is hunter2', kind: 'secret', secret: 'hunter2' },
+  { name: 'Vietnamese prose password', input: 'mật khẩu là Abc@12345 nhé', kind: 'secret', secret: 'Abc@12345' },
+  { name: 'Vietnamese prose password, possessive', input: 'Mật khẩu của tôi là Hoa2026.', kind: 'secret', secret: 'Hoa2026' },
+  { name: 'Vietnamese bank account (STK)', input: 'STK 19036789012345 Techcombank', kind: 'bank_account', secret: '19036789012345' },
+  { name: 'Vietnamese bank account (số tài khoản)', input: 'Số tài khoản: 0071 0001 23456', kind: 'bank_account', secret: '0071 0001 23456' },
+  { name: 'Vietnamese bank account (tài khoản ngân hàng)', input: 'tài khoản ngân hàng Vietcombank 0071000123456', kind: 'bank_account', secret: '0071000123456' },
+  { name: 'Stripe secret key', input: `STRIPE sk_live_${KEY}`, kind: 'stripe_key', secret: KEY },
+  { name: 'Stripe restricted key', input: `rk_live_${KEY}`, kind: 'stripe_key', secret: KEY },
+  { name: 'Stripe publishable key', input: `pk_live_${KEY}`, kind: 'stripe_key', secret: KEY },
+  { name: 'Stripe test keys', input: `sk_test_${KEY} rk_test_${KEY}`, kind: 'stripe_key', secret: KEY },
+  { name: 'Azure AccountKey', input: 'DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;EndpointSuffix=core.windows.net', kind: 'azure_key', secret: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6' },
+  { name: 'Azure SharedAccessKey', input: 'Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=Root;SharedAccessKey=abcDEF123ghiJKL456mnoPQR789stuVWX0yz1234=', kind: 'azure_key', secret: 'abcDEF123ghiJKL456mnoPQR789' },
 ];
 
 describe('redactText: positives', () => {
@@ -64,6 +79,10 @@ describe('redactText: positives', () => {
 
   it('keeps the label and only masks the value', () => {
     expect(redactText('password=hunter2!').text).toBe('password=[REDACTED:secret]');
+    expect(redactText('postgres://admin:Sup3rS3cret@localhost:5432/app').text).toBe('postgres://[REDACTED:url_credentials]@localhost:5432/app');
+    expect(redactText('my password is hunter2.').text).toBe('my password is [REDACTED:secret].');
+    expect(redactText('STK 19036789012345').text).toBe('STK [REDACTED:bank_account]');
+    expect(redactText('AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6==;').text).toBe('AccountKey=[REDACTED:azure_key];');
     expect(redactText('Authorization: Bearer abc.def-ghi_123456').text).toBe('Authorization: Bearer [REDACTED:bearer]');
     expect(redactText('Số CCCD: 001203004567').text).toBe('Số CCCD: [REDACTED:national_id]');
   });
@@ -89,6 +108,11 @@ describe('redactText: negatives', () => {
     'Phiên bản 1.2.3, số điện thoại bàn 028 3823 4567',
     'https://unlock.zuey.me/missions/plan-weekend?step=intro',
     'Thẻ 4111 1111 1111 1112 sai checksum',
+    'Mật khẩu là gì? Mật khẩu là thứ bạn không bao giờ dán vào AI.',
+    'The password is secret, so never paste it.',
+    'Mở https://unlock.zuey.me/skill hoặc http://localhost:8787/x',
+    'Tài khoản của bạn đã được liên kết với zuey.me',
+    'Bạn có 12 tài khoản ngân hàng ảo trong bài lab',
   ];
   for (const text of untouched) {
     it(`leaves "${text.slice(0, 40)}" intact`, () => {
@@ -131,6 +155,12 @@ describe('redactText: idempotence and limits', () => {
       'sk-'.repeat(10_923),
       '/Users/'.repeat(4_681),
       'CCCD '.repeat(6_553),
+      'a://b:'.repeat(5_461),
+      'password is '.repeat(2_730),
+      'mật khẩu là a '.repeat(2_340),
+      'STK 1 '.repeat(5_461),
+      'AccountKey='.repeat(2_978),
+      'sk_live_'.repeat(4_096),
     ];
     for (const input of inputs) {
       let best = Infinity;
