@@ -1,7 +1,10 @@
 /**
- * Quiz and prediction steps. The learner answers, then taps "Kiểm tra" / "Xem đáp án" to reveal the
- * explanation; that locks the answer for that question (stored in the draft's `revealed` list).
+ * Quiz and prediction steps. The learner answers, then taps "Kiểm tra" / "Chốt dự đoán" to reveal the
+ * explanation. The reveal is recorded on the server (POST /api/v1/runs/:id/reveal), which returns the key
+ * for that item only and locks the answer: the server rejects any later change to it.
  */
+import { useState } from 'react';
+import type { AnswerKeyEntry } from '../../../lib/learning/types';
 import ConfidenceSlider from '../../ui/ConfidenceSlider';
 import { str, strList, type StepOf, type StepProps } from './step-props';
 
@@ -14,54 +17,77 @@ function Reveal({ correct, children }: { correct: boolean; children: string }) {
   );
 }
 
-export function QuizStep({ step, values, onField, draft, patchDraft }: StepProps<StepOf<'quiz'>>) {
+/** Runs one reveal request with a busy flag and an inline error. */
+function useReveal(onReveal: StepProps['onReveal']) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const reveal = async (stepId: string, itemId: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setError(await onReveal(stepId, itemId));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, error, reveal };
+}
+
+const isPicked = (picked: string[], key: AnswerKeyEntry): boolean =>
+  picked.length === key.correct.length && key.correct.every((c) => picked.includes(c));
+
+export function QuizStep({ step, values, onField, revealed, answerKey, onReveal }: StepProps<StepOf<'quiz'>>) {
+  const { busy, error, reveal } = useReveal(onReveal);
   return (
     <div className="flex flex-col gap-5">
       {step.questions.map((q) => {
-        const multi = q.correct.length > 1;
         const key = `${step.id}:${q.id}`;
-        const revealed = draft.revealed.includes(key);
-        const picked = multi ? strList(values[q.id]) : [str(values[q.id])].filter(Boolean);
-        const isCorrect = picked.length === q.correct.length && q.correct.every((c) => picked.includes(c));
+        const entry = answerKey[key];
+        const locked = revealed.includes(key);
+        const picked = q.multi ? strList(values[q.id]) : [str(values[q.id])].filter(Boolean);
         return (
           <fieldset key={q.id} className="card flex flex-col gap-2" data-testid={`quiz-${q.id}`}>
             <legend className="sr-only">{q.prompt}</legend>
             <p className="font-medium" aria-hidden="true">{q.prompt}</p>
-            {multi && <p className="text-xs text-ink-muted">Chọn tất cả đáp án đúng.</p>}
+            {q.multi && <p className="text-xs text-ink-muted">Chọn tất cả đáp án đúng.</p>}
             {q.options.map((o) => (
               <label key={o.id} className="choice">
                 <input
-                  type={multi ? 'checkbox' : 'radio'}
+                  type={q.multi ? 'checkbox' : 'radio'}
                   name={key}
                   checked={picked.includes(o.id)}
-                  disabled={revealed}
-                  onChange={(e) => onField(q.id, multi
+                  disabled={locked}
+                  onChange={(e) => onField(q.id, q.multi
                     ? (e.target.checked ? [...picked, o.id] : picked.filter((p) => p !== o.id))
                     : o.id)}
                   className="h-5 w-5 accent-[rgb(var(--accent))]"
                 />
                 <span>{o.text}</span>
-                {revealed && q.correct.includes(o.id) && <span className="ml-auto text-calm" aria-label="đáp án đúng">✓</span>}
+                {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" aria-label="đáp án đúng">✓</span>}
               </label>
             ))}
-            {revealed ? (
-              <Reveal correct={isCorrect}>{q.explanation}</Reveal>
+            {entry ? (
+              <Reveal correct={isPicked(picked, entry)}>{entry.explanation}</Reveal>
             ) : (
-              <button type="button" className="btn-ghost self-start text-sm" disabled={!picked.length}
-                onClick={() => patchDraft((d) => ({ ...d, revealed: [...d.revealed, key] }))}>
-                Kiểm tra
+              <button type="button" className="btn-ghost self-start text-sm" disabled={!picked.length || busy}
+                aria-busy={busy} onClick={() => void reveal(step.id, q.id)}>
+                {busy ? 'Đang kiểm tra…' : 'Kiểm tra'}
               </button>
             )}
           </fieldset>
         );
       })}
+      {error && <p role="alert" className="rounded-xl border border-danger/40 bg-danger/5 p-3 text-sm">{error}</p>}
     </div>
   );
 }
 
-export function PredictionStep({ step, values, onField, draft, patchDraft }: StepProps<StepOf<'prediction'>>) {
+export function PredictionStep({ step, values, onField, revealed, answerKey, onReveal }: StepProps<StepOf<'prediction'>>) {
+  const { busy, error, reveal } = useReveal(onReveal);
   const key = `${step.id}:prediction`;
-  const revealed = draft.revealed.includes(key);
+  const entry = answerKey[key];
+  const locked = revealed.includes(key);
   const choice = str(values.choice);
   const confidence = typeof values.confidence === 'number' ? values.confidence : null;
   return (
@@ -70,27 +96,28 @@ export function PredictionStep({ step, values, onField, draft, patchDraft }: Ste
         <legend className="mb-2 font-medium">{step.question}</legend>
         {step.options.map((o) => (
           <label key={o.id} className="choice">
-            <input type="radio" name={key} checked={choice === o.id} disabled={revealed}
+            <input type="radio" name={key} checked={choice === o.id} disabled={locked}
               onChange={() => onField('choice', o.id)} className="h-5 w-5 accent-[rgb(var(--accent))]" />
             <span>{o.text}</span>
-            {revealed && o.id === step.correct && <span className="ml-auto text-calm" aria-label="đáp án đúng">✓</span>}
+            {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" aria-label="đáp án đúng">✓</span>}
           </label>
         ))}
       </fieldset>
-      {!revealed && (
+      {!locked && (
         <ConfidenceSlider label="Bạn chắc chắn bao nhiêu?" value={confidence} onChange={(v) => onField('confidence', v)} testId="prediction-confidence" />
       )}
-      {revealed ? (
-        <Reveal correct={choice === step.correct}>{`${step.explanation}${confidence !== null ? ` (Bạn đã chắc ${confidence}%.)` : ''}`}</Reveal>
+      {entry ? (
+        <Reveal correct={entry.correct.includes(choice)}>{`${entry.explanation}${confidence !== null ? ` (Bạn đã chắc ${confidence}%.)` : ''}`}</Reveal>
       ) : (
-        <button type="button" className="btn-ghost self-start" disabled={!choice}
+        <button type="button" className="btn-ghost self-start" disabled={!choice || busy} aria-busy={busy}
           onClick={() => {
             if (confidence === null) onField('confidence', 50);
-            patchDraft((d) => ({ ...d, revealed: [...d.revealed, key] }));
+            void reveal(step.id, 'prediction');
           }}>
-          Chốt dự đoán và xem đáp án
+          {busy ? 'Đang chốt…' : 'Chốt dự đoán và xem đáp án'}
         </button>
       )}
+      {error && <p role="alert" className="rounded-xl border border-danger/40 bg-danger/5 p-3 text-sm">{error}</p>}
     </div>
   );
 }

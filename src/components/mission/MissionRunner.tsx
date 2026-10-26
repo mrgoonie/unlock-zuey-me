@@ -1,10 +1,12 @@
 /**
  * Mission runner island (/missions/:id/run): one step per screen with progress dots, autosave, 4-level
  * hints, pre-submit self-assessment, then evaluating → needs_revision | evaluation_failed | passed.
+ * A completed mission opens on its latest result (read-only) with an explicit "Làm lại".
+ * `mission` is the learner-safe view (no answer keys); keys arrive from the server only when allowed.
  * Focus moves to the new screen's heading on every step/phase change.
  */
 import { useEffect, useRef } from 'react';
-import type { Mission } from '../../lib/content/schema';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import { isStepComplete, STEP_KIND_LABEL } from '../../lib/ui/mission-steps';
 import { EvaluatingView, EvaluationFailedView, NeedsRevisionView } from './EvaluationStates';
 import HintLadder from './HintLadder';
@@ -16,7 +18,7 @@ import { useRunSession } from './use-run-session';
 
 interface Props {
   missionId: string;
-  mission: Mission;
+  mission: LearnerMission;
   /** learner.profile.sound === true (SFX are opt-in). */
   sound: boolean;
 }
@@ -68,7 +70,7 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
     return (
       <ResultsView ref={heading} mission={mission} evaluation={s.evaluation} rewards={s.result?.rewards ?? null}
         confidence={draft.confidence ?? run.confidence} sound={sound} replayed={s.result?.replayed ?? !s.result}
-        answers={draft.answers} />
+        answers={draft.answers} answerKey={s.answerKey} onAgain={s.startAgain} />
     );
   }
   if (s.phase === 'review') {
@@ -94,7 +96,8 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
           <h1 id={`step-${step.id}`} ref={heading} tabIndex={-1} className="text-2xl font-bold leading-snug outline-none">{step.title}</h1>
         </div>
         <StepView step={step} values={draft.answers[step.id] ?? {}} onField={(f, v) => s.updateField(step.id, f, v)}
-          runId={run.id} draft={draft} patchDraft={s.patchDraft} />
+          runId={run.id} draft={draft} patchDraft={s.patchDraft}
+          revealed={run.revealed} answerKey={s.answerKey} onReveal={s.reveal} />
         <HintLadder step={step} runId={run.id} hints={draft.hints[step.id] ?? []} patchDraft={s.patchDraft} />
       </section>
       <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur pb-[max(env(safe-area-inset-bottom),0.75rem)]">

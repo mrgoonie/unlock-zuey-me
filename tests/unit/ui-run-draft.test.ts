@@ -7,7 +7,7 @@ import {
 
 const run = (over: Partial<MissionRun> = {}): MissionRun => ({
   id: 'run_1', learnerId: 'lrn_1', missionId: 'plan-weekend', missionVersion: 1, status: 'started', currentStep: null,
-  answers: {}, confidence: null, hintMaxLevel: 0, hintsUsed: 0, source: 'web', rev: 1,
+  answers: {}, confidence: null, hintMaxLevel: 0, hintsUsed: 0, revealed: [], source: 'web', rev: 1,
   startedAt: '2026-10-26T00:00:00Z', updatedAt: '2026-10-26T00:00:00Z', completedAt: null, ...over,
 });
 
@@ -118,7 +118,6 @@ describe('run draft: localStorage mirror', () => {
     s.setItem('aiu:draft:run_1', JSON.stringify({ runId: 'run_1', missionId: 'm', answers: {} }));
     const d = loadDraft('run_1', s);
     expect(d?.hints).toEqual({});
-    expect(d?.revealed).toEqual([]);
     expect(d?.imageKeys).toEqual([]);
   });
 

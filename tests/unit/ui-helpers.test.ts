@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { conceptSchema, missionSchema, type Concept, type Mission } from '../../src/lib/content/schema';
+import { learnerMissionView } from '../../src/lib/learning/learner-mission-view';
 import type { MissionListItem } from '../../src/lib/learning/types';
 import { filterConcepts, isReviewDue, normalizeVi } from '../../src/lib/ui/concept-search';
 import { criterionStepIndex, isStepComplete, listItems, stepGaps } from '../../src/lib/ui/mission-steps';
@@ -43,12 +44,12 @@ describe('mission steps', () => {
 
   it('maps a criterion to the step it checks (or its AI step refs)', () => {
     for (const c of mission.rubric.criteria) {
-      const idx = criterionStepIndex(mission, c.id);
+      const idx = criterionStepIndex(learnerMissionView(mission), c.id);
       expect(idx).toBeGreaterThanOrEqual(0);
       const expected = c.check?.step ?? c.step_refs[c.step_refs.length - 1];
       expect(mission.steps[idx].id).toBe(expected);
     }
-    expect(criterionStepIndex(mission, 'nope')).toBe(-1);
+    expect(criterionStepIndex(learnerMissionView(mission), 'nope')).toBe(-1);
   });
 });
 

@@ -1,12 +1,12 @@
 /** Results CTAs: transfer variant (prove the skill on new data), next recommended mission, share. */
 import { useEffect, useState } from 'react';
-import type { Mission } from '../../lib/content/schema';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import type { MissionListItem } from '../../lib/learning/types';
 import { api } from '../../lib/ui/api-client';
 import { pct } from '../../lib/ui/labels';
 import { pickNextMission } from '../../lib/ui/results-helpers';
 
-export default function ResultsNextSteps({ mission, score }: { mission: Mission; score: number }) {
+export default function ResultsNextSteps({ mission, score }: { mission: LearnerMission; score: number }) {
   const [next, setNext] = useState<MissionListItem | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
 

@@ -3,10 +3,10 @@
  * contract's `code`, so islands branch on codes (conflict, budget_exceeded, ...) instead of parsing text.
  * Network failures map to code 'network' so callers can keep local drafts and retry.
  */
+import type { LearnerMission } from '../learning/learner-mission-view';
 import type {
-  Answers, Evaluation, HintResult, LearnerContext, LearnerProfile, MissionListItem, MissionRun, SubmitResult,
+  AnswerKey, AnswerKeyEntry, Answers, Evaluation, HintResult, LearnerContext, LearnerProfile, MissionListItem, MissionRun, SubmitResult,
 } from '../learning/types';
-import type { Mission } from '../content/schema';
 
 export type ApiErrorCode =
   | 'unauthorized' | 'forbidden' | 'not_found' | 'conflict' | 'invalid'
@@ -113,7 +113,9 @@ export async function request<T>(
 
 const enc = encodeURIComponent;
 
-export interface RunDetail { run: MissionRun; mission: Mission; evaluation: Evaluation | null }
+/** Mission view without answer keys; `answerKey` holds revealed items, or all once the run is completed. */
+export interface RunDetail { run: MissionRun; mission: LearnerMission; evaluation: Evaluation | null; answerKey: AnswerKey }
+export type SubmitResponse = SubmitResult & { answerKey: AnswerKey };
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 export interface ChatReply { reply: string; model: string; remainingToday: number }
 export interface Recap {
@@ -130,14 +132,19 @@ export const api = {
   updateProfile: (input: { profile?: Partial<LearnerProfile>; displayName?: string }) =>
     request<{ learner: LearnerContext }>('PATCH', '/api/v1/me/profile', input),
   listMissions: () => request<{ missions: MissionListItem[] }>('GET', '/api/v1/missions'),
-  startMission: (missionId: string) => request<{ run: MissionRun }>('POST', `/api/v1/missions/${enc(missionId)}/start`, {}),
+  /** Opens a mission (open run, else latest completed run, else new); `again` starts a new run after completion. */
+  startMission: (missionId: string, opts: { again?: boolean } = {}) =>
+    request<{ run: MissionRun }>('POST', `/api/v1/missions/${enc(missionId)}/start`, opts.again ? { again: true } : {}),
   getRun: (runId: string) => request<RunDetail>('GET', `/api/v1/runs/${enc(runId)}`),
   saveAnswers: (runId: string, input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number }) =>
     request<{ run: MissionRun }>('PATCH', `/api/v1/runs/${enc(runId)}/answers`, input),
   hint: (runId: string, stepId: string, level: 1 | 2 | 3 | 4) =>
     request<HintResult>('POST', `/api/v1/runs/${enc(runId)}/hints`, { stepId, level }),
+  /** Reveals one quiz question / prediction answer; the server locks that answer from then on. */
+  reveal: (runId: string, stepId: string, itemId: string) =>
+    request<{ run: MissionRun; key: AnswerKeyEntry }>('POST', `/api/v1/runs/${enc(runId)}/reveal`, { stepId, itemId }),
   submit: (runId: string, input: { idempotencyKey: string; confidence?: number; imageKeys?: string[] }) =>
-    request<SubmitResult>('POST', `/api/v1/runs/${enc(runId)}/submit`, input, { timeoutMs: 90_000 }),
+    request<SubmitResponse>('POST', `/api/v1/runs/${enc(runId)}/submit`, input, { timeoutMs: 90_000 }),
   uploadEvidence: (file: File) => {
     const form = new FormData();
     form.append('file', file);

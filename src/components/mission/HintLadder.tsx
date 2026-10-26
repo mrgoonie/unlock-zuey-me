@@ -1,17 +1,18 @@
 /**
  * Four-level hint ladder per step (POST /api/v1/runs/:id/hints). Levels unlock in order. If the coach is
- * unavailable the mission's authored hint for that level is shown instead, so a hint never fails.
+ * unavailable the server answers with the mission's authored hint for that level (origin 'static'); the
+ * authored hints are not shipped to the browser, so a failed request shows a retryable message instead.
  */
 import { useState } from 'react';
-import type { MissionStep } from '../../lib/content/schema';
+import type { LearnerStep } from '../../lib/learning/learner-mission-view';
 import type { HintResult } from '../../lib/learning/types';
-import { api } from '../../lib/ui/api-client';
+import { api, friendlyMessage } from '../../lib/ui/api-client';
 import type { RunDraft } from '../../lib/ui/run-draft';
 
 const LEVEL_NAME = ['Gợi ý nhỏ', 'Bước tiếp theo', 'Ví dụ tương tự', 'Giải thích trực tiếp'];
 
 interface Props {
-  step: MissionStep;
+  step: LearnerStep;
   runId: string;
   hints: HintResult[];
   patchDraft: (fn: (d: RunDraft) => RunDraft) => void;
@@ -19,17 +20,20 @@ interface Props {
 
 export default function HintLadder({ step, runId, hints, patchDraft }: Props) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const next = hints.length + 1;
 
   async function ask() {
     if (next > 4 || busy) return;
     const level = next as 1 | 2 | 3 | 4;
     setBusy(true);
+    setError(null);
     let hint: HintResult;
     try {
       hint = await api.hint(runId, step.id, level);
-    } catch {
-      hint = { level, text: step.hints[level - 1], origin: 'static' };
+    } catch (e) {
+      setError(friendlyMessage(e));
+      return;
     } finally {
       setBusy(false);
     }
@@ -49,6 +53,7 @@ export default function HintLadder({ step, runId, hints, patchDraft }: Props) {
           </div>
         ))}
       </div>
+      {error && <p role="alert" className="text-sm text-warn">{error}</p>}
       {next <= 4 ? (
         <button type="button" className="btn-ghost self-start text-sm" onClick={ask} disabled={busy} data-testid="hint-button">
           💡 {busy ? 'Đang nghĩ gợi ý…' : `${hints.length ? 'Gợi ý thêm' : 'Gợi ý nhỏ'} (nấc ${next}/4)`}

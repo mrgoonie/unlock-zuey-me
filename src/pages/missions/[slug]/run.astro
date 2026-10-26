@@ -1,13 +1,17 @@
 ---
-/** Mission runner page: SSR validates the slug, the island starts/resumes the run via the API. */
+/**
+ * Mission runner page: SSR validates the slug, the island opens the run via the API. The island only gets
+ * the learner-safe mission view: answer keys never ship in the page.
+ */
 import AppLayout from '../../../layouts/AppLayout.astro';
 import MissionRunner from '../../../components/mission/MissionRunner';
 import NotFound from '../../../components/ui/NotFound.astro';
 import { getMission } from '../../../lib/content/loader';
+import { learnerMissionView } from '../../../lib/learning/learner-mission-view';
 
 const slug = Astro.params.slug ?? '';
 const mission = getMission(slug);
-const visible = mission?.status === 'published' ? mission : null;
+const visible = mission?.status === 'published' ? learnerMissionView(mission) : null;
 if (!visible) Astro.response.status = 404;
 const sound = Astro.locals.learner?.profile.sound === true;
 ---

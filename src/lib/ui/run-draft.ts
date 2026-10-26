@@ -21,13 +21,11 @@ export interface RunDraft {
   attempt: { key: string; fingerprint: string } | null;
   /** Hints already revealed per step (so a reload does not cost another hint). */
   hints: Record<string, HintResult[]>;
-  /** "stepId:questionId" keys whose explanation was revealed (answer locked for that question). */
-  revealed: string[];
   updatedAt: string;
 }
 
 export const emptyDraft = (runId: string, missionId: string): RunDraft => ({
-  runId, missionId, answers: {}, dirty: {}, imageKeys: [], confidence: null, attempt: null, hints: {}, revealed: [],
+  runId, missionId, answers: {}, dirty: {}, imageKeys: [], confidence: null, attempt: null, hints: {},
   updatedAt: new Date(0).toISOString(),
 });
 

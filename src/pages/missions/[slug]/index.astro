@@ -15,7 +15,8 @@ const progress = visible ? await loadProgress(Astro.locals) : null;
 const status = visible ? missionStatus(progress, mission.id) : 'new';
 const totalWeight = mission ? mission.competency_targets.reduce((s, c) => s + c.weight, 0) : 1;
 const concepts = mission ? mission.concept_refs.map(getConcept).filter((c) => c !== undefined) : [];
-const cta = status === 'in_progress' ? 'Làm tiếp' : status === 'completed' ? 'Làm lại' : 'Bắt đầu';
+// A completed mission opens on its result; "Làm lại" (a new run) is offered there.
+const cta = status === 'in_progress' ? 'Làm tiếp' : status === 'completed' ? 'Xem kết quả' : 'Bắt đầu';
 ---
 <AppLayout title={visible ? mission.title : 'Không tìm thấy'} description={visible ? mission.tagline : undefined}>
   {!visible ? (

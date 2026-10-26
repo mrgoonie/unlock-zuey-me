@@ -1,10 +1,11 @@
 /**
  * Passed results: total %, per-criterion bars + feedback, strengths/improvements, calibration, XP count-up,
  * new badges, level-up, confetti/SFX (respecting reduced motion and the sound setting) and next-step CTAs.
+ * Also the read-only view of a completed mission reopened later, with an explicit "Làm lại" (new run).
  */
-import { forwardRef, useEffect, useRef } from 'react';
-import type { Mission } from '../../lib/content/schema';
-import type { Evaluation, Rewards } from '../../lib/learning/types';
+import { forwardRef, useEffect, useRef, useState } from 'react';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
+import type { AnswerKey, Evaluation, Rewards } from '../../lib/learning/types';
 import { fireConfetti } from '../../lib/ui/confetti';
 import { pct } from '../../lib/ui/labels';
 import { calibration, didLevelUp } from '../../lib/ui/results-helpers';
@@ -15,19 +16,35 @@ import ResultsNextSteps from './ResultsNextSteps';
 import VerificationAnswerKey from './VerificationAnswerKey';
 
 interface Props {
-  mission: Mission;
+  mission: LearnerMission;
   evaluation: Evaluation;
   rewards: Rewards | null;
   confidence: number | null;
   sound: boolean;
   replayed: boolean;
   answers: Record<string, Record<string, unknown>>;
+  answerKey: AnswerKey;
+  /** Starts a new run of this mission. Resolves to an error message, or null. */
+  onAgain: () => Promise<string | null>;
 }
 
 const ResultsView = forwardRef<HTMLHeadingElement, Props>(function ResultsView(
-  { mission, evaluation, rewards, confidence, sound, replayed, answers }, ref,
+  { mission, evaluation, rewards, confidence, sound, replayed, answers, answerKey, onAgain }, ref,
 ) {
   const celebrated = useRef(false);
+  const [againBusy, setAgainBusy] = useState(false);
+  const [againError, setAgainError] = useState<string | null>(null);
+  const again = async () => {
+    if (againBusy) return;
+    setAgainBusy(true);
+    setAgainError(null);
+    const err = await onAgain();
+    // On success the runner switches to the new run and unmounts this view.
+    if (err) {
+      setAgainError(err);
+      setAgainBusy(false);
+    }
+  };
   const cal = calibration(confidence, evaluation.score);
   const levelUp = didLevelUp(rewards);
 
@@ -55,6 +72,9 @@ const ResultsView = forwardRef<HTMLHeadingElement, Props>(function ResultsView(
           <div className="card flex flex-col items-center gap-1 text-center" data-testid="xp-gained">
             <p className="text-3xl font-bold text-accent"><CountUp to={rewards.xpGained} prefix="+" suffix=" XP" /></p>
             <p className="text-xs text-ink-muted">Tổng {rewards.xpTotal} XP</p>
+            {rewards.xpGained === 0 && !replayed && (
+              <p className="text-xs text-ink-muted" data-testid="xp-already-earned">XP của mission này đã được cộng ở lần hoàn thành đầu tiên.</p>
+            )}
           </div>
           <div className="card flex flex-col items-center gap-1 text-center" data-testid="level-info">
             <p className="text-lg font-bold">{levelUp ? '⬆️ Lên cấp!' : `Cấp ${rewards.level.id}`}</p>
@@ -102,8 +122,16 @@ const ResultsView = forwardRef<HTMLHeadingElement, Props>(function ResultsView(
         </div>
       )}
 
-      <VerificationAnswerKey mission={mission} answers={answers} />
+      <VerificationAnswerKey mission={mission} answers={answers} answerKey={answerKey} />
       <ResultsNextSteps mission={mission} score={evaluation.score} />
+
+      <div className="card flex flex-col gap-2">
+        <p className="text-sm text-ink-muted">Muốn luyện thêm? Làm lại sẽ mở một lượt mới. XP chỉ được cộng ở lần hoàn thành đầu tiên.</p>
+        <button type="button" className="btn-ghost" onClick={() => void again()} disabled={againBusy} aria-busy={againBusy} data-testid="mission-again">
+          {againBusy ? 'Đang mở lượt mới…' : '🔁 Làm lại'}
+        </button>
+        {againError && <p role="alert" className="text-sm text-danger">{againError}</p>}
+      </div>
     </section>
   );
 });
