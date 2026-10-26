@@ -1,4 +1,4 @@
-/** get_run, submit_evidence, get_hint. Every call is scoped to the token's learner by the learning service. */
+/** get_run, submit_evidence, get_hint, abandon_mission. Every call is scoped to the token's learner by the learning service. */
 import { requireScopes, type McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import * as learning from '../../learning/service';
@@ -64,5 +64,20 @@ export function registerRunTools(server: McpServer, ctx: McpToolContext): void {
   }, ({ run_id, step_id, level }) => runTool(ctx, 'get_hint', 'write', async () => {
     const hint = await learning.requestHint({ env: ctx.env }, ctx.learner, run_id, step_id, level);
     return toolOk({ hint });
+  }));
+
+  server.registerTool('abandon_mission', {
+    title: 'Abandon a mission run',
+    description:
+      'Stops one of the learner\'s open runs (status becomes abandoned) so the mission can be started over with '
+      + 'start_mission. Only when the learner explicitly asks to give up this attempt: its saved answers are no '
+      + 'longer graded. No XP or evaluation. Calling it again on an abandoned run returns that run unchanged. '
+      + 'Errors: not_found (run), conflict (run completed or still being graded). Needs the learn:write scope.',
+    inputSchema: z.object({ run_id: runIdSchema }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    scopeChallenge: requireScopes(LEARN_WRITE),
+  }, ({ run_id }) => runTool(ctx, 'abandon_mission', 'write', async () => {
+    const run = await learning.abandonRun({ env: ctx.env }, ctx.learner, run_id);
+    return toolOk({ run }, 'Run abandoned. Use start_mission to start the mission over.');
   }));
 }
