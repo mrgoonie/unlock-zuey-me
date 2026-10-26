@@ -189,6 +189,14 @@ describe('Workers AI timeout', () => {
     expect(err).toBeInstanceOf(AiCallError);
     expect(String(err.message)).toMatch(/timed out/);
   });
+
+  it('honours a per-request Workers AI deadline in the gateway', async () => {
+    env.AI.run.mockImplementation(() => new Promise(() => undefined));
+    const t0 = Date.now();
+    const err = await runAi({ env, now: () => NOW }, req({ openRouterModels: [], workersAiTimeoutMs: 30 })).catch((e) => e);
+    expect(err).toBeInstanceOf(AiUnavailableError);
+    expect(Date.now() - t0).toBeLessThan(5_000);
+  });
 });
 
 describe('cost estimate and rate limit', () => {

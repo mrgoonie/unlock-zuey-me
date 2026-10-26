@@ -36,8 +36,9 @@ export const INSIGHTS_MAX_ANALYSES_PER_TICK = 8;
 const WINDOWS_PER_TICK = INSIGHTS_MAX_ANALYSES_PER_TICK * 2;
 /** The stage does not start (or continue) below these remaining budgets. */
 export const MIN_SUBREQUESTS = 40;
-export const MIN_REMAINING_MS = 30_000;
 export const AI_TIMEOUT_MS = 20_000;
+/** A window's worst case is the OpenRouter attempt plus the Workers AI fallback, each capped at AI_TIMEOUT_MS. */
+export const MIN_REMAINING_MS = 2 * AI_TIMEOUT_MS + 5_000;
 export const AI_MAX_TOKENS = 900;
 export const AI_TEMPERATURE = 0.2;
 /** Budget charged per window: claim, filters, quotas, prior report, runAi bookkeeping, write (~15 subrequests). */
@@ -176,6 +177,7 @@ async function processWindow(
       jsonSchema: aiTutorJsonSchema(refs, missionIds),
       parse: (text) => parseAiTutorReport(text, { refs, missionIds: missionSet }),
       timeoutMs: AI_TIMEOUT_MS,
+      workersAiTimeoutMs: AI_TIMEOUT_MS,
     });
     report = ai.value;
     model = ai.model;
