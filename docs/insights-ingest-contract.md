@@ -67,7 +67,18 @@ Field rules (`ingestTurnV1Schema`):
 - `redaction.kinds` entries match `[a-z_]{1,32}` (at most 32), so a newer client never fails validation on an older server.
 - `stopHookActive` mirrors Claude Code's `stop_hook_active`.
 
-Server processing: authenticate → feature gate → rate limits → size → schema → `sentAt` window → analysis consent → **server-side redaction** of `turn` with the same rule set → daily cap → one guarded `INSERT … SELECT … WHERE EXISTS (analysis consent) ON CONFLICT (learner_id, idempotency_key) DO UPDATE … WHERE status = 'pending'`. A re-fire for the same turn replaces a still-pending payload; anything else is a no-op answered `duplicate: true`. The event becomes ready for analysis 5 minutes after it was received (`INGEST_DEBOUNCE_MS`), which debounces a session.
+Server processing, in this order (`ingest-auth.ts`, `ingest-service.ts`):
+
+1. `INSIGHTS_MODE` off → `404 feature_off`, before anything else, so the route looks absent.
+2. An `Origin` header → `403 origin_forbidden`.
+3. Per-IP limit (`RL_WRITE_IP`, key `ingest:<ip>`) → `429 rate_limited`, before any D1 lookup.
+4. Bearer token → learner (member, not deleted or merged) or `401 unauthorized`. The feature must be enabled for that learner (`404 feature_off`), then the per-learner limit applies (`RL_WRITE_LEARNER`).
+5. Body read as a stream and cut at 32,768 bytes (`payload_too_large`), UTF-8 and JSON, strict schema (`invalid_payload`), `sentAt` window (`clock_skew`).
+6. Analysis consent (`403 consent_required`).
+7. **Server-side redaction** of `turn` with the same rule set. Free text is masked and re-capped. An identifier the rules flag cannot hold a placeholder, so it is dropped instead: a tool or MCP tool name is removed, `missionId` / `runId` become `null`.
+8. One guarded `INSERT … SELECT … WHERE EXISTS (analysis consent) AND (today's count < 200) ON CONFLICT (learner_id, idempotency_key) DO UPDATE … WHERE status = 'pending'`. A re-fire for the same turn replaces a still-pending payload; anything else is a no-op answered `duplicate: true`. When nothing was written the answer is chosen in this order: consent gone (`403`), row already exists (`duplicate: true`), daily cap (`429 daily_cap`).
+
+The stored row keeps `payload_json = {v, adapter, adapterVersion, turn, redaction, truncated, stopHookActive}` (identity, session and timing live in their own columns). The event becomes ready for analysis 5 minutes after it was received (`INGEST_DEBOUNCE_MS`), which debounces a session.
 
 ### Responses
 
@@ -100,7 +111,9 @@ Any 5xx or network error keeps the spool for the next flush.
 | `GET /api/ingest/v1/status` | bearer | none | `200 {feature: true, consents: {analysis}, token: {label, expiresAt}, serverVersion, latestSkillVersion}` |
 | `DELETE /api/ingest/v1/token` | bearer | none | `200 {revoked: true}`, revokes the calling token (`uninstall --purge`) |
 | `POST /api/ingest/v1/pair/start` | none, IP-limited | `{label (1–64 chars), adapter}` | `200 {deviceCode, userCode, verificationUri, interval: 5, expiresIn: 600}` |
-| `POST /api/ingest/v1/pair/poll` | none, IP-limited | `{deviceCode}` | `428 {status: "pending"}`, `200 {token, expiresAt}` (exactly once), `410 {status: "expired" \| "denied"}`, `429 slow_down` when polled faster than every 4 s |
+| `POST /api/ingest/v1/pair/poll` | none, IP-limited | `{deviceCode}` | `428 {status: "pending"}`, `200 {token, expiresAt}` (exactly once), `410 {status: "expired" \| "denied"}`, `429 rate_limited` with reason `slow_down` when polled faster than every 4 s |
+
+All five endpoints share steps 1–3 above (feature, Origin, per-IP limit; the pairing endpoints use the key `pair:<ip>`). Pairing bodies are capped at 1 KB. `verificationUri` is built from `PUBLIC_SITE_URL`.
 
 ## Device pairing flow
 
@@ -132,3 +145,11 @@ The token therefore never passes through the agent chat or transcript.
 - **Aggregates:** operator aggregate dashboards show counts only (no text), require a cohort of at least 3 learners, and cover learners with `analysis` consent. The consent copy discloses this. Signal text comes only from learners with `proposals` consent. Per-learner detail requires `share_operator = 1` and `observer_consent = 1`, and every view writes an `insight_access_audit` row.
 - **Retention:** reports are kept for `INSIGHTS_RETENTION_DAYS` (90). Queue rows in `done`, `skipped`, or `dead` are deleted after 7 days. `payload_json` is NULLed as soon as an event is processed, skipped, or dead. Pending events older than 48 h become `skipped` with reason `stale`.
 - Export and delete cover `insight_consents`, `insight_tokens` (without `token_hash`), `insight_events`, `insight_reports`, and `insight_access_audit` through `LEARNER_TABLES` (`src/lib/privacy/learner-data-tables.ts`). `insight_signal_evidence` cascades from `insight_reports`. `insight_signals`, `insight_proposals`, and `insight_operator_settings` hold no learner column.
+
+## After ingest (server pipeline)
+
+The `insights-pipeline` cron job (`src/lib/insights/pipeline-job.ts`, last job of the 15-minute tick) runs retention → analyzer → proposals on the shared cron budget. With `INSIGHTS_MODE=off` it returns `{skipped: "flag_off"}` and charges nothing.
+
+- **Analyzer** (`analyzer-stage.ts`, `event-queue.ts`): a session window is ready once all its pending events are past the debounce, or it holds ≥ 5 fresh events. A claim leases it for 5 minutes (at most 10 events / 48 KB). Trivial and duplicate turns are skipped before any model call. Quotas: 12 analyses per learner, 3 per session and 200 overall per UTC day, at most 8 model calls per tick, 20 s per call. Failures back off 15 / 30 / 60 minutes and the 4th failure dead-letters the events with the payload NULLed. An AI budget refusal defers the window without spending an attempt. The report write is one batch guarded by analysis consent and the lease, so a revoke at any point leaves no report.
+- **Reports** carry provenance (`source_runtime`, `model`, `prompt_version`, evidence refs, window bounds) and only observable facts; any text claiming hidden reasoning rejects the model output.
+- **Proposals** (`proposal-stage.ts`): only reports of learners with `proposals` consent written after that consent are linked to a fingerprinted signal. A signal becomes a dashboard proposal at 2 learners (bug, content) or 3 (ux, feature) with confidence ≥ 0.6. Automatic filing of a GitHub issue additionally needs the effective GitHub mode (`issues` or `issues_ai_handle`, which requires the token), low risk with no denylist hit, ≥ 3 learners, confidence ≥ 0.75, a clean privacy re-scan of the issue body and the daily cap of 3. `ai-handle` also needs `issues_ai_handle`, a `content` or `bug` category and the operator's `safe_auto_implement`. Risk is computed from controlled fields; model text can only raise it. An operator may accept and file a proposal the gate kept at the proposal tier, but never past the privacy check, the daily cap or the `ai-handle` mode requirement. See `proposal-policy-gate.ts`.

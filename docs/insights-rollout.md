@@ -1,0 +1,41 @@
+# ai-tutor insights: rollout, evaluation gate and manual QA
+
+Operator runbook for turning on the ai-tutor insights feature (issue #25). Flags and wire contract: [insights-ingest-contract.md](insights-ingest-contract.md). Routes: [api-contract.md](api-contract.md#ai-tutor-insights-owner-insights-module-issue-25). Deploy mechanics and migration rules: [deployment.md](deployment.md).
+
+The feature ships **off** (`INSIGHTS_MODE=off` in `wrangler.jsonc`). Every flag is a wrangler var: change it in `wrangler.jsonc` through a PR (the deploy workflow applies it) or in the Cloudflare dashboard for an urgent change, then mirror the dashboard edit in `wrangler.jsonc` so the next deploy does not undo it.
+
+## Rollout checklist
+
+1. **Merge with `INSIGHTS_MODE=off`.** The deploy applies migration `0008_insights.sql` (new tables only, safe with the previous worker). Check `/api/health`, and that production E2E (`e2e/insights.spec.ts`) is green: every insights page, API and `/skill` file is a 404, and Settings has no `s-insights` section.
+2. **`internal` (admins) for one week.** Watch on `/admin/insights`:
+   - pipeline health: dead-letter count (target 0), failed and budget-deferred windows;
+   - useful-rate of reports marked by admins ("Hữu ích" / "Không hữu ích"), target ≥ 60 %;
+   - AI spend: the coaching share of `ai_usage` (insights use the coaching pool, so grading is never starved).
+3. **`pilot`** with `INSIGHTS_PILOT_EMAILS` (comma-separated). Pilot learners still opt in themselves: install, pair and consent are separate steps.
+4. **GitHub issues**, only after the evaluation gate below passes: create a fine-grained PAT (Issues: write on `INSIGHTS_GITHUB_REPO` only, 90-day rotation), `wrangler secret put GITHUB_ISSUES_TOKEN`, set `INSIGHTS_GITHUB_ISSUES=issues`. Later, and only deliberately, `issues_ai_handle` plus the operator toggle `safe_auto_implement` (typed confirm `BAT` on `/admin/insights/proposals`).
+5. **`on`** (all members).
+
+### Evaluation gate for GitHub issues
+
+Keep `INSIGHTS_GITHUB_ISSUES=off` until at least **20 proposals** have been reviewed by an operator on `/admin/insights/proposals` and **fewer than 10 %** of them were rejected as "not a general platform issue". Until then the dashboard plus "Sao chép nội dung issue" is the only path to GitHub.
+
+## Rollback
+
+- `INSIGHTS_MODE=off`: every route 404s, the UI hides, the cron stage stops. Tables stay, inert.
+- `INSIGHTS_GITHUB_ISSUES=off` or `wrangler secret delete GITHUB_ISSUES_TOKEN`: issue filing stops at once.
+- On learner machines, `ai-unlocked uninstall [--purge]` removes only its own hook entries. While the flag is off the hook gets 404, drops its spool and backs off for 24 h.
+- No down-migration; `0008` is additive and unreferenced by older code.
+
+## Manual QA (local preview)
+
+Member flows cannot run in production E2E. They are covered by `tests/unit/insights-end-to-end-pipeline.test.ts` (consent → pairing → ingest → analyzer → reports → proposals → operator summary, mock AI) and by this script, run by a person with a zuey.me admin account and Claude Code. Record the results, including the hook timing, in the PR.
+
+1. `bun run db:migrate:local`, then `bun run build` and start the preview with the feature on:
+   `bunx wrangler dev --port 8787 --var INSIGHTS_MODE:internal` (or put `INSIGHTS_MODE=internal` in `.dev.vars`). Sign in as an admin member.
+2. In a scratch project, let Claude Code run `curl -fsSL http://localhost:8787/skill/install.mjs | node - --scope project --server http://localhost:8787`, then `ai-unlocked hook install --scope project`. Export `AI_UNLOCKED_SERVER=http://localhost:8787` for every CLI command (pairing and uploads use it; only loopback may use http). Diff `.claude/settings.local.json` before and after: one marker entry added, foreign hooks untouched.
+3. `ai-unlocked pair`, approve the code on `/insights/pair`, run three learning turns that use the MCP tools, then trigger the cron (`wrangler dev --test-scheduled`, `curl "http://localhost:8787/__scheduled"`) after the 5-minute debounce. The report appears on `/insights` (`data-testid="insight-report"`).
+4. Turn analysis off in Settings, run another turn: no new row in `insight_events` (`bunx wrangler d1 execute unlock_zuey_me_db --local --command "SELECT COUNT(*) FROM insight_events"`), and `ai-unlocked doctor` reports that the server refuses the device because analysis consent is off.
+5. `ai-unlocked uninstall --purge`: the settings file is back to the original (byte-identical when it was 2-space JSON; other formatting is normalised, content deep-equal), and the device shows as revoked in Settings.
+6. Time 20 turns of the hook (`time`), and record p95 in the PR.
+
+E2E against the preview: `E2E_BASE_URL=http://localhost:8787 E2E_INSIGHTS=1 bunx playwright test e2e/insights.spec.ts` (guest sign-in CTA on `/insights/pair`, `/skill` manifest hashes verified against the served files).
