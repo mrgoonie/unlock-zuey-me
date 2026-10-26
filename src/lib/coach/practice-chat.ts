@@ -1,6 +1,8 @@
 /**
  * In-app practice chat: a short, beginner-friendly assistant so learners can practise prompting without
- * leaving the app. Only the last 12 messages are sent; output tokens are bounded.
+ * leaving the app. History is client-held, so the service drops assistant turns the server never produced
+ * (see practice-chat-service.ts) and only the newest messages within a message and character budget are
+ * sent; output tokens are bounded.
  */
 import { runAi, type AiDeps } from './ai-gateway';
 import type { ChatMessage } from './ai-clients';
@@ -14,6 +16,8 @@ export interface PracticeMessage {
 export const PRACTICE_LIMITS = {
   historyMessages: 12,
   messageChars: 4000,
+  /** Total characters of history sent to the model (newest first; the last user message always fits). */
+  historyChars: 8000,
   maxOutputTokens: 700,
   /** Practice messages per learner per UTC day. */
   dailyMessages: 60,
@@ -28,9 +32,14 @@ export const PRACTICE_SYSTEM_PROMPT = [
 ].join(' ');
 
 export function buildPracticeMessages(history: PracticeMessage[], context?: string): ChatMessage[] {
-  const recent = history.slice(-PRACTICE_LIMITS.historyMessages).map((m) => ({
-    role: m.role, content: m.content.slice(0, PRACTICE_LIMITS.messageChars),
-  }));
+  const recent: ChatMessage[] = [];
+  let chars = 0;
+  for (let i = history.length - 1; i >= 0 && recent.length < PRACTICE_LIMITS.historyMessages; i--) {
+    const content = history[i].content.slice(0, PRACTICE_LIMITS.messageChars);
+    if (recent.length > 0 && chars + content.length > PRACTICE_LIMITS.historyChars) break;
+    chars += content.length;
+    recent.unshift({ role: history[i].role, content });
+  }
   const system = context ? `${PRACTICE_SYSTEM_PROMPT}\nNgười dùng đang làm mission: ${context}` : PRACTICE_SYSTEM_PROMPT;
   return [{ role: 'system', content: system }, ...recent];
 }
