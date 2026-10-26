@@ -106,15 +106,15 @@ function cmdHook(ctx, positional, flags) {
     const r = installHook({ ctx, scope, command: hookCommand(SCRIPTS_DIR), dryRun });
     if (dryRun) { out('(--dry-run: không ghi gì)'); printDiffs([r]); return 0; }
     out(r.changed ? `Đã cài hook Stop vào ${r.file}` : `Hook đã có sẵn trong ${r.file}, không đổi gì.`);
-    if (r.changed && r.existed) out(`Bản sao lưu: ${r.file}.ai-unlocked.bak`);
     return 0;
   }
   if (action === 'uninstall') {
     const scope = scopeFlag(flags, ['user', 'project', 'all']);
-    const { results, errors } = uninstallHook({ ctx, scope, dryRun });
+    const { results, errors, removedLeftovers } = uninstallHook({ ctx, scope, dryRun });
     if (dryRun) out('(--dry-run: không ghi gì)');
     if (dryRun) printDiffs(results);
     else for (const r of results) out(r.changed ? `Đã gỡ hook khỏi ${r.file}` : `Không có hook ai-unlocked trong ${r.file}`);
+    for (const f of removedLeftovers) out(`Đã xoá file tạm còn sót: ${f}`);
     for (const e of errors) out(`Bỏ qua ${e.file}: ${e.message}`);
     return errors.length ? 1 : 0;
   }
@@ -155,8 +155,9 @@ function cmdUpgrade(ctx) {
 
 async function cmdUninstall(ctx, flags) {
   const paths = configPaths(ctx);
-  const { results, errors } = uninstallHook({ ctx, scope: 'all' });
+  const { results, errors, removedLeftovers } = uninstallHook({ ctx, scope: 'all' });
   for (const r of results) if (r.changed) out(`Đã gỡ hook khỏi ${r.file}`);
+  for (const f of removedLeftovers) out(`Đã xoá file tạm còn sót: ${f}`);
   for (const e of errors) out(`Bỏ qua ${e.file}: ${e.message}`);
   clearSpool(paths);
   fs.rmSync(paths.state, { force: true });
