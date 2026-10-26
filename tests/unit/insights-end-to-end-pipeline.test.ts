@@ -4,7 +4,7 @@
  * → cron pipeline (retention → ai-tutor analyzer → proposal stage) → learner reports API → admin proposals
  * and operator summary APIs.
  *
- * Three learners: alpha and bravo allow `proposals`, charlie allows analysis only. Every hop is scanned for
+ * Four learners: alpha, bravo and delta allow `proposals`, charlie allows analysis only. Every hop is scanned for
  * the seeded secrets, and charlie's text must never reach anything that feeds proposals. Also covered: a
  * revoke before the tick and during the model call (no report), and a duplicate Stop (one event).
  */
@@ -42,7 +42,7 @@ const SECRETS = {
 };
 const SECRET_VALUES = Object.values(SECRETS);
 
-const LEARNERS = ['alpha', 'bravo', 'charlie'] as const;
+const LEARNERS = ['alpha', 'bravo', 'charlie', 'delta'] as const;
 type Name = (typeof LEARNERS)[number];
 const idOf = (n: Name) => `lrn_${n}`;
 const ctxOf = (n: Name): LearnerContext => learnerCtx(idOf(n));
@@ -176,7 +176,8 @@ beforeEach(async () => {
   await setConsent('alpha', { analysis: true, proposals: true });
   await setConsent('bravo', { analysis: true, proposals: true });
   await setConsent('charlie', { analysis: true });
-  tokens = { alpha: await pair('alpha'), bravo: await pair('bravo'), charlie: await pair('charlie') };
+  await setConsent('delta', { analysis: true, proposals: true });
+  tokens = { alpha: await pair('alpha'), bravo: await pair('bravo'), charlie: await pair('charlie'), delta: await pair('delta') };
 });
 
 afterEach(() => {
@@ -203,8 +204,9 @@ describe('insights pipeline end to end (mock AI, GitHub off)', () => {
     expect(await json(postTurn('alpha', payloads.alpha))).toEqual({ accepted: true, duplicate: true });
     expect(await json(postTurn('bravo', unredacted))).toEqual({ accepted: true, duplicate: false });
     expect(await json(postTurn('charlie', payloads.charlie))).toEqual({ accepted: true, duplicate: false });
+    expect(await json(postTurn('delta', payloads.delta))).toEqual({ accepted: true, duplicate: false });
     const queued = await rows(`SELECT learner_id, status, payload_json, redactions FROM insight_events ORDER BY learner_id`);
-    expect(queued.map((e) => [e.learner_id, e.status])).toEqual([['lrn_alpha', 'pending'], ['lrn_bravo', 'pending'], ['lrn_charlie', 'pending']]);
+    expect(queued.map((e) => [e.learner_id, e.status])).toEqual([['lrn_alpha', 'pending'], ['lrn_bravo', 'pending'], ['lrn_charlie', 'pending'], ['lrn_delta', 'pending']]);
     expectClean('queued payloads', queued);
     expect(String(queued[1].payload_json)).toContain('[REDACTED:api_key]');
 
@@ -220,11 +222,11 @@ describe('insights pipeline end to end (mock AI, GitHub off)', () => {
     advance(6 * 60_000);
     result = await tick(stages(model.fetchImpl, gh, draft));
     expect(result).toMatchObject({
-      analyzer: { status: 'ok', result: { analysed: 3, aiCalls: 3, failed: 0, dead: 0, revoked: 0 } },
+      analyzer: { status: 'ok', result: { analysed: 4, aiCalls: 4, failed: 0, dead: 0, revoked: 0 } },
       proposal: { status: 'ok', result: { linked: 0, proposalsCreated: 0, githubMode: 'off' } },
     });
     // Hop 3, model input: redacted text only, fenced, no tools.
-    expect(model.calls).toHaveLength(3);
+    expect(model.calls).toHaveLength(4);
     for (const call of model.calls) {
       expectClean('model request', call.body);
       expect(JSON.stringify(call.body)).toContain('[REDACTED:');
@@ -247,16 +249,17 @@ describe('insights pipeline end to end (mock AI, GitHub off)', () => {
       expectClean(`reports API of ${n}`, body, ['product_observation', 'Gợi ý bước 2 của mission cuối tuần khó hiểu']);
     }
 
-    // Tick 3: the settled reports are linked. charlie has no proposals consent, so only two count; content needs 2.
+    // Tick 3: the settled reports are linked. charlie has no proposals consent, so three count; every category needs 3.
     advance(15 * 60_000);
     result = await tick(stages(model.fetchImpl, gh, draft));
     expect(result).toMatchObject({
-      proposal: { status: 'ok', result: { linked: 2, ignored: 1, proposalsCreated: 1, filed: 0, githubMode: 'off' } },
+      proposal: { status: 'ok', result: { linked: 3, ignored: 1, proposalsCreated: 1, filed: 0, githubMode: 'off' } },
     });
     const evidence = await rows(`SELECT abstract_evidence FROM insight_signal_evidence`);
     expect(evidence.map((e) => e.abstract_evidence).sort()).toEqual([
       'Gợi ý bước 2 của mission cuối tuần khó hiểu với người mới (alpha).',
       'Gợi ý bước 2 của mission cuối tuần khó hiểu với người mới (bravo).',
+      'Gợi ý bước 2 của mission cuối tuần khó hiểu với người mới (delta).',
     ]);
     // Hop 5, issue draft: the draft model saw neither secrets nor charlie's text nor any learner identity.
     expect(draft.prompts).toHaveLength(1);
@@ -276,14 +279,13 @@ describe('insights pipeline end to end (mock AI, GitHub off)', () => {
     expectClean('issue markdown', detail.issueMarkdown, ['charlie', 'lrn_', '@example.com', 'Học viên']);
     expect(await json(sessionRoute(automationRoute, ADMIN, '/api/v1/admin/insights/settings'))).toMatchObject({ githubMode: 'off', tokenConfigured: false });
 
-    // Hop 7, operator summary: counts over all three analysis-consented learners (k ≥ 3); no signal yet
-    // because only two learners allow proposals; nobody shares detail.
+    // Hop 7, operator summary: counts over all four analysis-consented learners (k ≥ 3); nobody shares detail.
     const summary = await json<{ health: Record<string, unknown>; patterns: { skills: unknown[] }; signals: unknown[]; sharingLearners: unknown[] }>(
       sessionRoute(summaryRoute, ADMIN, '/api/v1/admin/insights/summary'));
-    expect(summary.patterns.skills).toEqual([{ key: 'describe', reports: 3, learners: 3 }]);
-    expect(summary.signals).toEqual([]);
+    expect(summary.patterns.skills).toEqual([{ key: 'describe', reports: 4, learners: 4 }]);
+    expect(summary.signals).toHaveLength(1); // three proposals-consenting learners reach k ≥ 3
     expect(summary.sharingLearners).toEqual([]);
-    expectClean('operator summary', summary, ['charlie', 'alpha', 'bravo', '@example.com']);
+    expectClean('operator summary', summary, ['charlie', 'alpha', 'bravo', 'delta', '@example.com']);
 
     // Nothing anywhere in the database holds a secret, and nothing ever went to GitHub or the real network.
     expectClean('database', await dumpTables());

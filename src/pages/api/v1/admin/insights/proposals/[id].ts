@@ -39,7 +39,8 @@ const FILING_ERRORS: Partial<Record<FilingOutcome['kind'], [code: 'conflict' | '
   invalid_status: ['conflict', 'Đề xuất này không ở trạng thái có thể tạo issue.'],
   busy: ['conflict', 'Đang có một lượt tạo issue khác cho đề xuất này. Thử lại sau ít phút.'],
   privacy_blocked: ['conflict', 'Nội dung issue chưa qua kiểm tra quyền riêng tư nên không thể tạo issue.'],
-  not_allowed: ['conflict', 'Chính sách chưa cho phép tạo issue cho đề xuất này.'],
+  not_allowed: ['conflict', 'Chính sách chưa cho phép tạo issue cho đề xuất này (cần từ 3 người học đã đồng ý và bằng chứng đủ tin cậy).'],
+  released: ['conflict', 'Lượt tạo issue trước bị gián đoạn và GitHub chưa có issue này. Đề xuất đã trở lại trạng thái trước, hãy thử lại.'],
   daily_cap: ['conflict', 'Đã đạt giới hạn số issue được tạo trong hôm nay. Thử lại vào ngày mai.'],
   github_error: ['unavailable', 'GitHub đang lỗi hoặc không phản hồi. Đề xuất được giữ nguyên, thử lại sau.'],
 };

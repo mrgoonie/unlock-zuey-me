@@ -3,19 +3,24 @@
  *
  * `buildDraft` makes one model call (system actor `system:insights`, coaching pool) with the abstract
  * evidence fenced as untrusted data, validates every section (≤ 600 chars), and falls back to a
- * deterministic template built only from signal fields whenever the model is unavailable or its output is
- * rejected. `prepareIssue` renders the markdown and re-scans it with `privacyCheck`: a hit regenerates it
- * from the template, and a second hit leaves the proposal blocked. Nothing here sees raw prompts,
- * transcripts, learner ids or names; the issue body is English (GitHub-facing), the dashboard is Vietnamese.
+ * deterministic template built only from signal fields and counts whenever the model is unavailable or its
+ * output is rejected. Neither ever quotes learner evidence: the prompt forbids it and `prepareIssue`
+ * re-scans the rendered body with `privacyCheck` (which catches 40-character or 8-word copies); a hit
+ * replaces a model draft with the template, and a template hit leaves the proposal blocked.
+ *
+ * A draft records the report ids it was written from (`basis`, never rendered) so a draft whose evidence
+ * was withdrawn (consent revoked, reports or account deleted) can be detected and replaced. Nothing here
+ * sees raw prompts, transcripts, learner ids or names; the issue body is English (GitHub-facing), the
+ * dashboard is Vietnamese.
  */
 import { z } from 'zod';
-import { redactText } from '../../../skills/ai-unlocked/scripts/lib/redact.mjs';
 import { AiUnavailableError, runAi, type AiDeps, type AiPurpose } from '../coach/ai-gateway';
 import type { ChatMessage, JsonSchemaSpec } from '../coach/ai-clients';
 import { extractJsonObject } from '../coach/ai-clients';
 import { COACH_MODELS, WORKERS_AI_MODEL } from '../coach/ai-models';
 import { fenceUntrusted, newBoundary, untrustedDataRule } from '../coach/untrusted-text';
 import type { RiskLevel } from './insight-types';
+import { privacyCheck, type PrivacyResult } from './issue-privacy-check';
 import { SYSTEM_ACTOR } from './operator-settings';
 import type { CohortStats, SignalRow } from './proposal-store';
 import { SIGNAL_WINDOW_DAYS } from './proposal-store';
@@ -23,9 +28,8 @@ import { SIGNAL_WINDOW_DAYS } from './proposal-store';
 /** Drafts use the insights purpose, which draws from the coaching pool and can never starve grading. */
 const DRAFT_AI_PURPOSE: AiPurpose = 'insights';
 export const SECTION_MAX = 600;
-const EVIDENCE_QUOTE_MAX = 160;
-/** A run of this many evidence characters copied verbatim into the body is a privacy hit. */
-const VERBATIM_RUN = 200;
+/** Evidence items shown to the draft model. */
+export const DRAFT_EVIDENCE_MAX = 5;
 
 const section = z.string().trim().min(1).max(SECTION_MAX);
 export const draftSectionsSchema = z.object({
@@ -47,6 +51,31 @@ export type DraftSections = z.infer<typeof draftSectionsSchema>;
 export interface IssueDraft extends DraftSections {
   source: 'ai' | 'template';
   model: string | null;
+  /** Report ids of the evidence the text was written from (empty for the evidence-free template). */
+  basis: string[];
+}
+
+const storedDraftSchema = draftSectionsSchema.extend({
+  source: z.enum(['ai', 'template']),
+  model: z.string().nullable(),
+  basis: z.array(z.string().min(1).max(64)).max(20),
+}).strict();
+
+/** A stored draft, or null when the JSON is missing, withdrawn (`{}`), malformed or from before `basis`. */
+export function parseStoredDraft(json: string | null): IssueDraft | null {
+  if (!json) return null;
+  try {
+    const r = storedDraftSchema.safeParse(JSON.parse(json));
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One piece of consented evidence: the report it came from and its abstract text. */
+export interface EvidenceItem {
+  reportId: string;
+  text: string;
 }
 
 const SECTION_KEYS = ['problem', 'affectedContext', 'evidence', 'proposedChange', 'existingSolutionCheck', 'alternatives', 'tradeoffs', 'acceptanceCriteria', 'blastRadius'] as const;
@@ -82,7 +111,8 @@ export function defaultDraftModel(deps: AiDeps): DraftModel {
 export function buildDraftMessages(signal: SignalRow, stats: CohortStats, evidence: string[], boundary = newBoundary()): ChatMessage[] {
   const system = [
     'You write concise GitHub issue drafts for the AI Unlocked learning platform (unlock.zuey.me) from aggregated, de-identified product signals.',
-    'Write in English. Never quote learners, never include names, ids, emails, URLs, secrets, prompts or transcripts. Generalise the evidence.',
+    'Write in English. Never include names, ids, emails, URLs, secrets, prompts or transcripts.',
+    'Never quote or copy the evidence: do not reuse any phrase of five or more words from it, in any language. Describe the shared problem in your own general words.',
     'Propose the smallest change that would fix the problem, and first check whether existing config or content already solves it.',
     'riskHint is your estimate of the change risk. It can only raise the platform\'s own risk assessment, never lower it.',
     untrustedDataRule(boundary),
@@ -99,16 +129,16 @@ export function buildDraftMessages(signal: SignalRow, stats: CohortStats, eviden
 
 const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
 
-/** Deterministic draft from signal fields only (plus clipped, re-redacted abstract evidence). */
-export function templateDraft(signal: SignalRow, stats: CohortStats, evidence: string[]): IssueDraft {
-  const quotes = evidence.slice(0, 3).map((e) => `- ${clip(redactText(e).text.replace(/\s+/g, ' ').trim(), EVIDENCE_QUOTE_MAX)}`);
+/** Deterministic draft from controlled signal fields and counts only: it never contains learner evidence. */
+export function templateDraft(signal: SignalRow, stats: CohortStats): IssueDraft {
   return {
     source: 'template',
     model: null,
+    basis: [],
     title: clip(`Learners report: ${signal.title}`, 120),
     problem: `Several learners independently hit the same ${signal.category} problem in "${signal.area}": ${signal.title}.`,
     affectedContext: `Area: ${signal.area}. Category: ${signal.category}. First seen ${signal.first_seen_at.slice(0, 10)}.`,
-    evidence: [`${stats.learners} learners, ${stats.occurrences} occurrences in ${SIGNAL_WINDOW_DAYS} days.`, ...quotes].join('\n'),
+    evidence: `${stats.learners} learners independently reported this, ${stats.occurrences} occurrences in ${SIGNAL_WINDOW_DAYS} days.`,
     proposedChange: `Review the ${signal.area} content or behaviour named above and make the smallest change that removes the confusion.`,
     existingSolutionCheck: 'Check the current mission content, hints and concept pages for an existing answer before changing code.',
     alternatives: 'Clarify the wording only; add a hint; leave as is and keep monitoring the signal.',
@@ -123,13 +153,14 @@ export function templateDraft(signal: SignalRow, stats: CohortStats, evidence: s
  * Model draft, or the template when the model is unavailable, over budget, or its output fails validation.
  * Never throws.
  */
-export async function buildDraft(model: DraftModel, signal: SignalRow, stats: CohortStats, evidence: string[]): Promise<IssueDraft> {
+export async function buildDraft(model: DraftModel, signal: SignalRow, stats: CohortStats, evidence: EvidenceItem[]): Promise<IssueDraft> {
+  const used = evidence.slice(0, DRAFT_EVIDENCE_MAX);
   try {
-    const r = await model(buildDraftMessages(signal, stats, evidence.slice(0, 5)));
-    return { ...draftSectionsSchema.parse(r.value), source: 'ai', model: r.model };
+    const r = await model(buildDraftMessages(signal, stats, used.map((e) => e.text)));
+    return { ...draftSectionsSchema.parse(r.value), source: 'ai', model: r.model, basis: used.map((e) => e.reportId) };
   } catch (err) {
     console.warn('insights draft falls back to template', err instanceof AiUnavailableError ? err.reason : 'invalid');
-    return templateDraft(signal, stats, evidence);
+    return templateDraft(signal, stats);
   }
 }
 
@@ -160,52 +191,7 @@ export function renderIssueMarkdown(draft: IssueDraft, signal: SignalRow, stats:
   ].join('\n\n');
 }
 
-export type PrivacyHitKind = 'redaction' | 'internal_id' | 'email' | 'url' | 'verbatim_evidence' | 'forbidden_term';
-
-export interface PrivacyResult {
-  ok: boolean;
-  /** Kinds of hits only; the offending text is never echoed. */
-  hits: PrivacyHitKind[];
-}
-
-const MARKER_RE = /ai-unlocked-fp:[0-9a-f]{64}/g;
-const INTERNAL_ID_RE = /\b(?:lrn|run|evt|ses|sub|evl|iev|irp|itk)_[a-z0-9]{4,}/i;
-const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
-const URL_RE = /\b(?:https?:\/\/|www\.)([^\s/?#)\]>"'`]+)/gi;
-const BARE_DOMAIN_RE = /\b((?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|app|ai|me|vn|co|info|xyz))\b/gi;
-const ALLOWED_HOSTS = new Set(['unlock.zuey.me']);
-
-/**
- * Privacy re-scan of an issue body: the shared redaction rules must find nothing, and there must be no
- * internal ids, emails, URLs other than unlock.zuey.me, verbatim evidence runs of 200+ characters, or
- * forbidden terms (contributors' display names). The fingerprint marker is the only hash allowed.
- */
-export function privacyCheck(markdown: string, opts: { evidence?: string[]; forbiddenTerms?: string[] } = {}): PrivacyResult {
-  const text = markdown.replace(MARKER_RE, 'ai-unlocked-fp');
-  const hits = new Set<PrivacyHitKind>();
-  if (redactText(text).count > 0) hits.add('redaction');
-  if (INTERNAL_ID_RE.test(text)) hits.add('internal_id');
-  if (EMAIL_RE.test(text)) hits.add('email');
-  for (const m of text.matchAll(URL_RE)) if (!ALLOWED_HOSTS.has(m[1].toLowerCase())) hits.add('url');
-  for (const m of text.matchAll(BARE_DOMAIN_RE)) {
-    const host = m[1].toLowerCase();
-    if (!ALLOWED_HOSTS.has(host) && host !== 'zuey.me') hits.add('url');
-  }
-  for (const e of opts.evidence ?? []) {
-    for (let i = 0; i + VERBATIM_RUN <= e.length; i += 10) {
-      if (text.includes(e.slice(i, i + VERBATIM_RUN))) {
-        hits.add('verbatim_evidence');
-        break;
-      }
-    }
-  }
-  const lower = text.toLowerCase();
-  for (const term of opts.forbiddenTerms ?? []) {
-    const t = term.trim().toLowerCase();
-    if (t.length >= 3 && lower.includes(t)) hits.add('forbidden_term');
-  }
-  return { ok: hits.size === 0, hits: [...hits].sort() };
-}
+export { privacyCheck, type PrivacyHitKind, type PrivacyResult } from './issue-privacy-check';
 
 export interface PreparedIssue {
   draft: IssueDraft;
@@ -225,7 +211,7 @@ export function prepareIssue(
   const first = check(draft);
   if (first.privacy.ok) return { draft, markdown: first.markdown, privacy: first.privacy };
   if (draft.source === 'template') return { draft, markdown: null, privacy: first.privacy };
-  const template = templateDraft(signal, stats, evidence);
+  const template = templateDraft(signal, stats);
   const second = check(template);
   return { draft: template, markdown: second.privacy.ok ? second.markdown : null, privacy: second.privacy };
 }

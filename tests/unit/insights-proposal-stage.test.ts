@@ -100,11 +100,17 @@ describe('proposal stage without GitHub', () => {
     expect(prompts).toHaveLength(0);
   });
 
-  it('ux/feature signals need 3 learners, bug/content 2', async () => {
+  it('every category needs 3 consenting learners: 2 never make a proposal or a model call', async () => {
     const db = await freshDb();
-    await seedCohort(db, ['lrn_a', 'lrn_b'], { category: 'ux', area: 'onboarding' });
-    await seedCohort(db, ['lrn_a', 'lrn_b'], { category: 'bug', area: 'labs', topic_key: 'token lab score wrong' });
-    await runProposalStage(baseEnv(db), budget(), NOW, { draftModel: stubModel().model });
+    for (const category of ['bug', 'content', 'ux', 'feature'] as const) {
+      await seedCohort(db, ['lrn_a', 'lrn_b'], { category, area: category === 'ux' ? 'onboarding' : 'labs', topic_key: `${category} lab score wrong` });
+    }
+    const { model, prompts } = stubModel();
+    await runProposalStage(baseEnv(db), budget(), NOW, { draftModel: model });
+    expect(await count(db, `SELECT COUNT(*) AS n FROM insight_proposals`)).toBe(0);
+    expect(prompts).toHaveLength(0);
+    await seedCohort(db, ['lrn_c'], { category: 'bug', area: 'labs', topic_key: 'bug lab score wrong' });
+    await runProposalStage(baseEnv(db), budget(), later(120_000), { draftModel: model });
     const rows = await db.prepare(`SELECT s.category FROM insight_proposals p JOIN insight_signals s ON s.id = p.signal_id`).all<{ category: string }>();
     expect(rows.results.map((x) => x.category)).toEqual(['bug']);
   });
