@@ -16,6 +16,7 @@
 import { redactText } from '../../../skills/ai-unlocked/scripts/lib/redact.mjs';
 import type { CronBudget, CronCost } from '../jobs/cron-budget';
 import { newId, parseJson } from '../db/ids';
+import { CONSENT_SQL } from './consent-store';
 import { DAILY_ISSUE_CAP, githubIssuesMode } from './feature-flags';
 import { createGithubIssuePublisher, githubTokenConfigured, GithubIssueError, type GithubFetch, type GithubIssuePublisher } from './github-issue-publisher';
 import type { GateDecision, GithubIssuesMode, ProposalStatus, SignalCategory, StoredAiTutorReport } from './insight-types';
@@ -116,7 +117,7 @@ async function linkReports(env: Env, budget: CronBudget, now: Date, result: Prop
   const cursor = await q(COST.query, () => readCursor(db, REPORT_CURSOR_KEY));
   const settled = new Date(now.getTime() - REPORT_SETTLE_MS).toISOString();
   const rows = await q(COST.query, () => db.prepare(`SELECT r.id, r.created_at,
-      CASE WHEN ic.proposals = 1 AND ic.proposals_at IS NOT NULL AND r.created_at >= ic.proposals_at AND l.deleted_at IS NULL
+      CASE WHEN ${CONSENT_SQL.proposalsConsented('r')} AND ic.proposals_at IS NOT NULL AND r.created_at >= ic.proposals_at AND l.deleted_at IS NULL
         THEN r.report_json END AS report_json
     FROM insight_reports r
     LEFT JOIN insight_consents ic ON ic.learner_id = r.learner_id

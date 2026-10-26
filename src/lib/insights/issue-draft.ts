@@ -20,11 +20,8 @@ import { SYSTEM_ACTOR } from './operator-settings';
 import type { CohortStats, SignalRow } from './proposal-store';
 import { SIGNAL_WINDOW_DAYS } from './proposal-store';
 
-/**
- * Budget pool of the draft call. Drafts belong to the coaching pool (never grading); `chat` is the existing
- * coaching purpose. Switch to the dedicated insights purpose once AiPurpose carries it (same pool).
- */
-const DRAFT_AI_PURPOSE: AiPurpose = 'chat';
+/** Drafts use the insights purpose, which draws from the coaching pool and can never starve grading. */
+const DRAFT_AI_PURPOSE: AiPurpose = 'insights';
 export const SECTION_MAX = 600;
 const EVIDENCE_QUOTE_MAX = 160;
 /** A run of this many evidence characters copied verbatim into the body is a privacy hit. */

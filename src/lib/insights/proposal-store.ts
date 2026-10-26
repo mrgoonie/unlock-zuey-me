@@ -9,6 +9,7 @@
  * - Signals and proposals carry no learner column; nothing here returns a learner id or name.
  */
 import { parseJson } from '../db/ids';
+import { CONSENT_SQL } from './consent-store';
 import { utcDay } from '../learning/learner-day';
 import type { GateDecision, ProposalStatus, RiskLevel, SignalCategory } from './insight-types';
 import { readSetting, SYSTEM_ACTOR, writeSettingStatement } from './operator-settings';
@@ -64,8 +65,8 @@ export interface CohortStats {
 /** Joins that keep only evidence from consenting, non-deleted learners (see file header). */
 const CONSENTED_EVIDENCE = `FROM insight_signal_evidence e
   JOIN insight_reports r ON r.id = e.report_id
-  JOIN insight_consents ic ON ic.learner_id = r.learner_id AND ic.proposals = 1 AND ic.proposals_at IS NOT NULL
-    AND r.created_at >= ic.proposals_at
+  JOIN insight_consents ic ON ic.learner_id = r.learner_id AND ${CONSENT_SQL.proposalsConsented('r')}
+    AND ic.proposals_at IS NOT NULL AND r.created_at >= ic.proposals_at
   JOIN learners l ON l.id = r.learner_id AND l.deleted_at IS NULL`;
 
 const toStats = (row: { learners?: number | null; occurrences?: number | null; avg_confidence?: number | null } | null): CohortStats => ({
