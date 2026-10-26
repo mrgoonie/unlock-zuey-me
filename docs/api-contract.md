@@ -6,7 +6,7 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 
 - JSON in and out. Errors are `{ "error": { "code", "message" } }`. Codes: `unauthorized` 401, `forbidden` 403, `answer_locked` 403 (only for a write that changes a revealed answer, see `reveal` below), `not_found` 404, `conflict` 409, `invalid` 400, `rate_limited` / `budget_exceeded` 429, `unavailable` 503, `internal` 500.
 - Throttles (`src/lib/identity/request-rate-limits.ts`, Workers Rate Limiting bindings in `wrangler.jsonc`): new guests per IP; `coach/chat`, `runs/:id/hints`, `runs/:id/submit`, `evidence/upload` per IP; `events`, `labs/:id/result`, `missions/:id/start`, `push/subscribe` per IP and per learner; `runs/:id/abandon` per learner (checked in the route). Over the limit → `rate_limited` 429. AI budgets (per learner and global USD for OpenRouter, per learner and global daily request caps for Workers AI) live in `src/lib/coach/ai-usage.ts`.
-- Learner identity comes from `Astro.locals.learner` (`LearnerContext`). The middleware (identity module) guarantees it is set for `/api/v1/**` and every learner page by creating a guest learner + cookie session on first visit. It is **not** created for `/`, `/api/health`, `/certificates/*`, `/oauth/*`, `/mcp`, static assets.
+- Learner identity comes from `Astro.locals.learner` (`LearnerContext`). The middleware (identity module) guarantees it is set for `/api/v1/**` and every learner page by creating a guest learner + cookie session on first visit. It is **not** created for `/`, `/api/health`, `/certificates/*`, `/oauth/*`, `/mcp`, `/api/ingest/**` (device-token endpoints, see Ingest below), static assets.
 - State-changing requests (`POST/PATCH/PUT/DELETE` under `/api/v1`) must be same-origin; the middleware rejects a foreign `Origin` with 403.
 - Every query is scoped to `locals.learner.id`. Accessing another learner's run returns `not_found` (never leak existence).
 - Messages shown to learners are Vietnamese.
@@ -77,3 +77,60 @@ Push reminder cron (`src/lib/push/reminder-job.ts`): every 15 minutes, sends at 
 All cron jobs of one tick share one Worker invocation, so they share a budget that tracks D1 queries (kept under Cloudflare's 1,000 per invocation) separately from subrequests (fetch, KV, R2 and D1; kept under 10,000) (`src/lib/jobs/cron-budget.ts`). Push reminders run first but cannot use a reserved slice kept for the cleanup jobs; each job charges what it used and resumes on the next tick.
 
 Cleanup cron (`src/lib/jobs/`): guests with no runs inactive for 7 days, and guests with no progress inactive for 30 days, are erased; evidence images older than 24 h that no submission references (and whose owner has no recently touched open run) are deleted from R2. A 404/410 from the push service deletes the subscription; 5 consecutive failures disable it.
+
+## ai-tutor insights (owner: insights module, issue #25)
+
+Off by default. Every route below answers `404 not_found` while `INSIGHTS_MODE` does not enable the feature for the caller (`insightsEnabledFor`, `src/lib/insights/feature-flags.ts`): with `INSIGHTS_MODE=off` that is everyone, admins included, so the feature looks absent. A request with no session at all is answered `401` by the middleware before routing, exactly as for a path that does not exist. Wire details of the ingest side, flags, consents and retention: [insights-ingest-contract.md](insights-ingest-contract.md). Rollout and manual QA: [insights-rollout.md](insights-rollout.md).
+
+### Insights (learner, web session)
+
+Members only (guests get 404, except `pair/confirm`, which answers `403 forbidden` with a sign-in message). Every query is scoped to `locals.learner.id`; another learner's id is `404`. The same-origin rule of `/api/v1` applies.
+
+| Method & path | Body | Response |
+|---|---|---|
+| `GET /api/v1/insights/settings` | – | `{ enabled: true, member: true, consents: {analysis, shareOperator, proposals}, devices, queue: {pending, lastReceivedAt}, retentionDays }` |
+| `PATCH /api/v1/insights/consent` | `{ analysis?, shareOperator?, proposals? }` (at least one) | `{ consents }`. Granting `shareOperator` or `proposals` needs `analysis` (`400`). Turning `analysis` off turns the other two off and purges queued turns in the same batch; ingest is refused from then on |
+| `POST /api/v1/insights/pair/confirm` | `{ userCode, approve }` (dash and case optional) | `{ status: "approved" \| "denied" }`; unknown, expired or decided code → `404`; limited per learner (`rate_limited` 429) |
+| `DELETE /api/v1/insights/tokens/:id` | – | `{ revoked: true }`; revokes one of the learner's own devices (`itk_…`), anything else `404` |
+| `GET /api/v1/insights/reports?cursor=&limit=&from=&to=&skill=&mission=&session=` | – | `{ reports: InsightReportView[], nextCursor, sessions, queue }` (`src/lib/insights/learner-report-queries.ts`). Expired reports are invisible; the product observation is never returned. Bad filters → `400 invalid` |
+| `DELETE /api/v1/insights/reports/:id` | – | `{ ok: true }` |
+| `POST /api/v1/insights/reports/:id/feedback` | `{ useful: boolean }` | `{ ok: true }` |
+| `POST /api/v1/insights/reports/delete-all` | `{ confirm: "XOA" }` | `{ deleted }`; also removes the learner's queued turns |
+
+Insight data is also part of `GET /api/v1/me/export` and `POST /api/v1/me/delete` (`LEARNER_TABLES`).
+
+### Ingest (device token)
+
+`/api/ingest/v1/{turns,status,token,pair/start,pair/poll}` is for the `ai-unlocked` CLI and Stop hook only. It sits **outside** the cookie session (`learnerPolicy` → `'none'`) and outside the `/api/v1` same-origin rule; instead it rejects any request that carries an `Origin` header (`403`). Auth is `Authorization: Bearer aiu_ing_…` (pairing endpoints take none and are IP-limited). Errors add a machine-readable `reason`: `{ "error": { "code", "message", "reason" } }`.
+
+| `reason` | Status / `code` |
+|---|---|
+| `feature_off` | 404 `not_found` (checked first, before Origin, token or body) |
+| `origin_forbidden` | 403 `forbidden` |
+| `unauthorized` | 401 `unauthorized` |
+| `consent_required` | 403 `forbidden` |
+| `invalid_payload`, `payload_too_large`, `clock_skew` | 400 `invalid` |
+| `rate_limited`, `slow_down` | 429 `rate_limited` |
+| `daily_cap` | 429 `budget_exceeded` |
+
+Bodies, responses and the client's behaviour per status are in [insights-ingest-contract.md](insights-ingest-contract.md).
+
+### Admin insights
+
+Admin (`ADMIN_EMAILS`) with the feature enabled; everyone else gets `404`. Pages: `/admin/insights`, `/admin/insights/learners/:id`, `/admin/insights/proposals` (all `noindex`, `no-store`).
+
+| Method & path | Body | Response |
+|---|---|---|
+| `GET /api/v1/admin/insights/summary` | – | `{ health, patterns, signals, sharingLearners }` (`src/lib/insights/operator-insight-queries.ts`). Counts only, each bucket backed by ≥ 3 distinct learners with `analysis` consent; signals count only evidence from learners with `proposals` consent (≥ 3) and show only the de-identified signal title |
+| `GET /api/v1/admin/insights/learners/:id/reports` | – | `{ learner, reports }`. Only when the learner has `observer_consent = 1`, `share_operator = 1` and `analysis = 1`, else `404` (unknown, non-consenting and revoked look the same). Every successful call writes an `insight_access_audit` row first |
+| `GET /api/v1/admin/insights/proposals?status=` | – | `{ proposals: ProposalSummary[], settings }`; `status` is one of `proposed, duplicate, accepted, rejected, filing, issue_filed, shipped, monitored` (else `400`) |
+| `GET /api/v1/admin/insights/proposals/:id` | – | `{ proposal, fingerprint, draft, issueMarkdown, issueTitle, privacyHits, monitoring }`. `issueMarkdown` is privacy-checked and `null` while the check blocks it ("Sao chép nội dung issue"). Open proposals show a freshly evaluated gate |
+| `PATCH /api/v1/admin/insights/proposals/:id` | `{ action }`: `accept`, `reject`, `reopen`, `mark_duplicate {duplicateOf?}`, `mark_shipped {shippedRef?}`, `file_issue`, `approve_ai_handle {confirm: "AI-HANDLE", confirmHighRisk?: true}` | the detail as above. Invalid transition → `409`; `file_issue` → `409` while GitHub filing is off or the token is missing; `approve_ai_handle` → `400` without `confirmHighRisk` on a high-risk proposal, `409` unless the mode is `issues_ai_handle`; GitHub failure → `503` |
+| `GET /api/v1/admin/insights/settings` | – | `{ githubMode, tokenConfigured, safeAutoImplement, dailyCap, issuesFiledToday }`. `tokenConfigured` is a boolean; the token never leaves the server-side publisher |
+| `PATCH /api/v1/admin/insights/settings` | `{ safeAutoImplement: boolean, confirm: "BAT" }` | the settings as above |
+
+`ProposalSummary` and the gate shape: `src/lib/insights/proposal-store.ts`, `GateDecision` in `src/lib/insights/insight-types.ts` (`decision`: `none`, `proposal`, `issue`, `issue_ai_handle`; `reasons` explain why it is weaker than `issue_ai_handle`). `insight_operator_settings` also holds internal keys written by `system:insights`: `proposal_stage:report_cursor`, `proposal_stage:signal_cursor` and the per-UTC-day issue counter `issues_filed:<YYYY-MM-DD>`.
+
+### Test hooks
+
+Stable `data-testid`s for the insights UI: `insight-report` (one report card, `/insights`), `insights-queue` (queue state line), `insights-disclaimer` (fixed observable-only notice), `insights-settings` and `insights-status` (Settings panel and its status chip, inside `section#s-insights`), `pair-device` (device being approved on `/insights/pair`).
