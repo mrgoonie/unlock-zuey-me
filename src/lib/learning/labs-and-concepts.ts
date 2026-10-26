@@ -11,6 +11,11 @@ import { LearningError, type LearnerContext, type Rewards } from './types';
 export const LAB_IDS = ['token-predictor', 'context-lab', 'hallucination-detective'] as const;
 export type LabId = (typeof LAB_IDS)[number];
 const MAX_RESULT_BYTES = 4000;
+/**
+ * Stored lab_runs per learner, lab and UTC day. Replaying a lab past this still answers normally (labs done,
+ * no new rows, events or badge checks), so a looping client cannot grow the table without bound.
+ */
+export const MAX_LAB_RESULTS_PER_DAY = 20;
 
 export const isLabId = (id: string): id is LabId => (LAB_IDS as readonly string[]).includes(id);
 
@@ -24,8 +29,14 @@ export async function recordLabResult(
   const db = deps.env.DB;
   const now = deps.now?.() ?? new Date();
 
-  await db.prepare('INSERT INTO lab_runs (id, learner_id, lab_id, result_json, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(newId('lab'), learner.id, labId, json, nowIso(now)).run();
+  const dayStart = `${nowIso(now).slice(0, 10)}T00:00:00.000Z`;
+  // Count and insert in one statement so concurrent requests cannot both slip under the cap.
+  const inserted = await db.prepare(
+    `INSERT INTO lab_runs (id, learner_id, lab_id, result_json, created_at)
+     SELECT ?, ?, ?, ?, ?
+     WHERE (SELECT COUNT(*) FROM lab_runs WHERE learner_id = ? AND lab_id = ? AND created_at >= ?) < ?`,
+  ).bind(newId('lab'), learner.id, labId, json, nowIso(now), learner.id, labId, dayStart, MAX_LAB_RESULTS_PER_DAY).run();
+  if (!inserted.meta.changes) return { labsDone: await labsDone(db, learner.id), newBadges: [] };
   const r = result as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   // Lab UI posts {score, total, calibration?}; only these scalars go into the event.
