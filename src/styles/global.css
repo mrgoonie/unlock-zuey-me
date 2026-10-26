@@ -47,6 +47,12 @@
   .btn-ghost { @apply btn border border-line text-ink hover:bg-line/40; }
   .field { @apply w-full rounded-xl border border-line bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-muted; }
   .chip { @apply inline-flex items-center gap-1 rounded-full bg-line/60 px-2.5 py-1 text-xs font-medium; }
+  /* Learner UI additions: progress/score bars and a selectable choice row (radio/checkbox cards). */
+  .bar { @apply h-2 w-full overflow-hidden rounded-full bg-line; }
+  .bar-fill { @apply block h-full rounded-full bg-calm transition-[width] duration-700 ease-out; }
+  .choice { @apply flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2 transition hover:border-accent/60; }
+  .choice:has(input:checked) { @apply border-accent bg-accent/10; }
+  .choice:has(input:focus-visible) { @apply ring-2 ring-accent ring-offset-2 ring-offset-bg; }
 }
 
 /* Respect the OS setting and the in-app "giảm chuyển động" toggle (html[data-reduced-motion]). */

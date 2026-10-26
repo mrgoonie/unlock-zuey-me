@@ -1,0 +1,17 @@
+---
+/** Layer badge (+ "cần kiểm tra lại" when a current-fact concept is past its review date). */
+import type { Concept } from '../../lib/content/schema';
+import { CONCEPT_LAYER_LABEL } from '../../lib/ui/labels';
+import { isReviewDue, todayIso } from '../../lib/ui/concept-search';
+
+interface Props { concept: Concept }
+const { concept } = Astro.props;
+const layer = CONCEPT_LAYER_LABEL[concept.layer];
+const due = isReviewDue(concept, todayIso());
+---
+<span class="flex flex-wrap gap-1.5">
+  <span class:list={['chip', concept.layer === 'current-fact' ? 'bg-warn/15' : concept.layer === 'foundation' ? 'bg-calm/15' : '']} title={layer.hint}>
+    {layer.name}
+  </span>
+  {due && <span class="chip bg-danger/15 text-danger" title={`Cần xem lại từ ${concept.review_due_at}`}>⚠️ cần kiểm tra lại</span>}
+</span>

@@ -1,0 +1,11 @@
+---
+/** Shown to guests: progress lives in this browser until they sign in with zuey.me (guest progress is merged). */
+interface Props { returnTo: string }
+const { returnTo } = Astro.props;
+---
+<aside class="card flex flex-col gap-3 border-calm/40 bg-calm/5 sm:flex-row sm:items-center sm:justify-between" aria-label="Lưu tiến độ">
+  <p class="text-sm"><strong>Lưu tiến độ:</strong> bạn đang dùng chế độ khách. Đăng nhập để không mất bài làm khi đổi máy.</p>
+  <a class="btn-ghost shrink-0 text-sm" href={`/auth/zuey/login?return_to=${encodeURIComponent(returnTo)}`} data-testid="guest-login">
+    Đăng nhập với zuey.me
+  </a>
+</aside>

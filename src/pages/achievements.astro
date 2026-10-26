@@ -1,7 +1,52 @@
 ---
+/** Achievements: every badge (earned or locked with how to earn it) and the certificate request. */
 import AppLayout from '../layouts/AppLayout.astro';
+import CertificateRequest from '../components/progress/CertificateRequest';
+import ProgressUnavailable from '../components/ui/ProgressUnavailable.astro';
+import { listBadges } from '../lib/content/loader';
+import { formatDateVi } from '../lib/ui/labels';
+import { loadProgress } from '../lib/ui/server-data';
+
+const learner = Astro.locals.learner;
+const progress = await loadProgress(Astro.locals);
+const earned = new Map((progress?.badges ?? []).map((b) => [b.id, b]));
+const badges = listBadges()
+  .map((b) => ({ ...b, grantedAt: earned.get(b.id)?.grantedAt ?? null }))
+  .sort((a, b) => Number(!!b.grantedAt) - Number(!!a.grantedAt));
 ---
 <AppLayout title="Thành tích">
-  <h1 class="text-2xl font-bold mt-2">Thành tích</h1>
-  <p class="mt-2 text-ink-muted">Huy hiệu và chứng nhận.</p>
+  <div class="flex flex-col gap-5 pt-2">
+    <header class="flex items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">Thành tích</h1>
+      <a href="/progress" class="btn-ghost text-sm">📈 Tiến độ</a>
+    </header>
+
+    <section aria-labelledby="badges-h" class="flex flex-col gap-3">
+      <h2 id="badges-h" class="font-semibold">Huy hiệu ({earned.size}/{badges.length})</h2>
+      <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {badges.map((b) => (
+          <li class:list={['card flex items-start gap-3', !b.grantedAt && 'opacity-80']} data-testid={`badge-card-${b.id}`}>
+            <span aria-hidden="true" class:list={['flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl', b.grantedAt ? 'bg-warn/20' : 'bg-line grayscale']}>
+              {b.grantedAt ? b.emoji : '🔒'}
+            </span>
+            <span class="flex flex-col gap-0.5">
+              <span class="font-semibold">{b.name}</span>
+              <span class="text-sm text-ink-muted">{b.grantedAt ? '' : 'Cách nhận: '}{b.description}</span>
+              <span class:list={['text-xs', b.grantedAt ? 'text-calm' : 'text-ink-muted']}>
+                {b.grantedAt ? `✓ Đạt ngày ${formatDateVi(b.grantedAt)}` : 'Chưa mở khoá'}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <section aria-labelledby="cert-h" class="card flex flex-col gap-3">
+      <h2 id="cert-h" class="font-semibold">🎓 Chứng nhận</h2>
+      {progress ? (
+        <CertificateRequest client:visible levelId={progress.level.id} levelName={progress.level.name}
+          defaultName={learner?.displayName ?? ''} isMember={learner?.kind === 'member'} />
+      ) : <ProgressUnavailable />}
+    </section>
+  </div>
 </AppLayout>

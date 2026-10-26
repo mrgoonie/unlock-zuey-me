@@ -1,7 +1,95 @@
 ---
+/** Concept page: one-liner, beginner explanation, analogy, rigorous (collapsed), misconceptions, examples, related, lab. */
 import AppLayout from '../../layouts/AppLayout.astro';
+import ConceptBadges from '../../components/concepts/ConceptBadges.astro';
+import NotFound from '../../components/ui/NotFound.astro';
+import { getConcept } from '../../lib/content/loader';
+import { CONCEPT_GROUP_LABEL, LAB_LABEL, formatDateVi } from '../../lib/ui/labels';
+
+const concept = getConcept(Astro.params.slug ?? '');
+if (!concept) Astro.response.status = 404;
+const related = concept ? concept.related.map(getConcept).filter((c) => c !== undefined) : [];
+const prerequisites = concept ? concept.prerequisites.map(getConcept).filter((c) => c !== undefined) : [];
+const lab = concept?.lab ? { id: concept.lab, ...LAB_LABEL[concept.lab] } : null;
 ---
-<AppLayout title="Khái niệm">
-  <h1 class="text-2xl font-bold mt-2">Khái niệm</h1>
-  <p class="mt-2 text-ink-muted">Giải thích, ví dụ và hiểu lầm thường gặp.</p>
+<AppLayout title={concept ? concept.label_vi : 'Không tìm thấy'} description={concept?.one_liner}>
+  {!concept ? (
+    <NotFound what="khái niệm này" backHref="/concepts" backLabel="Về Từ điển AI" />
+  ) : (
+    <article class="flex flex-col gap-5 pt-2" data-testid="concept-detail" data-concept-id={concept.id}>
+      <a href="/concepts" class="self-start text-sm text-ink-muted hover:text-ink">← Từ điển AI</a>
+      <header class="flex flex-col gap-2">
+        <span aria-hidden="true" class="text-5xl">{concept.emoji}</span>
+        <h1 class="text-2xl font-bold">{concept.label_vi}</h1>
+        <p class="text-sm text-ink-muted">{concept.label_en} · {CONCEPT_GROUP_LABEL[concept.group]}</p>
+        <ConceptBadges concept={concept} />
+      </header>
+
+      <p class="card border-accent/40 bg-accent/5 text-lg font-medium">{concept.one_liner}</p>
+
+      <section class="flex flex-col gap-2" aria-labelledby="simple">
+        <h2 id="simple" class="font-semibold">Nói đơn giản</h2>
+        <p class="leading-relaxed">{concept.beginner_explanation}</p>
+      </section>
+
+      <section class="card flex flex-col gap-2" aria-labelledby="analogy">
+        <h2 id="analogy" class="font-semibold">🪄 Hình dung như</h2>
+        <p>{concept.analogy}</p>
+      </section>
+
+      <section class="flex flex-col gap-2" aria-labelledby="examples">
+        <h2 id="examples" class="font-semibold">Ví dụ</h2>
+        <ul class="list-disc space-y-1 pl-5">{concept.examples.map((e) => <li>{e}</li>)}</ul>
+      </section>
+
+      {concept.misconceptions.length > 0 && (
+        <section class="card flex flex-col gap-2 border-warn/40 bg-warn/5" aria-labelledby="myths">
+          <h2 id="myths" class="font-semibold">🚫 Hiểu lầm thường gặp</h2>
+          <ul class="list-disc space-y-1 pl-5">{concept.misconceptions.map((m) => <li>{m}</li>)}</ul>
+        </section>
+      )}
+
+      <section class="flex flex-col gap-2" aria-labelledby="when">
+        <h2 id="when" class="font-semibold">Khi nào cần biết?</h2>
+        <p>{concept.when_you_need_it}</p>
+        {concept.when_you_dont && <p class="text-ink-muted">Chưa cần lắm khi: {concept.when_you_dont}</p>}
+      </section>
+
+      <details class="card">
+        <summary class="flex min-h-[44px] cursor-pointer items-center font-semibold">🔬 Giải thích chính xác hơn (kỹ thuật)</summary>
+        <p class="mt-2 leading-relaxed">{concept.rigorous_explanation}</p>
+        {concept.source_refs.length > 0 && (
+          <ul class="mt-3 flex flex-col gap-1 text-sm">
+            {concept.source_refs.map((s) => <li><a href={s.url} target="_blank" rel="noopener noreferrer" class="text-accent underline">{s.title}</a></li>)}
+          </ul>
+        )}
+      </details>
+
+      {lab && (
+        <a href={`/labs/${lab.id}`} class="card flex items-center gap-3 hover:border-accent">
+          <span aria-hidden="true" class="text-3xl">{lab.emoji}</span>
+          <span class="flex flex-col"><span class="font-semibold">🧪 Thử ngay: {lab.name}</span><span class="text-sm text-ink-muted">{lab.tagline}</span></span>
+        </a>
+      )}
+
+      {(related.length > 0 || prerequisites.length > 0) && (
+        <section class="flex flex-col gap-2" aria-labelledby="related">
+          <h2 id="related" class="font-semibold">Liên quan</h2>
+          <ul class="flex flex-wrap gap-2">
+            {[...prerequisites, ...related].map((c) => <li><a href={`/concepts/${c.id}`} class="chip min-h-[40px] px-3 text-sm hover:bg-line">{c.emoji} {c.label_vi}</a></li>)}
+          </ul>
+        </section>
+      )}
+
+      <p class="text-xs text-ink-muted">Cập nhật {formatDateVi(concept.last_reviewed_at)} · Độ tin cậy: {concept.confidence === 'high' ? 'cao' : concept.confidence === 'medium' ? 'vừa' : 'thấp'}</p>
+    </article>
+  )}
 </AppLayout>
+
+<script>
+  import { api } from '../../lib/ui/api-client';
+  // Record the view once per page load (fire-and-forget; failures are harmless).
+  const el = document.querySelector<HTMLElement>('[data-concept-id]');
+  const id = el?.dataset.conceptId;
+  if (id) void api.viewConcept(id).catch(() => undefined);
+</script>
