@@ -6,6 +6,5 @@ dist/
 .env
 .env.*
 !.env.example
-test-results/
-playwright-report/
+.e2e/
 .DS_Store
