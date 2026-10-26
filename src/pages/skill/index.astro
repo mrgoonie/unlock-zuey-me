@@ -7,11 +7,12 @@ import AppLayout from '../../layouts/AppLayout.astro';
 import AdminNotFound from '../../components/admin/AdminNotFound.astro';
 import { skillRoutesEnabled } from '../../lib/skill/skill-routes';
 import { SKILL_FILES } from '../../lib/skill/skill-bundle';
+import { siteOrigin } from '../../lib/insights/device-pairing';
 
 const enabled = skillRoutesEnabled(Astro.locals.runtime.env);
 if (!enabled) Astro.response.status = 404;
 
-const origin = Astro.url.origin;
+const origin = siteOrigin(Astro.locals.runtime.env, Astro.request);
 let version = '';
 try {
   version = (JSON.parse(SKILL_FILES.get('manifest.json') ?? '{}') as { version?: string }).version ?? '';
