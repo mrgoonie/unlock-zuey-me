@@ -1,5 +1,6 @@
 /**
- * The single place for XP and level rules. XP is only ever granted for a passed evaluation (once per run).
+ * The single place for XP and level rules. XP is only ever granted for a passed evaluation, once per learner per
+ * mission (the first passing run; finalize-evaluation.ts keys the ledger row by mission id).
  *   base       = estimated_minutes × XP_PER_MINUTE
  *   no-hint    = +20% of base when the run used no hint
  *   calibrated = +20% of base when |confidence/100 − score| ≤ CALIBRATION_TOLERANCE

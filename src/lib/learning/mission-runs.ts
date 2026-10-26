@@ -1,15 +1,22 @@
-/** Starting/resuming runs, reading them, and autosaving answers with optimistic concurrency (rev). */
+/**
+ * Starting/resuming runs, reading them, and autosaving answers with optimistic concurrency (rev).
+ * A learner has at most one open run per mission (partial unique index idx_runs_one_open_per_mission).
+ */
 import { getMission } from '../content/loader';
 import type { Mission } from '../content/schema';
 import { newId, nowIso } from '../db/ids';
 import { latestEvaluationForRun } from '../db/evaluation-repository';
-import { findOpenRun, findRun, insertRunStatement, updateRunIfRev } from '../db/run-repository';
+import { findLatestCompletedRun, findOpenRun, findRun, insertRunStatement, updateRunIfRev } from '../db/run-repository';
 import { recordEventSafe } from '../observer/events';
 import { recordActivityDay } from './activity';
+import { answerKeyForRun, assertRevealedUnchanged } from './answer-reveals';
 import { assertAnswersSize, findStep, mergeAnswers, validateStepAnswers } from './answers-validation';
 import { missionNotFound, RunConflictError, runNotFound } from './errors';
+import { learnerMissionView, type LearnerMission } from './learner-mission-view';
 import { effectiveStatus, transition } from './mission-state-machine';
-import { LearningError, type Answers, type Evaluation, type LearnerContext, type MissionRun, type Source } from './types';
+import {
+  LearningError, type AnswerKey, type Answers, type Evaluation, type LearnerContext, type MissionRun, type Source,
+} from './types';
 
 export interface RunDeps {
   env: Env;
@@ -31,6 +38,7 @@ export async function loadRun(deps: RunDeps, learner: LearnerContext, runId: str
   return { ...run, status: effectiveStatus(run, clock(deps)) };
 }
 
+/** Returns the open run of a mission, or starts a new one (the only way a new run is created). */
 export async function startMissionImpl(deps: RunDeps, learner: LearnerContext, missionId: string, source: Source): Promise<MissionRun> {
   const mission = publishedMission(missionId);
   const db = deps.env.DB;
@@ -39,22 +47,55 @@ export async function startMissionImpl(deps: RunDeps, learner: LearnerContext, m
   const at = nowIso(clock(deps));
   const run: MissionRun = {
     id: newId('run'), learnerId: learner.id, missionId: mission.id, missionVersion: mission.version, status: 'started',
-    currentStep: mission.steps[0]?.id ?? null, answers: {}, confidence: null, hintMaxLevel: 0, hintsUsed: 0, source, rev: 0,
+    currentStep: mission.steps[0]?.id ?? null, answers: {}, confidence: null, hintMaxLevel: 0, hintsUsed: 0, revealed: [], source, rev: 0,
     startedAt: at, updatedAt: at, completedAt: null,
   };
-  await insertRunStatement(db, run).run();
+  try {
+    await insertRunStatement(db, run).run();
+  } catch (err) {
+    // A concurrent start won the one-open-run-per-mission index: resume that run instead.
+    const raced = await findOpenRun(db, learner.id, mission.id);
+    if (raced) return { ...raced, status: effectiveStatus(raced, clock(deps)) };
+    throw err;
+  }
   await recordEventSafe(db, { learnerId: learner.id, name: 'mission.started', missionId: mission.id, missionVersion: mission.version, runId: run.id, source });
   return run;
 }
 
-export async function getRunDetail(
-  deps: RunDeps, learner: LearnerContext, runId: string,
-): Promise<{ run: MissionRun; mission: Mission; evaluation: Evaluation | null }> {
+/**
+ * What opening a mission shows: the open run, else the latest completed run (its result, read-only), else a
+ * new run. Re-doing a completed mission is an explicit startMissionImpl call ("Làm lại"), never implicit.
+ */
+export async function openMissionImpl(deps: RunDeps, learner: LearnerContext, missionId: string, source: Source): Promise<MissionRun> {
+  const mission = publishedMission(missionId);
+  const db = deps.env.DB;
+  const open = await findOpenRun(db, learner.id, mission.id);
+  if (open) return { ...open, status: effectiveStatus(open, clock(deps)) };
+  const done = await findLatestCompletedRun(db, learner.id, mission.id);
+  if (done) return done;
+  return startMissionImpl(deps, learner, mission.id, source);
+}
+
+/** A run as the learner's client sees it: answer keys only for revealed items, or all once completed. */
+export interface RunDetail {
+  run: MissionRun;
+  mission: LearnerMission;
+  evaluation: Evaluation | null;
+  answerKey: AnswerKey;
+}
+
+export async function getRunDetail(deps: RunDeps, learner: LearnerContext, runId: string): Promise<RunDetail> {
   const run = await loadRun(deps, learner, runId);
   const mission = getMission(run.missionId);
   if (!mission) throw new LearningError('unavailable', 'Mission này tạm thời không khả dụng.');
   const evaluation = await latestEvaluationForRun(deps.env.DB, learner.id, run.id);
-  return { run, mission, evaluation };
+  return { run, mission: learnerMissionView(mission), evaluation, answerKey: answerKeyForRun(mission, run) };
+}
+
+/** The answer key a run's learner may see right now (e.g. returned with a submit result). */
+export function runAnswerKey(run: Pick<MissionRun, 'missionId' | 'status' | 'revealed'>): AnswerKey {
+  const mission = getMission(run.missionId);
+  return mission ? answerKeyForRun(mission, run) : {};
 }
 
 export async function saveAnswersImpl(
@@ -74,6 +115,7 @@ export async function saveAnswersImpl(
   const status = transition(run.status, { type: 'edit', reachedLastStep: currentStep === lastStepId });
   const answers = mergeAnswers(run.answers, { [step.id]: clean });
   assertAnswersSize(answers);
+  assertRevealedUnchanged(mission, run.revealed, run.answers, answers);
 
   const now = clock(deps);
   const next: MissionRun = { ...run, status, currentStep, answers, rev: run.rev + 1, updatedAt: nowIso(now) };

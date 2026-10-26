@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { json, readBody } from '../../../../../lib/http/api-response';
-import { submitEvidence } from '../../../../../lib/learning/service';
+import { getRunAnswerKey, submitEvidence } from '../../../../../lib/learning/service';
 import { withLearner } from '../../_route-helpers';
 
 const body = z.object({
@@ -10,11 +10,13 @@ const body = z.object({
 });
 
 /**
- * POST /api/v1/runs/:id/submit → SubmitResult. Same key replays (replayed: true, nothing granted twice);
- * a new key on an evaluation_failed run re-evaluates the stored submission.
+ * POST /api/v1/runs/:id/submit → SubmitResult & { answerKey }. Same key replays (replayed: true, nothing
+ * granted twice); a new key on an evaluation_failed run re-evaluates the stored submission. `answerKey`
+ * holds every key once the run is completed, otherwise only items revealed earlier.
  */
 export const POST = withLearner(async ({ params, request }, learner, deps) => {
   const parsed = await readBody(request, body);
   if ('response' in parsed) return parsed.response;
-  return json(await submitEvidence(deps, learner, String(params.id ?? ''), { ...parsed.data, source: 'web' }));
+  const result = await submitEvidence(deps, learner, String(params.id ?? ''), { ...parsed.data, source: 'web' });
+  return json({ ...result, answerKey: getRunAnswerKey(result.run) });
 });

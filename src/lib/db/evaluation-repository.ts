@@ -36,12 +36,22 @@ export async function latestSubmission(db: D1Database, learnerId: string, runId:
   return r ? toSubmission(r) : null;
 }
 
-/** Insert that silently loses a race on (run_id, idempotency_key); check meta.changes. */
-export function insertSubmissionStatement(db: D1Database, s: Submission, source: string): D1PreparedStatement {
+/**
+ * Insert that happens only while the run is still at `expected` rev/status (the claim batch in
+ * submit-evidence.ts pairs it with the run update), and silently loses a race on (run_id, idempotency_key).
+ */
+export function insertSubmissionIfRunAtStatement(
+  db: D1Database, s: Submission, source: string, expected: { rev: number; status: string },
+): D1PreparedStatement {
   return db.prepare(
     `INSERT INTO evidence_submissions (id, run_id, learner_id, idempotency_key, answers_json, image_keys_json, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, idempotency_key) DO NOTHING`,
-  ).bind(s.id, s.runId, s.learnerId, s.idempotencyKey, JSON.stringify(s.answers), JSON.stringify(s.imageKeys), source, s.createdAt);
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM mission_runs WHERE id = ? AND learner_id = ? AND rev = ? AND status = ?)
+     ON CONFLICT (run_id, idempotency_key) DO NOTHING`,
+  ).bind(
+    s.id, s.runId, s.learnerId, s.idempotencyKey, JSON.stringify(s.answers), JSON.stringify(s.imageKeys), source, s.createdAt,
+    s.runId, s.learnerId, expected.rev, expected.status,
+  );
 }
 
 interface EvaluationRow {
@@ -56,14 +66,17 @@ const toEvaluation = (r: EvaluationRow): Evaluation => ({
   improvements: parseJson(r.improvements_json, []), mode: r.mode, graderModel: r.grader_model, createdAt: r.created_at,
 });
 
-export function insertEvaluationStatement(db: D1Database, learnerId: string, e: Evaluation): D1PreparedStatement {
+/** Inserts the evaluation only while its run is still `evaluating` at the claimed `rev` (0 changes otherwise). */
+export function insertEvaluationIfClaimedStatement(db: D1Database, learnerId: string, e: Evaluation, claimedRev: number): D1PreparedStatement {
   return db.prepare(
     `INSERT INTO evaluations (id, run_id, submission_id, learner_id, status, score, criteria_json, feedback, strengths_json,
        improvements_json, mode, grader_model, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     WHERE EXISTS (SELECT 1 FROM mission_runs WHERE id = ? AND learner_id = ? AND status = 'evaluating' AND rev = ?)`,
   ).bind(
     e.id, e.runId, e.submissionId, learnerId, e.status, e.score, JSON.stringify(e.criteria), e.feedback,
     JSON.stringify(e.strengths), JSON.stringify(e.improvements), e.mode, e.graderModel, e.createdAt,
+    e.runId, learnerId, claimedRev,
   );
 }
 
