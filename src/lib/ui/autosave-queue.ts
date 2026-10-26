@@ -13,6 +13,12 @@
  *   tell the learner calmly and keep saving the other edits. Without this the step stays dirty forever and
  *   blocks every later save and the submit.
  *
+ * If the server keeps refusing a step as locked after MAX_LOCK_RECOVERIES, or locks a field the client
+ * cannot map from `revealed` (client and server disagree, e.g. content changed a step's type after a reveal),
+ * the step's edits stay dirty, the save is reported as failed and `onLockExhausted(stepId)` fires. The UI
+ * then offers `reloadStep(stepId)`: fetch the run from the server, drop that step's unsaved edits only, and
+ * save every other step.
+ *
  * Every other failure, including a generic or non-JSON 403 (edge WAF/bot challenge, origin check), keeps all
  * local edits dirty and reports the save as 'offline'; a refused save also gets a neutral notice. Local edits
  * are never discarded on a signal the server did not send explicitly.
@@ -20,7 +26,7 @@
 import type { Answers, MissionRun } from '../learning/types';
 import { lockedFieldIds } from '../learning/reveal-keys';
 import { ApiError } from './api-client';
-import { clearDirtyFields, hasDirty, markSaved, mergeServerRun, type RunDraft } from './run-draft';
+import { clearDirtyFields, discardStepEdits, hasDirty, markSaved, mergeServerRun, type RunDraft } from './run-draft';
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'offline';
 
@@ -34,6 +40,10 @@ export interface SaveQueueDeps {
   onState: (s: SaveState) => void;
   /** Calm, learner-facing notice (e.g. a locked answer was restored). */
   onNotice?: (message: string) => void;
+  /** Lock recovery for `stepId` is exhausted: the UI should offer reloadStep(stepId). */
+  onLockExhausted?: (stepId: string) => void;
+  /** The run as stored on the server (used by reloadStep). */
+  fetchRun?: (runId: string) => Promise<MissionRun>;
 }
 
 export const LOCKED_ANSWER_NOTICE = 'Câu này đã xem đáp án nên được giữ nguyên.';
@@ -108,6 +118,13 @@ export function createSaveQueue(deps: SaveQueueDeps) {
           deps.onNotice?.(LOCKED_ANSWER_NOTICE);
           continue;
         }
+        if (locked) {
+          // Recovery cannot fix this step: keep every edit and let the learner choose to reload it.
+          deps.setRun(locked);
+          deps.onLockExhausted?.(stepId);
+          deps.onState('offline');
+          return false;
+        }
         if (e instanceof ApiError && e.status === 403) deps.onNotice?.(SAVE_REFUSED_NOTICE);
         deps.onState('offline');
         return false;
@@ -135,6 +152,34 @@ export function createSaveQueue(deps: SaveQueueDeps) {
     return p;
   }
 
+  /**
+   * Recovery after onLockExhausted: waits for the current save, loads the run from the server, discards the
+   * unsaved edits of `stepId` only (the server value wins there), then saves every other step.
+   * `reloaded` is false when the server run could not be loaded (nothing is discarded then); `saved` tells
+   * whether the following save of the other steps went through.
+   */
+  function reloadStep(stepId: string): Promise<{ reloaded: boolean; saved: boolean }> {
+    const reloaded = tail.catch(() => false).then(async () => {
+      const run = deps.getRun();
+      if (!run || !deps.fetchRun) return false;
+      let server: MissionRun;
+      try {
+        server = await deps.fetchRun(run.id);
+      } catch {
+        deps.onState('offline');
+        return false;
+      }
+      const draft = deps.getDraft();
+      if (!isRun(server) || server.id !== run.id || !draft) return false;
+      forced.delete(stepId);
+      deps.setRun(server);
+      deps.setDraft(discardStepEdits(draft, stepId, server));
+      return true;
+    });
+    tail = reloaded;
+    return reloaded.then(async (ok) => (ok ? { reloaded: true, saved: await flush() } : { reloaded: false, saved: false }));
+  }
+
   /** True while a save is running or queued, or local edits are not yet saved. */
   const pending = (): boolean => running || queued !== null || hasDirty(deps.getDraft() ?? ({ dirty: {} } as RunDraft)) || forced.size > 0;
 
@@ -148,7 +193,7 @@ export function createSaveQueue(deps: SaveQueueDeps) {
     return !pending();
   }
 
-  return { flush, settle, pending };
+  return { flush, settle, pending, reloadStep };
 }
 
 export type SaveQueue = ReturnType<typeof createSaveQueue>;

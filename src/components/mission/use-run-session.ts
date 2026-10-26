@@ -1,7 +1,8 @@
 /**
  * Runner state machine: load (open run, else the latest completed result, else a new run), edit answers
  * with autosave, reveal quiz/prediction answers on the server, submit with a stable idempotency key, map
- * the outcome to a phase the UI renders, and "Làm lại" (explicit new run of a completed mission).
+ * the outcome to a phase the UI renders, "Làm lại" (explicit new run of a completed mission) and "Bỏ lượt này"
+ * (abandon the open run on the server, drop its local draft, start a fresh run).
  * Answer keys come only from the server (`answerKey`): revealed items, or all once the run is completed.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,6 +19,19 @@ export type Phase = 'loading' | 'load_error' | 'steps' | 'review' | 'evaluating'
 
 const POLL_MS = 3000;
 const POLL_MAX = 40;
+
+/**
+ * The initial draft of a run: server answers plus any valid local edits. A stored draft that still fails to
+ * merge is dropped (the server copy wins) so a bad local draft can never block opening the mission.
+ */
+function safeRestoreDraft(run: MissionRun): RunDraft {
+  try {
+    return restoreDraft(run, loadDraft(run.id));
+  } catch {
+    removeDraft(run.id);
+    return restoreDraft(run, null);
+  }
+}
 
 function phaseFor(run: MissionRun, evaluation: Evaluation | null): Phase {
   if (run.status === 'evaluating') return 'evaluating';
@@ -46,14 +60,20 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
 
   const setRun = useCallback((r: MissionRun) => { runRef.current = r; setRunState(r); }, []);
   const currentStepId = useCallback(() => missionRef.current.steps[stepRef.current]?.id, []);
-  const autosave = useRunAutosave({ draftRef, runRef, setDraft: setDraftState, setRun, currentStepId });
+  /** Server copy of the run (lock recovery); also picks up answer keys revealed elsewhere. */
+  const fetchRun = useCallback(async (runId: string): Promise<MissionRun> => {
+    const detail = await api.getRun(runId);
+    setAnswerKey(detail.answerKey);
+    return detail.run;
+  }, []);
+  const autosave = useRunAutosave({ draftRef, runRef, setDraft: setDraftState, setRun, currentStepId, fetchRun });
 
   const applyLoaded = useCallback((r: MissionRun, m: LearnerMission, ev: Evaluation | null, key: AnswerKey) => {
     setRun(r);
     setMission(m);
     setEvaluation(ev);
     setAnswerKey(key);
-    const d = restoreDraft(r, loadDraft(r.id));
+    const d = safeRestoreDraft(r);
     draftRef.current = d;
     saveDraft(d);
     setDraftState(d);
@@ -91,6 +111,35 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
       return friendlyMessage(e);
     }
   }, [open]);
+
+  const abandoningRef = useRef(false);
+  /**
+   * "Bỏ lượt này": abandons the open run on the server, forgets its local draft and starts a fresh run.
+   * Resolves to an error message (the current run stays as it is), or null on success.
+   */
+  const abandon = useCallback(async (): Promise<string | null> => {
+    const r = runRef.current;
+    if (!r || abandoningRef.current) return null;
+    abandoningRef.current = true;
+    try {
+      await api.abandonRun(r.id);
+      removeDraft(r.id);
+      autosave.reset();
+      try {
+        await open(true);
+        removeDraft(r.id); // a save that was in flight may have mirrored the old draft again
+      } catch (e) {
+        // The old run is gone; show the load screen whose "Thử lại" opens the fresh run.
+        setError(friendlyMessage(e));
+        setPhase('load_error');
+      }
+      return null;
+    } catch (e) {
+      return friendlyMessage(e);
+    } finally {
+      abandoningRef.current = false;
+    }
+  }, [autosave, open]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -248,7 +297,8 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
 
   return {
     phase, setPhase, mission, run, draft, stepIndex, result, evaluation, answerKey, error,
-    saveState: autosave.saveState, saveNotice: autosave.notice, submitting, load, startAgain, goToStep, openReview, updateField, patchDraft, reveal, submit,
+    saveState: autosave.saveState, saveNotice: autosave.notice, lockedStepId: autosave.lockedStepId, reloadLockedStep: autosave.reloadLockedStep,
+    submitting, load, startAgain, abandon, goToStep, openReview, updateField, patchDraft, reveal, submit,
   };
 }
 
