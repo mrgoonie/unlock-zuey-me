@@ -1,12 +1,14 @@
 ---
-/** Settings: account, sound/motion, daily reminders, observer consent, export and delete. */
+/** Settings: account, sound/motion, daily reminders, observer consent, ai-tutor insights (when enabled), export and delete. */
 import AppLayout from '../layouts/AppLayout.astro';
 import DataRightsPanel from '../components/settings/DataRightsPanel';
+import InsightsSettingsPanel from '../components/settings/InsightsSettingsPanel';
 import ObserverConsentToggle from '../components/settings/ObserverConsentToggle';
 import PreferenceToggles from '../components/settings/PreferenceToggles';
 import ReminderSettings from '../components/settings/ReminderSettings';
 import { getPushStatus, type PushStatus } from '../lib/push/subscription-store';
 import { DEFAULT_TIMEZONE } from '../lib/push/reminder-window';
+import { insightsEnabledFor } from '../lib/insights/feature-flags';
 
 const learner = Astro.locals.learner;
 let push: PushStatus = { devices: 0, enabled: false, remindTime: '20:00', timezone: DEFAULT_TIMEZONE, lastSentDay: null };
@@ -18,6 +20,8 @@ if (learner) {
   }
 }
 const section = 'card flex flex-col gap-3';
+// Absent from the HTML entirely unless the insights feature is enabled for this learner (INSIGHTS_MODE).
+const insightsEnabled = insightsEnabledFor(Astro.locals.runtime.env, learner);
 ---
 <AppLayout title="Cài đặt">
   <h1 class="text-2xl font-bold mt-2">Cài đặt</h1>
@@ -58,6 +62,13 @@ const section = 'card flex flex-col gap-3';
       <h2 id="s-observer" class="text-lg font-semibold">Quyền riêng tư</h2>
       <ObserverConsentToggle client:visible initial={learner?.observerConsent === true} />
     </section>
+
+    {insightsEnabled && (
+      <section class={section} aria-labelledby="s-insights">
+        <h2 id="s-insights" class="text-lg font-semibold">ai-tutor &amp; báo cáo học</h2>
+        <InsightsSettingsPanel client:visible observerConsent={learner?.observerConsent === true} />
+      </section>
+    )}
 
     <section class={section} aria-labelledby="s-data">
       <h2 id="s-data" class="text-lg font-semibold">Dữ liệu của bạn</h2>

@@ -4,10 +4,12 @@ import AppLayout from '../../layouts/AppLayout.astro';
 import AdminNotFound from '../../components/admin/AdminNotFound.astro';
 import LearnerTable from '../../components/admin/LearnerTable.astro';
 import { listObservedLearners, type ObservedLearner } from '../../lib/observer/queries';
+import { insightsEnabledFor } from '../../lib/insights/feature-flags';
 
 const isAdmin = Astro.locals.learner?.isAdmin === true;
 let learners: ObservedLearner[] = [];
 let failed = false;
+const insightsEnabled = isAdmin && insightsEnabledFor(Astro.locals.runtime.env, Astro.locals.learner);
 if (!isAdmin) {
   Astro.response.status = 404;
 } else {
@@ -25,6 +27,7 @@ if (!isAdmin) {
     <meta slot="head" name="robots" content="noindex, nofollow" />
     <h1 class="text-2xl font-bold mt-2">Quan sát hành trình học</h1>
     <p class="mt-2 mb-4 text-sm text-ink-muted">Chỉ hiện người học đã đồng ý. Khi họ tắt quyền, dữ liệu biến mất ngay ở lần tải tiếp theo.</p>
+    {insightsEnabled && <a href="/admin/insights" class="btn-ghost mb-4 text-sm">🧭 Insights ai-tutor</a>}
     {failed ? <p role="alert" class="card text-danger">Không tải được danh sách. Thử tải lại trang.</p> : <LearnerTable learners={learners} />}
   </AppLayout>
 ) : (
