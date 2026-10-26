@@ -65,7 +65,7 @@ export function enforceSpoolCaps(paths, now = Date.now()) {
 /**
  * Writes (or replaces) the spool item for `payload.idempotencyKey`, then applies the caps.
  * @param {SpoolPaths} paths
- * @param {{ idempotencyKey: string }} payload
+ * @param {{ idempotencyKey: string, [key: string]: unknown }} payload
  * @param {number} [now]
  */
 export function writeSpoolItem(paths, payload, now = Date.now()) {

@@ -6,7 +6,8 @@
 
 const PREFIX = '/skills/ai-unlocked/';
 
-const rawFiles = import.meta.glob<string>('/skills/ai-unlocked/**/*', { query: '?raw', import: 'default', eager: true });
+// `?raw` + `import: 'default'` makes every module value the file text.
+const rawFiles = import.meta.glob<string>('/skills/ai-unlocked/**/*', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
 /** Served relative path → file text. Excludes test files. */
 export const SKILL_FILES: ReadonlyMap<string, string> = new Map(
@@ -48,12 +49,12 @@ function baseManifest(): BaseManifest {
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** UTF-8 bytes of a served file, exactly what the route sends. */
-export const skillFileBytes = (text: string): Uint8Array => new TextEncoder().encode(text);
+export const skillFileBytes = (text: string) => new TextEncoder().encode(text);
 
 let manifestPromise: Promise<SkillManifest> | null = null;
 

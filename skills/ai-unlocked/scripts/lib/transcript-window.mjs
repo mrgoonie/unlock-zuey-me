@@ -104,7 +104,9 @@ export function parseTranscriptLines(lines) {
     if (!entry || typeof entry !== 'object' || entry.isSidechain) continue;
     const content = entry.message && Array.isArray(entry.message.content) ? entry.message.content : null;
     if (entry.type === 'assistant' && content) {
-      for (const part of content) {
+      // Lines are walked newest-first, so parts are pushed last-first too; one reverse() restores order.
+      for (let p = content.length - 1; p >= 0; p--) {
+        const part = content[p];
         if (part && part.type === 'tool_use' && typeof part.name === 'string') toolUses.push({ id: part.id, name: part.name, input: part.input });
       }
       continue;

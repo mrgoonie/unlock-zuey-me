@@ -18,14 +18,12 @@ import {
   type IngestAcceptedResponse, type IngestTurnV1,
 } from './ingest-contract';
 import type { IngestAuth } from './ingest-auth';
+import skillPackageManifest from '../../../skills/ai-unlocked/manifest.json';
 
 /** Version of the ingest API reported by `GET /api/ingest/v1/status` (bumped with the wire contract). */
 export const INGEST_SERVER_VERSION = '1.0.0';
-/**
- * Newest ai-unlocked skill release, reported to `doctor` by the status endpoint. Must equal the `version` in
- * skills/ai-unlocked/manifest.json when the skill package ships.
- */
-export const LATEST_SKILL_VERSION = '0.1.0';
+/** Newest ai-unlocked skill release, reported to `doctor` by the status endpoint (from the shipped skill manifest). */
+export const LATEST_SKILL_VERSION: string = skillPackageManifest.version;
 
 export const CONSENT_REQUIRED_MESSAGE = 'Bạn chưa bật (hoặc đã tắt) quyền cho ai-tutor phân tích. Dữ liệu không được lưu.';
 const TOO_LARGE_MESSAGE = `Dữ liệu vượt quá ${INGEST_MAX_BYTES} byte.`;

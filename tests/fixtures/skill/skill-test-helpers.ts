@@ -104,7 +104,7 @@ export interface FakeServer {
 
 /** Local HTTP server standing in for unlock.zuey.me. Default reply: 202 {accepted:true, duplicate:false}. */
 export async function startFakeServer(responder?: (req: RecordedRequest) => FakeReply): Promise<FakeServer> {
-  let respond = responder ?? (() => ({ status: 202, body: { accepted: true, duplicate: false } }));
+  let respond: (req: RecordedRequest) => FakeReply = responder ?? (() => ({ status: 202, body: { accepted: true, duplicate: false } }));
   const requests: RecordedRequest[] = [];
   const sockets = new Set<import('node:net').Socket>();
   const server = http.createServer((req, res) => {
