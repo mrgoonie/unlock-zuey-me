@@ -54,17 +54,29 @@ export interface PushStatus {
   lastSentDay: string | null;
 }
 
-export async function upsertSubscription(db: D1Database, learnerId: string, input: SubscribeInput): Promise<void> {
+/** Devices per learner. Subscribing one more replaces the device that (re-)subscribed longest ago. */
+export const MAX_SUBSCRIPTIONS_PER_LEARNER = 5;
+
+export async function upsertSubscription(db: D1Database, learnerId: string, input: SubscribeInput, now = new Date()): Promise<void> {
   const { endpoint, keys } = input.subscription;
-  await db.prepare(
-    `INSERT INTO push_subscriptions (id, learner_id, endpoint, p256dh, auth, remind_time, timezone, enabled, failures, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
-     ON CONFLICT(endpoint) DO UPDATE SET learner_id = excluded.learner_id, p256dh = excluded.p256dh, auth = excluded.auth,
-       remind_time = excluded.remind_time, timezone = excluded.timezone, enabled = 1, failures = 0`,
-  ).bind(newId('psh'), learnerId, endpoint, keys.p256dh, keys.auth, input.remindTime, input.timezone, nowIso()).run();
-  // One reminder time per learner: keep the learner's other devices in step.
-  await db.prepare('UPDATE push_subscriptions SET remind_time = ?, timezone = ? WHERE learner_id = ?')
-    .bind(input.remindTime, input.timezone, learnerId).run();
+  // created_at is refreshed on re-subscribe so "oldest" means least recently subscribed.
+  await db.batch([
+    db.prepare(
+      `INSERT INTO push_subscriptions (id, learner_id, endpoint, p256dh, auth, remind_time, timezone, enabled, failures, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET learner_id = excluded.learner_id, p256dh = excluded.p256dh, auth = excluded.auth,
+         remind_time = excluded.remind_time, timezone = excluded.timezone, enabled = 1, failures = 0, created_at = excluded.created_at`,
+    ).bind(newId('psh'), learnerId, endpoint, keys.p256dh, keys.auth, input.remindTime, input.timezone, nowIso(now)),
+    // One reminder time per learner: keep the learner's other devices in step.
+    db.prepare('UPDATE push_subscriptions SET remind_time = ?, timezone = ? WHERE learner_id = ?')
+      .bind(input.remindTime, input.timezone, learnerId),
+    // Keep the newest devices only; the endpoint just subscribed is always among them.
+    db.prepare(
+      `DELETE FROM push_subscriptions WHERE learner_id = ?1 AND endpoint <> ?2 AND id NOT IN (
+         SELECT id FROM push_subscriptions WHERE learner_id = ?1 ORDER BY (endpoint = ?2) DESC, created_at DESC, id DESC LIMIT ?3
+       )`,
+    ).bind(learnerId, endpoint, MAX_SUBSCRIPTIONS_PER_LEARNER),
+  ]);
 }
 
 /** Removes the endpoint if it belongs to the learner. Returns whether a row was deleted (idempotent). */

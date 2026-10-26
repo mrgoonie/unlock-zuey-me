@@ -1,6 +1,7 @@
 /**
  * One path for every model call: OpenRouter models in order (only while the learner and global daily USD
- * budgets allow), then Workers AI (capped per learner per day). Every successful call records usage.
+ * budgets allow), then Workers AI (capped per learner and globally per day). Budgets are reserved before
+ * each call and settled after it (see ai-usage.ts), so concurrent requests cannot overshoot them.
  * `parse` validates the raw text; a rejected output moves on to the next model just like an HTTP error.
  */
 import { recordEventSafe } from '../observer/events';
@@ -8,8 +9,10 @@ import { utcDay } from '../learning/learner-day';
 import {
   openRouterChat, workersAiChat, type AiCompletion, type ChatMessage, type JsonSchemaSpec,
 } from './ai-clients';
-import { estimateCostUsd } from './ai-models';
-import { budgetLimits, readUsage, recordUsage } from './ai-usage';
+import { estimateCostUsd, WORKERS_AI_TIMEOUT_MS } from './ai-models';
+import {
+  budgetLimits, readUsage, releaseUsd, reserveUsd, reserveWorkersAiCall, settleUsage, type UsageTotals,
+} from './ai-usage';
 
 export interface AiDeps {
   env: Env;
@@ -53,69 +56,97 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
   const now = deps.now?.() ?? new Date();
   const day = utcDay(now);
   const limits = budgetLimits(env);
+  const db = env.DB;
   const event = (name: 'ai.budget_exceeded' | 'ai.fallback_used', props: Record<string, string>) =>
-    recordEventSafe(env.DB, { learnerId: req.learnerId, name, runId: req.runId, missionId: req.missionId, props: { purpose: req.purpose, ...props } });
-
-  let usage;
-  try {
-    usage = await readUsage(env.DB, day, req.learnerId);
-  } catch (err) {
-    // Without usage numbers we cannot prove we are under budget: skip paid models, still try the fallback.
-    console.error('ai usage read failed', err);
-    usage = null;
-  }
-
-  const record = async (c: AiCompletion, workersAi: boolean) => {
+    recordEventSafe(db, { learnerId: req.learnerId, name, runId: req.runId, missionId: req.missionId, props: { purpose: req.purpose, ...props } });
+  /** Which cap stopped a reservation, for the budget event (read only on the refusal path). */
+  const exceededScope = async (overGlobal: (u: UsageTotals) => boolean): Promise<'global' | 'learner'> => {
     try {
-      await recordUsage(env.DB, day, req.learnerId, {
-        inputTokens: c.inputTokens, outputTokens: c.outputTokens, costUsd: estimateCostUsd(c.model, c.inputTokens, c.outputTokens), workersAi,
+      return overGlobal((await readUsage(db, day, req.learnerId)).global) ? 'global' : 'learner';
+    } catch {
+      return 'learner';
+    }
+  };
+  const settle = async (c: AiCompletion, reservedUsd: number) => {
+    try {
+      await settleUsage(db, day, req.learnerId, {
+        inputTokens: c.inputTokens, outputTokens: c.outputTokens, costUsd: estimateCostUsd(c.model, c.inputTokens, c.outputTokens), reservedUsd,
       });
     } catch (err) {
       console.error('ai usage record failed', err);
     }
   };
+  const inputTokens = estimateInputTokens(req.messages);
 
   let fallbackReason = 'no_key';
-  if (env.OPENROUTER_API_KEY && usage) {
-    const overGlobal = usage.global.costUsd >= limits.globalUsd;
-    const overLearner = usage.learner.costUsd >= limits.perLearnerUsd;
-    if (overGlobal || overLearner) {
-      fallbackReason = 'budget';
-      await event('ai.budget_exceeded', { scope: overGlobal ? 'global' : 'learner' });
-    } else {
-      fallbackReason = 'openrouter_failed';
-      for (const model of req.openRouterModels) {
-        try {
-          const c = await openRouterChat({
-            apiKey: env.OPENROUTER_API_KEY, siteUrl: env.PUBLIC_SITE_URL || 'https://unlock.zuey.me', model,
-            messages: req.messages, maxTokens: req.maxTokens, temperature: req.temperature,
-            jsonSchema: req.jsonSchema, timeoutMs: req.timeoutMs, fetchImpl: deps.fetchImpl,
-          });
-          await record(c, false);
-          return { value: req.parse(c.content), model: c.model, provider: 'openrouter' };
-        } catch (err) {
-          console.warn('openrouter attempt failed', req.purpose, model, err instanceof Error ? err.message : err);
-        }
+  if (env.OPENROUTER_API_KEY) {
+    fallbackReason = 'openrouter_failed';
+    for (const model of req.openRouterModels) {
+      // Reserve the worst case (estimated prompt + every allowed output token) before calling.
+      const reserved = estimateCostUsd(model, inputTokens, req.maxTokens);
+      let ok: boolean;
+      try {
+        ok = await reserveUsd(db, day, req.learnerId, reserved, limits);
+      } catch (err) {
+        // Without usage numbers we cannot prove we are under budget: skip paid models, still try the fallback.
+        console.error('ai usage reservation failed', err);
+        fallbackReason = 'usage_unknown';
+        break;
+      }
+      if (!ok) {
+        fallbackReason = 'budget';
+        await event('ai.budget_exceeded', { scope: await exceededScope((g) => g.costUsd + g.reservedUsd + reserved > limits.globalUsd) });
+        break;
+      }
+      let c: AiCompletion;
+      try {
+        c = await openRouterChat({
+          apiKey: env.OPENROUTER_API_KEY, siteUrl: env.PUBLIC_SITE_URL || 'https://unlock.zuey.me', model,
+          messages: req.messages, maxTokens: req.maxTokens, temperature: req.temperature,
+          jsonSchema: req.jsonSchema, timeoutMs: req.timeoutMs, fetchImpl: deps.fetchImpl,
+        });
+      } catch (err) {
+        console.warn('openrouter attempt failed', req.purpose, model, err instanceof Error ? err.message : err);
+        await releaseUsd(db, day, req.learnerId, reserved).catch((e) => console.error('ai usage release failed', e));
+        continue;
+      }
+      // A completed call is paid for even when its output is then rejected.
+      await settle(c, reserved);
+      try {
+        return { value: req.parse(c.content), model: c.model, provider: 'openrouter' };
+      } catch (err) {
+        console.warn('openrouter output rejected', req.purpose, model, err instanceof Error ? err.message : err);
       }
     }
-  } else if (env.OPENROUTER_API_KEY && !usage) {
-    fallbackReason = 'usage_unknown';
   }
 
-  if (usage && usage.learner.workersAiRequests >= limits.workersAiPerLearner) {
-    await event('ai.budget_exceeded', { scope: 'workers_ai' });
+  let allowed = true;
+  try {
+    allowed = await reserveWorkersAiCall(db, day, req.learnerId, limits);
+  } catch (err) {
+    // Same stance as before reservations existed: a usage-store outage must not block the fallback.
+    console.error('workers ai reservation failed', err);
+  }
+  if (!allowed) {
+    const scope = await exceededScope((g) => g.workersAiRequests >= limits.workersAiGlobal);
+    await event('ai.budget_exceeded', { scope: scope === 'global' ? 'workers_ai_global' : 'workers_ai' });
     throw new AiUnavailableError('budget');
   }
   await event('ai.fallback_used', { reason: fallbackReason, model: req.workersAiModel });
   try {
     const messages = req.jsonSchema ? withJsonInstruction(req.messages, req.jsonSchema) : req.messages;
-    const c = await workersAiChat(env.AI, req.workersAiModel, messages, req.maxTokens);
-    await record(c, true);
+    const c = await workersAiChat(env.AI, req.workersAiModel, messages, req.maxTokens, WORKERS_AI_TIMEOUT_MS);
+    await settle(c, 0);
     return { value: req.parse(c.content), model: c.model, provider: 'workers-ai' };
   } catch (err) {
     console.error('workers ai failed', req.purpose, err instanceof Error ? err.message : err);
     throw new AiUnavailableError('failed');
   }
+}
+
+/** Conservative prompt size: Vietnamese text runs at roughly 2–3 characters per token. */
+function estimateInputTokens(messages: ChatMessage[]): number {
+  return Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 2) + 16 * messages.length;
 }
 
 /** Workers AI gets the schema as an instruction (no strict response_format); output is still zod-validated. */

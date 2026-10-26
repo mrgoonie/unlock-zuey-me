@@ -18,6 +18,10 @@ const UNKNOWN_MODEL_PRICE = { input: 10.0, output: 30.0 };
 
 /** Workers AI calls allowed per learner per UTC day once OpenRouter is unavailable or over budget. */
 export const WORKERS_AI_DAILY_REQUESTS_PER_LEARNER = 60;
+/** Workers AI calls allowed per UTC day across all learners (wrangler var AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL). */
+export const DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL = 2000;
+/** A Workers AI call that has not answered by then is abandoned (the binding has no built-in timeout). */
+export const WORKERS_AI_TIMEOUT_MS = 30_000;
 /** Defaults when the wrangler vars are missing or malformed. */
 export const DEFAULT_BUDGET_USD_PER_LEARNER = 0.3;
 export const DEFAULT_BUDGET_USD_GLOBAL = 5;

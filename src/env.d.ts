@@ -12,6 +12,14 @@ interface Env {
   /** Private evidence screenshots. */
   EVIDENCE: R2Bucket;
   AI: Ai;
+  /**
+   * Rate Limiting bindings (wrangler.jsonc `ratelimits`, rules in src/lib/identity/request-rate-limits.ts).
+   * Optional: without them an in-memory per-isolate limiter with the same rules is used.
+   */
+  RL_GUEST_IP?: RateLimit;
+  RL_AI_IP?: RateLimit;
+  RL_WRITE_IP?: RateLimit;
+  RL_WRITE_LEARNER?: RateLimit;
 
   PUBLIC_SITE_URL: string;
   ZUEY_ISSUER: string;
@@ -19,6 +27,8 @@ interface Env {
   ADMIN_EMAILS: string;
   AI_DAILY_BUDGET_USD_PER_LEARNER: string;
   AI_DAILY_BUDGET_USD_GLOBAL: string;
+  /** Workers AI calls allowed per UTC day across all learners (falls back to a default when unset). */
+  AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL?: string;
   VAPID_SUBJECT: string;
 
   OPENROUTER_API_KEY?: string;

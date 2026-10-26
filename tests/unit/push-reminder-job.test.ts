@@ -89,12 +89,49 @@ describe('sendDueReminders', () => {
     expect(fetchFn).toHaveBeenCalledTimes(MAX_FAILURES);
   });
 
-  it('survives network errors and respects the batch limit', async () => {
+  it('survives network errors and works through every batch', async () => {
     for (const id of ['psh_1', 'psh_2', 'psh_3']) await addSub(id, 'lrn_a', '20:00', 'Asia/Saigon', `https://fcm.googleapis.com/fcm/send/${id}`);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fetchFn = vi.fn(async () => { throw new Error('network down'); });
-    expect(await sendDueReminders(env, { now: NOW, fetchFn, limit: 2 })).toMatchObject({ failed: 2 });
-    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(await sendDueReminders(env, { now: NOW, fetchFn, batchSize: 2 })).toMatchObject({ failed: 3, deferred: false });
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('delivers far more than one batch in a single window', async () => {
+    for (let i = 0; i < 250; i++) {
+      const id = `psh_${String(i).padStart(3, '0')}`;
+      await addSub(id, 'lrn_a', '20:00', 'Asia/Saigon', `https://fcm.googleapis.com/fcm/send/${id}`);
+    }
+    const fetchFn = okFetch();
+    expect(await sendDueReminders(env, { now: NOW, fetchFn })).toMatchObject({ sent: 250, deferred: false });
+    const left = await db.prepare(`SELECT COUNT(*) AS n FROM push_subscriptions WHERE last_sent_day IS NULL`).first<{ n: number }>();
+    expect(left?.n).toBe(0);
+  });
+
+  it('stops at the run budget and the next run catches up through the look-back', async () => {
+    for (const id of ['psh_1', 'psh_2', 'psh_3']) await addSub(id, 'lrn_a', '20:00', 'Asia/Saigon', `https://fcm.googleapis.com/fcm/send/${id}`);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const fetchFn = okFetch();
+    expect(await sendDueReminders(env, { now: NOW, fetchFn, batchSize: 2, maxSends: 2 })).toMatchObject({ sent: 2, deferred: true });
+    // Next cron tick (20:20 local) is a new quarter hour, but 20:00 is still inside the look-back.
+    expect(await sendDueReminders(env, { now: new Date('2026-10-26T13:20:00Z'), fetchFn })).toMatchObject({ sent: 1, deferred: false });
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops when the time budget is spent', async () => {
+    await addSub('psh_a', 'lrn_a');
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const fetchFn = okFetch();
+    let t = 0;
+    const clock = () => (t += 1000);
+    expect(await sendDueReminders(env, { now: NOW, fetchFn, clock, timeBudgetMs: 500 })).toMatchObject({ sent: 0, deferred: true });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('does not send reminders older than the look-back window', async () => {
+    await addSub('psh_a', 'lrn_a', '18:30');
+    const fetchFn = okFetch();
+    expect(await sendDueReminders(env, { now: NOW, fetchFn })).toMatchObject({ sent: 0 });
   });
 
   it('does nothing without VAPID keys', async () => {

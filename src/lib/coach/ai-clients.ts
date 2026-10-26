@@ -79,9 +79,28 @@ export async function openRouterChat(opts: {
 /** Minimal view of the AI binding: the generated model union may not list every catalog model yet. */
 type AiRunner = { run(model: string, input: Record<string, unknown>): Promise<unknown> };
 
-export async function workersAiChat(ai: Ai, model: string, messages: ChatMessage[], maxTokens: number): Promise<AiCompletion> {
+/**
+ * Rejects with AiCallError when `work` has not settled within `timeoutMs`. The underlying call is not
+ * cancelled (the AI binding takes no AbortSignal), but the caller stops waiting and moves on.
+ */
+export async function withTimeout<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new AiCallError(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function workersAiChat(
+  ai: Ai, model: string, messages: ChatMessage[], maxTokens: number, timeoutMs: number,
+): Promise<AiCompletion> {
   // Cast justified: the binding accepts any catalog model id at runtime; types lag behind the catalog.
-  const out = (await (ai as unknown as AiRunner).run(model, { messages, max_tokens: maxTokens })) as {
+  const call = (ai as unknown as AiRunner).run(model, { messages, max_tokens: maxTokens });
+  const out = (await withTimeout(call, timeoutMs, `workers-ai ${model}`)) as {
     response?: unknown;
     choices?: Array<{ message?: { content?: unknown } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };

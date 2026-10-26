@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AiCallError, workersAiChat } from '../../src/lib/coach/ai-clients';
 import { AiUnavailableError, runAi, type AiRequest } from '../../src/lib/coach/ai-gateway';
 import { estimateCostUsd, WORKERS_AI_DAILY_REQUESTS_PER_LEARNER, WORKERS_AI_MODEL } from '../../src/lib/coach/ai-models';
-import { GLOBAL_USAGE_ID, readUsage } from '../../src/lib/coach/ai-usage';
+import { budgetLimits, GLOBAL_USAGE_ID, readUsage, reserveUsd } from '../../src/lib/coach/ai-usage';
 import { allowRequest, RATE_LIMITS } from '../../src/lib/coach/rate-limit';
 import { failingFetch, fakeEnv, fakeKv, openRouterFetch, type FakeEnv } from './learning-fake-env';
 
@@ -92,6 +93,99 @@ describe('AI gateway', () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
     expect((await runAi({ env: noKey, fetchImpl, now: () => NOW }, req())).provider).toBe('workers-ai');
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+/** D1 serializes statements; the node:sqlite helper cannot overlap two batch transactions, so queue them. */
+function serializedBatches(db: D1Database): D1Database {
+  let chain: Promise<unknown> = Promise.resolve();
+  return {
+    prepare: (sql: string) => db.prepare(sql),
+    exec: (sql: string) => db.exec(sql),
+    batch: (stmts: D1PreparedStatement[]) => {
+      const next = chain.then(() => db.batch(stmts));
+      chain = next.catch(() => undefined);
+      return next;
+    },
+  } as unknown as D1Database;
+}
+
+describe('global caps and concurrent reservations', () => {
+  it('stops Workers AI for everyone once the global daily cap is spent', async () => {
+    const capped = fakeEnv({ OPENROUTER_API_KEY: undefined, AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL: '3' });
+    capped.AI.run.mockResolvedValue({ response: 'ok' });
+    for (const learnerId of ['lrn_a', 'lrn_b', 'lrn_c']) {
+      expect((await runAi({ env: capped, now: () => NOW }, req({ learnerId }))).provider).toBe('workers-ai');
+    }
+    const err = await runAi({ env: capped, now: () => NOW }, req({ learnerId: 'lrn_fresh' })).catch((e) => e);
+    expect(err).toMatchObject({ reason: 'budget' });
+    expect(capped.AI.run).toHaveBeenCalledTimes(3);
+    expect((await readUsage(capped.DB, DAY, 'lrn_fresh')).global.workersAiRequests).toBe(3);
+    const ev = await capped.DB.prepare(`SELECT props_json FROM events WHERE name = 'ai.budget_exceeded'`).first<{ props_json: string }>();
+    expect(JSON.parse(ev!.props_json)).toEqual({ purpose: 'chat', scope: 'workers_ai_global' });
+  });
+
+  it('defaults the global Workers AI cap when the var is missing or malformed', () => {
+    expect(budgetLimits({ AI_DAILY_BUDGET_USD_PER_LEARNER: '', AI_DAILY_BUDGET_USD_GLOBAL: '' }).workersAiGlobal).toBeGreaterThan(0);
+    expect(budgetLimits({ AI_DAILY_BUDGET_USD_PER_LEARNER: '', AI_DAILY_BUDGET_USD_GLOBAL: '', AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL: 'x' }).workersAiGlobal)
+      .toBe(budgetLimits({ AI_DAILY_BUDGET_USD_PER_LEARNER: '', AI_DAILY_BUDGET_USD_GLOBAL: '' }).workersAiGlobal);
+  });
+
+  it('concurrent calls cannot overshoot the USD budget: each reserves its worst case first', async () => {
+    const tight = fakeEnv({ AI_DAILY_BUDGET_USD_PER_LEARNER: '0.01' });
+    tight.DB = serializedBatches(tight.DB);
+    tight.AI.run.mockResolvedValue({ response: 'fallback' });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const fetchImpl = vi.fn(async () => {
+      await gate;
+      return Response.json({ model: 'google/gemini-3.1-flash-lite', choices: [{ message: { content: 'ok' } }], usage: { prompt_tokens: 10, completion_tokens: 10 } });
+    }) as unknown as typeof fetch;
+    // Worst case per call: 2000 output tokens × $1.5/M = $0.003, so only 3 fit in $0.01.
+    const calls = Array.from({ length: 10 }, () => runAi({ env: tight, fetchImpl, now: () => NOW }, req({ maxTokens: 2000 })));
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    const results = await Promise.all(calls);
+    expect(results.filter((r) => r.provider === 'openrouter')).toHaveLength(3);
+    expect(results.filter((r) => r.provider === 'workers-ai')).toHaveLength(7);
+    const usage = await readUsage(tight.DB, DAY, 'lrn_a');
+    expect(usage.learner.reservedUsd).toBeCloseTo(0, 9);
+    expect(usage.global.reservedUsd).toBeCloseTo(0, 9);
+    expect(usage.learner.costUsd).toBeCloseTo(estimateCostUsd('google/gemini-3.1-flash-lite', 10, 10) * 3, 9);
+  });
+
+  it('releases the reservation when the OpenRouter call fails', async () => {
+    env.AI.run.mockResolvedValue({ response: 'fallback' });
+    await runAi({ env, fetchImpl: failingFetch(), now: () => NOW }, req());
+    const usage = await readUsage(env.DB, DAY, 'lrn_a');
+    expect(usage.learner.reservedUsd).toBe(0);
+    expect(usage.global.reservedUsd).toBe(0);
+  });
+
+  it('reserves on both rows or on neither', async () => {
+    const limits = { ...budgetLimits(env), perLearnerUsd: 1, globalUsd: 1 };
+    await setUsage(GLOBAL_USAGE_ID, 0.9);
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.2, limits)).toBe(false);
+    expect(await readUsage(env.DB, DAY, 'lrn_a')).toMatchObject({ learner: { reservedUsd: 0 }, global: { reservedUsd: 0 } });
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.1, limits)).toBe(true);
+    expect(await readUsage(env.DB, DAY, 'lrn_a')).toMatchObject({ learner: { reservedUsd: 0.1 }, global: { reservedUsd: 0.1 } });
+  });
+
+  it('evaluates the cap check once per statement, so updating the first row cannot skip the second', async () => {
+    // 0.2 fits under 0.25 before the update but would not after it; both rows must still move together.
+    const limits = { ...budgetLimits(env), perLearnerUsd: 0.25, globalUsd: 5 };
+    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.2, limits)).toBe(true);
+    expect(await readUsage(env.DB, DAY, 'lrn_b')).toMatchObject({ learner: { reservedUsd: 0.2 }, global: { reservedUsd: 0.2 } });
+    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.2, limits)).toBe(false);
+  });
+});
+
+describe('Workers AI timeout', () => {
+  it('gives up on a call that never answers', async () => {
+    const ai = { run: vi.fn(() => new Promise(() => undefined)) } as unknown as Ai;
+    const err = await workersAiChat(ai, WORKERS_AI_MODEL, [{ role: 'user', content: 'hi' }], 10, 20).catch((e) => e);
+    expect(err).toBeInstanceOf(AiCallError);
+    expect(String(err.message)).toMatch(/timed out/);
   });
 });
 

@@ -1,4 +1,8 @@
-/** Practice chat for learners: validation, ownership of the optional run, daily cap, storage and events. */
+/**
+ * Practice chat for learners: validation, ownership of the optional run, daily cap, storage and events.
+ * The client sends the conversation history; assistant turns are kept only when they match a reply this
+ * server stored for the learner recently, so a client cannot script the "assistant" side of the prompt.
+ */
 import { getMission } from '../content/loader';
 import { AiUnavailableError, type AiDeps } from '../coach/ai-gateway';
 import { PRACTICE_LIMITS, practiceReply, type PracticeMessage } from '../coach/practice-chat';
@@ -22,8 +26,13 @@ export interface PracticeChatResult {
   remainingToday: number;
 }
 
+/** Messages accepted per request; only the newest PRACTICE_LIMITS.historyMessages reach the model. */
+export const MAX_REQUEST_MESSAGES = 20;
+
 function validateMessages(messages: unknown): PracticeMessage[] {
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) throw new LearningError('invalid', 'Cần 1–50 tin nhắn.');
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > MAX_REQUEST_MESSAGES) {
+    throw new LearningError('invalid', `Cần 1–${MAX_REQUEST_MESSAGES} tin nhắn.`);
+  }
   for (const m of messages) {
     const ok = m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
       && m.content.trim().length > 0 && m.content.length <= PRACTICE_LIMITS.messageChars;
@@ -31,6 +40,24 @@ function validateMessages(messages: unknown): PracticeMessage[] {
   }
   if (messages[messages.length - 1].role !== 'user') throw new LearningError('invalid', 'Tin nhắn cuối phải là của bạn.');
   return messages as PracticeMessage[];
+}
+
+/** How far back a client-held assistant turn may come from, and how many stored replies are compared. */
+const VERIFIED_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const VERIFIED_REPLY_LOOKBACK = 50;
+
+/** Drops assistant turns that are not replies the server stored for this learner within the window. */
+export async function stripUnverifiedAssistantTurns(
+  db: D1Database, learnerId: string, messages: PracticeMessage[], now: Date,
+): Promise<PracticeMessage[]> {
+  if (!messages.some((m) => m.role === 'assistant')) return messages;
+  const since = new Date(now.getTime() - VERIFIED_REPLY_WINDOW_MS).toISOString();
+  const { results } = await db.prepare(
+    `SELECT content FROM coach_messages WHERE learner_id = ? AND channel = 'practice' AND role = 'assistant' AND created_at >= ?
+     ORDER BY created_at DESC LIMIT ?`,
+  ).bind(learnerId, since, VERIFIED_REPLY_LOOKBACK).all<{ content: string }>();
+  const stored = new Set(results.map((r) => r.content));
+  return messages.filter((m) => m.role === 'user' || stored.has(m.content));
 }
 
 async function usedToday(db: D1Database, learnerId: string, now: Date): Promise<number> {
@@ -68,9 +95,10 @@ export async function sendPracticeChat(deps: AiDeps, learner: LearnerContext, in
     throw new LearningError('budget_exceeded', 'Bạn đã dùng hết lượt chat luyện tập hôm nay. Hẹn bạn ngày mai nhé!');
   }
 
+  const history = await stripUnverifiedAssistantTurns(db, learner.id, messages, now);
   let result: { reply: string; model: string };
   try {
-    result = await practiceReply(deps, { learnerId: learner.id, runId: input.runId, missionId, context, messages });
+    result = await practiceReply(deps, { learnerId: learner.id, runId: input.runId, missionId, context, messages: history });
   } catch (err) {
     if (err instanceof AiUnavailableError && err.reason === 'budget') {
       throw new LearningError('budget_exceeded', 'Trợ lý đã hết lượt cho hôm nay. Bạn vẫn có thể dùng ChatGPT, Gemini hay Claude bên ngoài nhé.');
