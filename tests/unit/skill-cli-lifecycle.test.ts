@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mcpAddCommand } from '../../skills/ai-unlocked/scripts/lib/doctor.mjs';
 import { pairDevice } from '../../skills/ai-unlocked/scripts/lib/pairing.mjs';
 import {
   configFiles, makeTempEnv, readFixture, runNode, SCRIPTS_DIR, startFakeServer, TEST_TOKEN, writeCredentialsFile, writeStateFile,
@@ -46,7 +47,7 @@ describe('ai-unlocked CLI', () => {
     const commands = JSON.stringify(installed.hooks.Stop);
     expect(commands).toContain(HOOK_SCRIPT);
     expect(commands).toContain('--ai-unlocked-hook=v1');
-    expect(fs.existsSync(`${userSettings()}.ai-unlocked.bak`)).toBe(true);
+    expect(fs.existsSync(`${userSettings()}.ai-unlocked.bak`)).toBe(false);
     const afterFirst = fs.readFileSync(userSettings(), 'utf8');
 
     const second = await cli('hook', 'install', '--scope', 'user');
@@ -132,6 +133,24 @@ describe('ai-unlocked CLI', () => {
     expect(find('local', 'parser')[0].level).toBe('warn');
     expect(r.stdout).not.toContain(TEST_TOKEN);
     expect(server.requests).toEqual([]);
+  });
+
+  it('doctor suggests the MCP URL of the configured server, not production', async () => {
+    const offlineChecks = async () => {
+      const r = await cli('doctor', '--json', '--offline');
+      return JSON.parse(r.stdout).checks as Array<{ group: string; name: string; level: string; detail: string }>;
+    };
+    const origin = new URL(server.url).origin;
+    // No credentials: the server comes from AI_UNLOCKED_SERVER.
+    let mcp = (await offlineChecks()).find((c) => c.name === 'mcp');
+    expect(mcp).toMatchObject({ level: 'warn' });
+    expect(mcp?.detail).toContain(`ai-unlocked ${origin}/mcp --scope user`);
+    expect(mcp?.detail).not.toContain('unlock.zuey.me');
+    // An MCP entry pointing at that server counts as configured even under another name.
+    write(path.join(t.cwd, '.mcp.json'), JSON.stringify({ mcpServers: { tutor: { type: 'http', url: `${origin}/mcp` } } }));
+    mcp = (await offlineChecks()).find((c) => c.name === 'mcp');
+    expect(mcp).toMatchObject({ level: 'ok', detail: expect.stringContaining('project') });
+    expect(mcpAddCommand(null)).toBe('claude mcp add --transport http ai-unlocked https://unlock.zuey.me/mcp --scope user');
   });
 
   it('doctor online checks the manifest version and consent', async () => {

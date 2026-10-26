@@ -10,7 +10,7 @@
 //   (https://code.claude.com/docs/en/settings).
 import fs from 'node:fs';
 import path from 'node:path';
-import { MIN_NODE_MAJOR, SKILL_VERSION } from './constants.mjs';
+import { DEFAULT_SERVER, MIN_NODE_MAJOR, SKILL_VERSION } from './constants.mjs';
 import { credentialModeWarnings, maskToken, readCredentials } from './credentials.mjs';
 import { markerReport } from './hook-installer.mjs';
 import { getSkillManifest, getStatus } from './ingest-client.mjs';
@@ -31,26 +31,43 @@ export function managedSettingsCandidates(platform) {
   return ['/etc/claude-code/managed-settings.json'];
 }
 
-/** True when an MCP server entry points at unlock.zuey.me (or is named ai-unlocked). */
-function isUnlockServer(name, cfg) {
+/**
+ * True when an MCP server entry is named ai-unlocked or points at unlock.zuey.me or the configured server.
+ * @param {string} name
+ * @param {unknown} cfg
+ * @param {string | null} serverOrigin
+ */
+function isUnlockServer(name, cfg, serverOrigin) {
   const url = cfg && typeof cfg === 'object' && typeof cfg.url === 'string' ? cfg.url : '';
-  return name === 'ai-unlocked' || /unlock\.zuey\.me/.test(url);
+  if (name === 'ai-unlocked' || /unlock\.zuey\.me/.test(url)) return true;
+  if (!serverOrigin || !url) return false;
+  try { return new URL(url).origin === serverOrigin; } catch { return false; }
+}
+
+/**
+ * Suggested `claude mcp add` command for the server this CLI talks to (credentials, AI_UNLOCKED_SERVER, or
+ * the default), so a learner on a preview or local server is not pointed at production.
+ * @param {string | null} serverOrigin
+ */
+export function mcpAddCommand(serverOrigin) {
+  return `claude mcp add --transport http ai-unlocked ${serverOrigin ?? DEFAULT_SERVER}/mcp --scope user`;
 }
 
 /** Where an ai-unlocked MCP server is configured (user, local or project scope), best effort. */
-function mcpLocations(ctx) {
+function mcpLocations(ctx, serverOrigin) {
+  const matches = (servers) => Object.entries(servers).some(([n, c]) => isUnlockServer(n, c, serverOrigin));
   const found = [];
   const home = claudeHomeDir(ctx);
   const globalFiles = [path.join(path.dirname(home), '.claude.json'), path.join(home, '.claude.json')];
   for (const file of [...new Set(globalFiles)]) {
     const cfg = readJsonObject(file);
     if (!cfg) continue;
-    if (cfg.mcpServers && Object.entries(cfg.mcpServers).some(([n, c]) => isUnlockServer(n, c))) found.push('user');
+    if (cfg.mcpServers && matches(cfg.mcpServers)) found.push('user');
     const proj = cfg.projects && cfg.projects[ctx.cwd];
-    if (proj?.mcpServers && Object.entries(proj.mcpServers).some(([n, c]) => isUnlockServer(n, c))) found.push('local');
+    if (proj?.mcpServers && matches(proj.mcpServers)) found.push('local');
   }
   const projectMcp = readJsonObject(path.join(ctx.cwd, '.mcp.json'));
-  if (projectMcp?.mcpServers && Object.entries(projectMcp.mcpServers).some(([n, c]) => isUnlockServer(n, c))) found.push('project');
+  if (projectMcp?.mcpServers && matches(projectMcp.mcpServers)) found.push('project');
   return [...new Set(found)];
 }
 
@@ -112,14 +129,23 @@ export async function runDoctor({ ctx, offline = false, now = Date.now() }) {
   }
   add('settings', 'trust', 'ok', 'Nhắc: trong phiên tương tác, hook chỉ chạy sau khi bạn tin cậy thư mục (workspace trust).');
 
-  // MCP.
-  const mcp = mcpLocations(ctx);
-  add('connection', 'mcp', mcp.length ? 'ok' : 'warn', mcp.length ? `MCP ai-unlocked đã cấu hình (${mcp.join(', ')})` : 'chưa thấy MCP ai-unlocked; chạy: claude mcp add --transport http ai-unlocked https://unlock.zuey.me/mcp --scope user');
-
-  // Credentials and server.
+  // Credentials, read first so the MCP hint below names the configured server.
   const paths = configPaths(ctx);
   const state = readState(paths);
   const creds = readCredentials(paths, ctx.env);
+  let server = creds?.server;
+  /** @type {string | null} */
+  let serverError = null;
+  if (!server) { try { server = serverFromEnv(ctx); } catch (err) { serverError = err.message; } }
+  /** @type {string | null} */
+  let serverOrigin = null;
+  if (server) { try { serverOrigin = new URL(server).origin; } catch { /* reported by the server check below */ } }
+
+  // MCP.
+  const mcp = mcpLocations(ctx, serverOrigin);
+  add('connection', 'mcp', mcp.length ? 'ok' : 'warn', mcp.length ? `MCP ai-unlocked đã cấu hình (${mcp.join(', ')})` : `chưa thấy MCP ai-unlocked; chạy: ${mcpAddCommand(serverOrigin)}`);
+
+  // Credentials and server.
   if (!creds) add('connection', 'credentials', 'warn', 'chưa ghép nối thiết bị (ai-tutor đang tắt).');
   else {
     add('connection', 'credentials', 'ok', `token ${maskToken(creds.token)} (${creds.source === 'env' ? 'biến môi trường' : 'credentials.json'})`);
@@ -130,8 +156,7 @@ export async function runDoctor({ ctx, offline = false, now = Date.now() }) {
   }
   if (state.credentialsInvalid) add('connection', 'credentials', 'fail', 'máy chủ đã từ chối token (401); chạy lại pair.');
 
-  let server = creds?.server;
-  if (!server) { try { server = serverFromEnv(ctx); } catch (err) { add('connection', 'server', 'fail', err.message); } }
+  if (serverError) add('connection', 'server', 'fail', serverError);
   if (!offline && server) {
     const manifest = await getSkillManifest(server);
     if (manifest.status === 200 && typeof manifest.body?.version === 'string') {
