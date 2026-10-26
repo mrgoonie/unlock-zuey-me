@@ -1,0 +1,123 @@
+---
+/**
+ * /skill: Vietnamese docs for the ai-unlocked Claude Code skill (what it does, what ai-tutor collects, consent,
+ * install and uninstall). Plain 404 while INSIGHTS_MODE is off, like every other insights surface.
+ */
+import AppLayout from '../../layouts/AppLayout.astro';
+import AdminNotFound from '../../components/admin/AdminNotFound.astro';
+import { skillRoutesEnabled } from '../../lib/skill/skill-routes';
+import { SKILL_FILES } from '../../lib/skill/skill-bundle';
+import { siteOrigin } from '../../lib/insights/device-pairing';
+
+const enabled = skillRoutesEnabled(Astro.locals.runtime.env);
+if (!enabled) Astro.response.status = 404;
+
+const origin = siteOrigin(Astro.locals.runtime.env, Astro.request);
+let version = '';
+try {
+  version = (JSON.parse(SKILL_FILES.get('manifest.json') ?? '{}') as { version?: string }).version ?? '';
+} catch {
+  version = '';
+}
+const agentPrompt = `Cài skill AI Unlocked từ ${origin}/skill cho Claude Code (phạm vi user). Hỏi mình trước mỗi bước thay đổi cài đặt.`;
+const installCommand = `curl -fsSL ${origin}/skill/install.mjs | node - --scope user`;
+const cli = 'node ~/.claude/skills/ai-unlocked/scripts/ai-unlocked.mjs';
+const section = 'card flex flex-col gap-3';
+const code = 'block overflow-x-auto rounded-xl bg-line/40 px-3 py-2 text-sm font-mono whitespace-pre';
+---
+{enabled ? (
+  <AppLayout title="AI Unlocked cho Claude Code" description="Cài skill AI Unlocked cho Claude Code: kết nối MCP và (tuỳ chọn) ai-tutor.">
+    <h1 class="text-2xl font-bold mt-2">AI Unlocked cho Claude Code</h1>
+    <p class="mt-2 text-ink-muted">
+      Skill <code>ai-unlocked</code>{version && ` v${version}`} giúp Claude Code kết nối với AI Unlocked để bạn học bằng nhiệm vụ thật ngay trong
+      terminal. Phần ai-tutor là tuỳ chọn và chỉ bật khi bạn đồng ý.
+    </p>
+
+    <div class="mt-4 flex flex-col gap-4">
+      <section class={section} aria-labelledby="s-what">
+        <h2 id="s-what" class="text-lg font-semibold">Skill làm gì?</h2>
+        <ul class="list-disc pl-5 flex flex-col gap-1">
+          <li>Hướng dẫn Claude Code kết nối máy chủ MCP của AI Unlocked (đăng nhập bằng tài khoản zuey.me).</li>
+          <li>Giúp bạn chọn nhiệm vụ, xin gợi ý từng bậc và nộp bài do chính bạn làm.</li>
+          <li>
+            Tuỳ chọn: cài <strong>ai-tutor</strong>, một hook nhỏ gửi bản tóm lược đã che thông tin nhạy cảm sau mỗi lượt trò chuyện tới
+            bộ phân tích nền ai-tutor trên máy chủ. Bạn đọc báo cáo ở trang Insights.
+          </li>
+        </ul>
+      </section>
+
+      <section class={section} aria-labelledby="s-install">
+        <h2 id="s-install" class="text-lg font-semibold">Cài đặt</h2>
+        <p>Cách dễ nhất: dán câu này vào Claude Code.</p>
+        <code class={code}>{agentPrompt}</code>
+        <p>Hoặc tự chạy trong terminal (cần Node 18 trở lên):</p>
+        <code class={code}>{installCommand}</code>
+        <p class="text-sm text-ink-muted">
+          Trình cài đặt tải từng file theo <a class="underline" href="/skill/manifest.json">manifest</a>, kiểm tra mã sha256 rồi mới chép vào
+          <code>~/.claude/skills/ai-unlocked</code>. Nó không sửa cài đặt Claude Code. Muốn chỉ dùng trong một dự án, thay
+          <code>--scope user</code> bằng <code>--scope project</code>.
+        </p>
+        <p>Sau đó kết nối MCP rồi gõ <code>/mcp</code> trong Claude Code để đăng nhập:</p>
+        <code class={code}>{`claude mcp add --transport http ai-unlocked ${origin}/mcp --scope user`}</code>
+      </section>
+
+      <section class={section} aria-labelledby="s-data">
+        <h2 id="s-data" class="text-lg font-semibold">ai-tutor thu thập gì?</h2>
+        <p><strong>Được gửi</strong> (chỉ khi bạn đã bật):</p>
+        <ul class="list-disc pl-5 flex flex-col gap-1">
+          <li>Câu hỏi gần nhất bạn gõ và câu trả lời cuối của Claude trong lượt đó.</li>
+          <li>Tên các công cụ đã dùng (không kèm tham số hay kết quả) và nhiệm vụ AI Unlocked liên quan nếu có.</li>
+        </ul>
+        <p><strong>Không bao giờ gửi:</strong></p>
+        <ul class="list-disc pl-5 flex flex-col gap-1">
+          <li>Suy luận ẩn của mô hình, nội dung file, thư mục đang làm việc, tham số và kết quả công cụ.</li>
+          <li>
+            Khoá API, token, mật khẩu, email, số điện thoại, số CCCD, số thẻ, đường dẫn thư mục nhà: được che ngay trên máy bạn và che thêm lần
+            nữa trên máy chủ.
+          </li>
+        </ul>
+        <p class="text-sm text-ink-muted">
+          Báo cáo được giữ 90 ngày; dữ liệu chờ phân tích bị xoá khi xử lý xong. Bạn có thể xuất hoặc xoá toàn bộ trong Cài đặt.
+        </p>
+      </section>
+
+      <section class={section} aria-labelledby="s-consent">
+        <h2 id="s-consent" class="text-lg font-semibold">Đồng ý và quyền kiểm soát</h2>
+        <ol class="list-decimal pl-5 flex flex-col gap-1">
+          <li>Bật <strong>Phân tích</strong> trong <a class="underline" href="/settings">Cài đặt</a>. Chưa bật thì máy chủ không lưu gì.</li>
+          <li>Cho phép Claude Code ghép nối thiết bị: terminal hiện một mã, bạn xác nhận mã đó trên web khi đã đăng nhập. Token không đi qua khung chat.</li>
+          <li>Cho phép cài hook. Claude Code sẽ hỏi bạn trước và có thể cho xem trước thay đổi (<code>--dry-run</code>).</li>
+        </ol>
+        <p>
+          Hook không bao giờ chặn hay kéo dài phiên làm việc. Khi tạm dừng, chưa ghép nối hoặc bạn đã tắt đồng ý, nó không đọc hội thoại và không
+          gửi gì. Từ chối ai-tutor không ảnh hưởng tới việc học hay MCP.
+        </p>
+      </section>
+
+      <section class={section} aria-labelledby="s-manage">
+        <h2 id="s-manage" class="text-lg font-semibold">Tạm dừng và gỡ cài đặt</h2>
+        <code class={code}>{`${cli} pause        # tạm dừng
+${cli} resume       # bật lại
+${cli} doctor       # kiểm tra
+${cli} hook uninstall --scope all
+${cli} uninstall --purge   # gỡ hết và thu hồi thiết bị`}</code>
+        <p class="text-sm text-ink-muted">
+          Gỡ cài đặt chỉ xoá đúng mục hook của AI Unlocked; hook của ứng dụng khác trong <code>settings.json</code> được giữ nguyên.
+        </p>
+      </section>
+
+      <section class={section} aria-labelledby="s-other">
+        <h2 id="s-other" class="text-lg font-semibold">Công cụ AI khác</h2>
+        <p>
+          Cursor, Codex, Gemini CLI và các công cụ khác dùng được AI Unlocked qua MCP (<code>{`${origin}/mcp`}</code>). ai-tutor hiện chỉ có cho
+          Claude Code.
+        </p>
+      </section>
+    </div>
+  </AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy">
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <AdminNotFound />
+  </AppLayout>
+)}

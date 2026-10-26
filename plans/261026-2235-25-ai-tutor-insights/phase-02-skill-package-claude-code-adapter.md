@@ -1,6 +1,6 @@
 # Phase 2: Skill package, Claude Code adapter, site distribution
 
-Effort 11h · Depends on: 0 (contract and `redact.mjs`) · Parallel with: 1, 3, 4, 5 (codes against `docs/insights-ingest-contract.md`; a mock server in tests) · Status: pending
+Effort 11h · Depends on: 0 (contract and `redact.mjs`) · Parallel with: 1, 3, 4, 5 (codes against `docs/insights-ingest-contract.md`; a mock server in tests) · Status: completed (manual Claude Code session check pending)
 
 ## Context: verified Claude Code facts (fetched 2026-10-26)
 

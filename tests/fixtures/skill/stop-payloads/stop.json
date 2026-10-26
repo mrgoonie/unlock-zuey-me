@@ -1,0 +1,13 @@
+{
+  "session_id": "5f0c2b9e-1111-4222-8333-944455556666",
+  "prompt_id": "prompt-2",
+  "transcript_path": "TRANSCRIPT_PATH",
+  "cwd": "/Users/learner/projects/demo",
+  "permission_mode": "default",
+  "effort": "medium",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Đã bắt đầu nhiệm vụ plan-weekend cho bạn. Liên hệ hoc.vien@example.com nếu cần.",
+  "background_tasks": [],
+  "session_crons": []
+}

@@ -1,0 +1,4 @@
+{
+  // comments are not allowed in Claude Code settings files
+  "model": "claude-sonnet-5",
+}
