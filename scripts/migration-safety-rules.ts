@@ -35,6 +35,17 @@ interface Statement {
   line: number;
 }
 
+/**
+ * A quoted identifier ("t", `t`, [t]) becomes the bare word `qid_<name>` (non-word characters replaced), so
+ * table names stay comparable while keywords inside the quotes can never match. Bare and quoted spellings of
+ * the same table compare equal through `tableKey`.
+ */
+const QUOTED_PREFIX = 'qid_';
+const quotedIdentifier = (raw: string) => `${QUOTED_PREFIX}${raw.replace(/\W/g, '_') || '_'}`;
+const tableKey = (name: string) => name.toLowerCase().replace(/^qid_/, '');
+/** A table name as it appears after `ON` / `TABLE`, optionally schema-qualified (`main.t`). */
+const TABLE_NAME = String.raw`(?:\w+\s*\.\s*)?(\w+)`;
+
 const MARKER = /migration-allow:\s*(destructive|data-change|constraint)\b\s*(.*)$/i;
 /** A reason must say something; "ok" or "x" does not explain why the old worker is safe. */
 const MIN_REASON_LENGTH = 10;
@@ -81,7 +92,8 @@ export function splitStatements(sql: string): Statement[] {
       i = stop - 1;
       code += ' ';
     } else if (c === "'" || c === '"' || c === '`' || c === '[') {
-      // String literal or quoted identifier: keep the quotes, blank the contents ('' escapes stay inside).
+      // String literal: keep the quotes, blank the contents ('' escapes stay inside). Quoted identifier: a bare
+      // `qid_` word, so the guard still sees which table a statement touches.
       const close = c === '[' ? ']' : c;
       let j = i + 1;
       for (; j < sql.length; j++) {
@@ -94,7 +106,7 @@ export function splitStatements(sql: string): Statement[] {
           break;
         }
       }
-      addCode(c === "'" ? "''" : `${c}x${close}`);
+      addCode(c === "'" ? "''" : quotedIdentifier(sql.slice(i + 1, j).split(close + close).join(close)));
       i = j;
     } else if (c === ';') {
       const text = code.replace(/\s+/g, ' ').trim();
@@ -113,8 +125,8 @@ export function splitStatements(sql: string): Statement[] {
 function createdTables(statements: Statement[]): Set<string> {
   const names = new Set<string>();
   for (const s of statements) {
-    const m = /^CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i.exec(s.code);
-    if (m) names.add(m[1].toLowerCase());
+    const m = new RegExp(String.raw`^CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?${TABLE_NAME}`, 'i').exec(s.code);
+    if (m) names.add(tableKey(m[1]));
   }
   return names;
 }
@@ -133,12 +145,12 @@ export function classify(code: string, newTables: Set<string> = new Set()): { ki
   if (/^(WITH\b.*?\b)?(UPDATE|DELETE|REPLACE)\b/i.test(code) || /^INSERT\s+OR\s+REPLACE\b/i.test(code)) {
     return { kind: 'data-change', message: 'rewrites existing rows while the previous worker is still serving' };
   }
-  const unique = /^CREATE\s+UNIQUE\s+INDEX\b.*?\bON\s+(\w+)/i.exec(code);
-  if (unique && !newTables.has(unique[1].toLowerCase())) {
+  const unique = new RegExp(String.raw`^CREATE\s+UNIQUE\s+INDEX\b.*?\bON\s+${TABLE_NAME}`, 'i').exec(code);
+  if (unique && !newTables.has(tableKey(unique[1]))) {
     return { kind: 'constraint', message: 'a unique index on an existing table can reject writes of the previous worker' };
   }
-  const trigger = /^CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?TRIGGER\b.*?\bON\s+(\w+)/i.exec(code);
-  if (trigger && !newTables.has(trigger[1].toLowerCase())) {
+  const trigger = new RegExp(String.raw`^CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?TRIGGER\b.*?\bON\s+${TABLE_NAME}`, 'i').exec(code);
+  if (trigger && !newTables.has(tableKey(trigger[1]))) {
     return { kind: 'constraint', message: 'a trigger on an existing table changes what writes of the previous worker do' };
   }
   return null;

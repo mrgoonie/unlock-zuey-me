@@ -47,6 +47,19 @@ describe('migration safety check', () => {
       CREATE TABLE "update" (id TEXT, note TEXT DEFAULT 'it''s; DROP TABLE x');`)).toEqual([]);
   });
 
+  it('flags unique indexes and triggers on existing tables whatever the quoting', () => {
+    for (const name of ['"learners"', '`learners`', '[learners]', 'main."learners"', '"my table"']) {
+      expect(kinds(`CREATE UNIQUE INDEX ux ON ${name} (email);`)).toEqual(['constraint']);
+      expect(kinds(`CREATE TRIGGER trg AFTER INSERT ON ${name} BEGIN SELECT 1; END;`)).toEqual(['constraint']);
+    }
+    // A table created in the same file is still exempt, whether it is quoted at creation, at use, or both.
+    expect(kinds(`CREATE TABLE "fresh" (id TEXT); CREATE UNIQUE INDEX ux ON fresh (id);`)).toEqual([]);
+    expect(kinds(`CREATE TABLE fresh (id TEXT); CREATE UNIQUE INDEX ux ON "Fresh" (id);`)).toEqual([]);
+    expect(kinds(`CREATE TABLE "my table" (id TEXT); CREATE TRIGGER t AFTER INSERT ON [my table] BEGIN SELECT 1; END;`)).toEqual([]);
+    // Keywords inside a quoted column name still never match.
+    expect(kinds(`ALTER TABLE learners ADD COLUMN "drop" TEXT;`)).toEqual([]);
+  });
+
   it('reports the line where the statement starts', () => {
     expect(check('CREATE TABLE a (id TEXT);\n\n-- tidy up\nDELETE\n FROM sessions;')[0]).toMatchObject({ line: 4, kind: 'data-change' });
   });
