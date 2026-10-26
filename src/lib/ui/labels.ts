@@ -37,11 +37,6 @@ export const CONCEPT_LAYER_LABEL: Record<Concept['layer'], { name: string; hint:
   'current-fact': { name: 'Thông tin thời điểm', hint: 'Có thể thay đổi nhanh, nên kiểm tra lại' },
 };
 
-export const LAB_LABEL: Record<NonNullable<Concept['lab']>, { name: string; emoji: string; tagline: string }> = {
-  'token-predictor': { name: 'Máy đoán chữ', emoji: '🔮', tagline: 'AI “đoán từ tiếp theo” thế nào?' },
-  'context-lab': { name: 'Phòng thí nghiệm ngữ cảnh', emoji: '🧠', tagline: 'AI nhớ được gì trong một cuộc trò chuyện?' },
-  'hallucination-detective': { name: 'Thám tử ảo giác', emoji: '🕵️', tagline: 'Bắt lỗi khi AI bịa thông tin' },
-};
 
 export const ONBOARDING_QUESTIONS = {
   goal: {
