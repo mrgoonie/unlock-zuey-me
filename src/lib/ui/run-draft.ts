@@ -3,6 +3,7 @@
  * fields), merging them over a newer server run after a 409, and a stable idempotency key per submit attempt.
  * Kept free of React/DOM so it is unit-tested directly (tests/unit/ui-run-draft.test.ts).
  */
+import { lockedFieldIds } from '../learning/reveal-keys';
 import type { Answers, HintResult, MissionRun } from '../learning/types';
 
 export type AnswerValue = Answers[string][string];
@@ -140,9 +141,15 @@ export function removeDraft(runId: string, storage: Storage | undefined = global
   }
 }
 
-/** Initial draft on load: server answers plus any unsaved local edits from a previous visit. */
+/**
+ * Initial draft on load: server answers plus any unsaved local edits from a previous visit. Fields locked by
+ * a reveal (possibly made on another device) always take the server value: the server refuses to change
+ * them, and the shown choice/verdict must match the revealed answer.
+ */
 export function restoreDraft(run: MissionRun, local: RunDraft | null): RunDraft {
-  const base: RunDraft = local ?? emptyDraft(run.id, run.missionId);
+  let base: RunDraft = local ?? emptyDraft(run.id, run.missionId);
+  const revealed = Array.isArray(run.revealed) ? run.revealed : [];
+  for (const stepId of Object.keys(base.dirty)) base = clearDirtyFields(base, stepId, lockedFieldIds(revealed, stepId));
   const merged = mergeServerRun({ ...base, missionId: run.missionId }, run);
   return { ...merged, confidence: merged.confidence ?? run.confidence };
 }

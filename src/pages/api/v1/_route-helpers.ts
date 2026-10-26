@@ -13,7 +13,7 @@ export type LearnerHandler = (ctx: APIContext, learner: LearnerContext, deps: Le
 
 export function errorResponse(err: unknown): Response {
   if (err instanceof RunConflictError) return json({ error: { code: 'conflict', message: err.message }, run: err.run }, 409);
-  if (err instanceof RevealedAnswerLockedError) return json({ error: { code: 'forbidden', message: err.message }, run: err.run }, 403);
+  if (err instanceof RevealedAnswerLockedError) return json({ error: { code: err.apiCode, message: err.message }, run: err.run }, 403);
   return toErrorResponse(err);
 }
 

@@ -121,7 +121,7 @@ describe('server-recorded reveals (spot-the-ai-mistake)', () => {
     })).rejects.toMatchObject({ code: 'forbidden' });
   });
 
-  it('maps a locked-answer refusal to 403 with the current run', async () => {
+  it('maps a locked-answer refusal to 403 answer_locked with the current run', async () => {
     const run = await startMission(deps, alice, 'spot-the-ai-mistake', 'web');
     const saved = await saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: { 'q-link': 'trust' }, rev: 0 });
     const { run: after } = await revealAnswer(deps, alice, run.id, { stepId: 'source-quiz', itemId: 'q-link' });
@@ -129,7 +129,8 @@ describe('server-recorded reveals (spot-the-ai-mistake)', () => {
     const res = errorResponse(err);
     expect(res.status).toBe(403);
     const body = await res.json() as { error: { code: string }; run: { id: string; rev: number } };
-    expect(body.error.code).toBe('forbidden');
+    // A dedicated code: the client runs its lock recovery only for this, never for a generic 403.
+    expect(body.error.code).toBe('answer_locked');
     expect(body.run).toMatchObject({ id: run.id, rev: saved.rev + 1 });
   });
 

@@ -8,8 +8,12 @@
 
 /** Wall-clock budget for all jobs of one tick; well under the 15-minute cron interval so ticks never overlap. */
 export const CRON_TIME_BUDGET_MS = 8 * 60_000;
-/** Subrequests all jobs of one tick may use, with headroom under the Workers 10k per-invocation limit. */
-export const CRON_SUBREQUEST_BUDGET = 9_000;
+/**
+ * Subrequests (D1 queries/batches, KV, R2, push calls) all jobs of one tick may use. Cloudflare allows at
+ * most 1,000 D1 queries per Worker invocation, and every job of a tick shares that invocation, so the
+ * budget keeps the total under 1,000 with headroom for estimates that undercount.
+ */
+export const CRON_SUBREQUEST_BUDGET = 900;
 
 export interface CronBudget {
   /** Records `n` subrequests as used. */

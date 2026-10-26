@@ -8,12 +8,17 @@ import type {
   AnswerKey, AnswerKeyEntry, Answers, Evaluation, HintResult, LearnerContext, LearnerProfile, MissionListItem, MissionRun, SubmitResult,
 } from '../learning/types';
 
+/**
+ * `answer_locked` (403) is sent only when a write changes an answer whose key was revealed; any other 403,
+ * including a non-JSON one from an edge WAF/bot challenge, maps to the generic `forbidden`.
+ */
 export type ApiErrorCode =
-  | 'unauthorized' | 'forbidden' | 'not_found' | 'conflict' | 'invalid'
+  | 'unauthorized' | 'forbidden' | 'answer_locked' | 'not_found' | 'conflict' | 'invalid'
   | 'rate_limited' | 'budget_exceeded' | 'unavailable' | 'internal' | 'network';
 
 const KNOWN_CODES = new Set<ApiErrorCode>([
-  'unauthorized', 'forbidden', 'not_found', 'conflict', 'invalid', 'rate_limited', 'budget_exceeded', 'unavailable', 'internal',
+  'unauthorized', 'forbidden', 'answer_locked', 'not_found', 'conflict', 'invalid', 'rate_limited', 'budget_exceeded',
+  'unavailable', 'internal',
 ]);
 
 /** Friendly Vietnamese fallback copy when the server sent no message (or we never reached it). */
@@ -21,6 +26,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   // 'network' also covers timeouts: the outcome is unknown, so retrying (same idempotency key) is safe.
   unauthorized: 'Phiên đăng nhập đã hết. Hãy tải lại trang.',
   forbidden: 'Bạn chưa thể làm việc này.',
+  answer_locked: 'Bạn đã xem đáp án câu này nên không đổi câu trả lời được nữa.',
   not_found: 'Không tìm thấy nội dung này.',
   conflict: 'Dữ liệu vừa được cập nhật ở nơi khác.',
   invalid: 'Thông tin gửi lên chưa hợp lệ.',

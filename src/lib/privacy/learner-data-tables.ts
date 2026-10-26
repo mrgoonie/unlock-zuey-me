@@ -38,6 +38,15 @@ export const LEARNER_TABLES: LearnerTable[] = [
   { table: 'login_requests', column: 'learner_id', omitFromExport: ['code_verifier', 'state', 'oauth_request_json'] },
 ];
 
+/**
+ * Tables whose rows belong to the learner through one of their runs (`column` holds a mission_runs id; there
+ * is no learner column). The export reads them via the runs of the learner and merged guests; delete and
+ * guest cleanup need no entry because deleting a run cascades to them (ON DELETE CASCADE).
+ */
+export const RUN_OWNED_TABLES: LearnerTable[] = [
+  { table: 'run_hints', column: 'run_id' },
+];
+
 /** R2 prefix under which the engine stores a learner's evidence images. */
 export const evidencePrefix = (learnerId: string) => `ev/${learnerId}/`;
 

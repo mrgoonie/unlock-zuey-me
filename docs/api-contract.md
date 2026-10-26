@@ -4,7 +4,7 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 
 ## Conventions
 
-- JSON in and out. Errors are `{ "error": { "code", "message" } }`. Codes: `unauthorized` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `invalid` 400, `rate_limited` / `budget_exceeded` 429, `unavailable` 503, `internal` 500.
+- JSON in and out. Errors are `{ "error": { "code", "message" } }`. Codes: `unauthorized` 401, `forbidden` 403, `answer_locked` 403 (only for a write that changes a revealed answer, see `reveal` below), `not_found` 404, `conflict` 409, `invalid` 400, `rate_limited` / `budget_exceeded` 429, `unavailable` 503, `internal` 500.
 - Throttles (`src/lib/identity/request-rate-limits.ts`, Workers Rate Limiting bindings in `wrangler.jsonc`): new guests per IP; `coach/chat`, `runs/:id/hints`, `runs/:id/submit`, `evidence/upload` per IP; `events`, `labs/:id/result`, `missions/:id/start`, `push/subscribe` per IP and per learner. Over the limit → `rate_limited` 429. AI budgets (per learner and global USD for OpenRouter, per learner and global daily request caps for Workers AI) live in `src/lib/coach/ai-usage.ts`.
 - Learner identity comes from `Astro.locals.learner` (`LearnerContext`). The middleware (identity module) guarantees it is set for `/api/v1/**` and every learner page by creating a guest learner + cookie session on first visit. It is **not** created for `/`, `/api/health`, `/certificates/*`, `/oauth/*`, `/mcp`, static assets.
 - State-changing requests (`POST/PATCH/PUT/DELETE` under `/api/v1`) must be same-origin; the middleware rejects a foreign `Origin` with 403.
@@ -22,7 +22,7 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 | `GET /api/v1/runs/:id` | – | `{ run, mission: LearnerMission, evaluation: Evaluation \| null, answerKey: AnswerKey }` |
 | `PATCH /api/v1/runs/:id/answers` | `{ stepId, answers, currentStep?, rev }` | `{ run }`; `409 conflict` with `{ error, run }` when `rev` is stale |
 | `POST /api/v1/runs/:id/hints` | `{ stepId, level: 1..4 }` | `HintResult`; charged once per (run, step, level): a retry returns the stored hint (the authored static hint while the first request is still generating or when the AI fails). Worst case ~45 s; the browser waits 55 s |
-| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards: `PATCH …/answers` or submit changing it gets `403 { error, run }` with the current run |
+| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards: `PATCH …/answers` or submit changing it gets `403 { error: { code: "answer_locked", message }, run }` with the current run. The browser restores locked fields only on exactly this code with a valid `run`; any other 403 (generic `forbidden`, non-JSON from the edge) keeps every local edit and is reported as an unsaved save (`src/lib/ui/autosave-queue.ts`). MCP tools report the same refusal as `forbidden` |
 | `POST /api/v1/runs/:id/submit` | `{ idempotencyKey, confidence?: 0..100, imageKeys?: string[] }` | `SubmitResult & { answerKey }` |
 | `POST /api/v1/evidence/upload` | multipart `file` (image ≤ 5 MB) | `{ key }` |
 | `GET /api/v1/evidence/:key` | – | image bytes (owner, or admin observer with consent) |
@@ -63,7 +63,7 @@ Rewards rules: XP only from a **passed** evaluation, once per learner per missio
 | `GET /api/v1/push/public-key` | `{ key }` (VAPID public key; 503 when not configured) |
 | `POST /api/v1/push/opened` | `{ tag?, url? }` sent by `public/sw.js` on notification click → `push.opened` event |
 | `PATCH /api/v1/me/consent` | `{ observer: boolean }` → `{ observerConsent }` (emits `consent.granted` / `consent.revoked` on change) |
-| `GET /api/v1/me/export` | JSON download of all the learner's data (credentials such as token hashes and push keys omitted). Bounded per table and in total; tables cut off are listed in `continuation` with a `?table=<name>&after=<n>` URL returning the next page (`{ rows, next }`) |
+| `GET /api/v1/me/export` | JSON download of all the learner's data, incl. tables owned through their runs such as `run_hints` (credentials such as token hashes and push keys omitted). Bounded per table and in total; tables cut off are listed in `continuation` with a `?table=<name>&after=<n>` URL returning the next page (`{ rows, next }`) |
 | `POST /api/v1/me/delete` | `{ confirm: "XOA" }` deletes the learner's rows (incl. merged guests) and R2 `ev/<learnerId>/*`, expires cookies; idempotent |
 | `GET /api/v1/admin/learners` | admin only; learners with consent |
 | `GET /api/v1/admin/learners/:id` | admin only; timeline (first page), funnel, hints, scores, calibration, competencies, first win, evidence, coach chats (consent required, checked per request) |
@@ -72,5 +72,7 @@ Rewards rules: XP only from a **passed** evaluation, once per learner per missio
 Non-admins get `404 not_found` from every admin route and page (never 403). A learner without `observer_consent = 1` is `not_found` for admins too. Evidence images on `/admin` load from `GET /api/v1/evidence/<key>` with each `/`-separated key segment URL-encoded.
 
 Push reminder cron (`src/lib/push/reminder-job.ts`): every 15 minutes, sends at most one reminder per subscription per local day when `remind_time` is in the current local quarter hour (or up to 60 minutes earlier that day, to catch up a run that hit its budget) and the learner has no `activity_days` row for that day. Due subscriptions are processed in batches until done, within a per-run time and send budget. A learner keeps at most 5 subscriptions (the least recently subscribed is replaced).
+
+All cron jobs of one tick share one Worker invocation and a subrequest budget kept under Cloudflare's 1,000 D1 queries per invocation (`src/lib/jobs/cron-budget.ts`); each job charges what it used and resumes on the next tick.
 
 Cleanup cron (`src/lib/jobs/`): guests with no runs inactive for 7 days, and guests with no progress inactive for 30 days, are erased; evidence images older than 24 h that no submission references (and whose owner has no recently touched open run) are deleted from R2. A 404/410 from the push service deletes the subscription; 5 consecutive failures disable it.

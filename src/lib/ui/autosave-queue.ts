@@ -8,10 +8,14 @@
  *
  * Rejections the queue resolves itself:
  * - 409 conflict: adopt the server run, re-apply local edits on top, save again with the new rev.
- * - 403 forbidden (an edit touches an answer whose key was already revealed, so the server locked it):
- *   adopt the server run (from the body, else refetched), restore the server value of the locked fields,
+ * - 403 `answer_locked` with the server run in the body (an edit touches an answer whose key was already
+ *   revealed, so the server locked it): adopt that run, restore the server value of the locked fields only,
  *   tell the learner calmly and keep saving the other edits. Without this the step stays dirty forever and
  *   blocks every later save and the submit.
+ *
+ * Every other failure, including a generic or non-JSON 403 (edge WAF/bot challenge, origin check), keeps all
+ * local edits dirty and reports the save as 'offline'; a refused save also gets a neutral notice. Local edits
+ * are never discarded on a signal the server did not send explicitly.
  */
 import type { Answers, MissionRun } from '../learning/types';
 import { lockedFieldIds } from '../learning/reveal-keys';
@@ -28,20 +32,32 @@ export interface SaveQueueDeps {
   currentStepId: () => string | undefined;
   save: (runId: string, input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number }) => Promise<{ run: MissionRun }>;
   onState: (s: SaveState) => void;
-  /** Current server run, used when a 403 body carries none. */
-  refetchRun?: (runId: string) => Promise<MissionRun>;
   /** Calm, learner-facing notice (e.g. a locked answer was restored). */
   onNotice?: (message: string) => void;
 }
 
 export const LOCKED_ANSWER_NOTICE = 'Câu này đã xem đáp án nên được giữ nguyên.';
+/** Neutral notice when the server refused a save for another reason: nothing local is lost. */
+export const SAVE_REFUSED_NOTICE = 'Chưa lưu được lên máy chủ. Bài làm vẫn được giữ trên máy này, bạn thử lại sau nhé.';
 
 const MAX_CONFLICT_RETRIES = 3;
+/**
+ * Lock recoveries per step in one drain. One is normally enough; a second covers a reveal made elsewhere
+ * between the two saves. After that the save is reported as failed (edits kept), never reset.
+ */
+const MAX_LOCK_RECOVERIES = 2;
 /** Safety valve against a pathological loop; real drains need one PATCH per dirty step. */
 const MAX_SAVES_PER_DRAIN = 50;
 
 export const isRun = (v: unknown): v is MissionRun =>
   !!v && typeof v === 'object' && typeof (v as MissionRun).rev === 'number' && typeof (v as MissionRun).answers === 'object';
+
+/** The server run carried by an explicit `answer_locked` 403 for `runId`; null for any other error. */
+export function lockedServerRun(e: unknown, runId: string): MissionRun | null {
+  if (!(e instanceof ApiError) || e.code !== 'answer_locked' || e.status !== 403) return null;
+  const run = (e.body as { run?: unknown } | null)?.run;
+  return isRun(run) && run.id === runId && Array.isArray(run.revealed) ? run : null;
+}
 
 export function createSaveQueue(deps: SaveQueueDeps) {
   /** Steps to PATCH even when clean (records the current step on navigation). */
@@ -53,10 +69,7 @@ export function createSaveQueue(deps: SaveQueueDeps) {
 
   async function drain(): Promise<boolean> {
     let conflicts = 0;
-    /**
-     * 403s per step in this drain: the first restores the locked fields, a second resets the whole step to
-     * the server copy, a third gives up (reported like any failed save).
-     */
+    /** Lock recoveries per step in this drain (see MAX_LOCK_RECOVERIES). */
     const lockedHits = new Map<string, number>();
     for (let i = 0; i < MAX_SAVES_PER_DRAIN; i++) {
       const draft = deps.getDraft();
@@ -84,39 +97,24 @@ export function createSaveQueue(deps: SaveQueueDeps) {
           deps.setDraft(mergeServerRun(deps.getDraft() ?? draft, server));
           continue;
         }
+        const locked = lockedServerRun(e, run.id);
         const hits = lockedHits.get(stepId) ?? 0;
-        if (e instanceof ApiError && e.code === 'forbidden' && hits < 2) {
-          const locked = await lockedServerRun(e, run.id);
-          if (locked) {
-            lockedHits.set(stepId, hits + 1);
-            const current = deps.getDraft() ?? draft;
-            const fields = hits === 0 ? lockedFieldIds(locked.revealed, stepId) : (current.dirty[stepId] ?? []);
-            if (hits > 0) forced.delete(stepId);
-            deps.setRun(locked);
-            deps.setDraft(mergeServerRun(clearDirtyFields(current, stepId, fields), locked));
-            deps.onNotice?.(LOCKED_ANSWER_NOTICE);
-            continue;
-          }
+        const fields = locked ? lockedFieldIds(locked.revealed, stepId) : [];
+        // Only the fields the server's reveals lock are replaced; every other local edit stays dirty.
+        if (locked && fields.length && hits < MAX_LOCK_RECOVERIES) {
+          lockedHits.set(stepId, hits + 1);
+          deps.setRun(locked);
+          deps.setDraft(mergeServerRun(clearDirtyFields(deps.getDraft() ?? draft, stepId, fields), locked));
+          deps.onNotice?.(LOCKED_ANSWER_NOTICE);
+          continue;
         }
+        if (e instanceof ApiError && e.status === 403) deps.onNotice?.(SAVE_REFUSED_NOTICE);
         deps.onState('offline');
         return false;
       }
     }
     deps.onState('offline');
     return false;
-  }
-
-  /** The server run for a 403: from the response body, else refetched. Null when neither is available. */
-  async function lockedServerRun(e: ApiError, runId: string): Promise<MissionRun | null> {
-    const fromBody = (e.body as { run?: unknown } | null)?.run;
-    if (isRun(fromBody)) return fromBody;
-    if (!deps.refetchRun) return null;
-    try {
-      const fetched = await deps.refetchRun(runId);
-      return isRun(fetched) ? fetched : null;
-    } catch {
-      return null;
-    }
   }
 
   /** Queue a save of everything dirty (plus `forceStepId`). Resolves true when that drain saved it all. */
