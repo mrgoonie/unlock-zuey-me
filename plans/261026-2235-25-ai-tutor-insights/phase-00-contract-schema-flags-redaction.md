@@ -248,3 +248,15 @@ Other endpoints (phase 1):
 ## Rollback
 
 Revert the phase 0 PR. The migration cannot be undone on D1, but the empty tables are harmless. Leave them and drop them in a later migration only if the feature is abandoned.
+
+## Implementation notes (contract details phases 1–5 code against)
+
+- Stage signature is `(env, budget, now) => Promise<unknown>` (`InsightsStage` in `insight-types.ts`), matching phases 1, 3 and 5. `runInsightsPipeline(env, budget, now?, stages?)` returns `InsightsPipelineResult`; stages are injectable for tests.
+- `githubIssuesMode` is also forced `off` while `INSIGHTS_MODE` is `off` (stricter than "token missing"). Tests that expect `issues` must set `INSIGHTS_MODE`.
+- Ingest error bodies are `{error:{code,message,reason}}` built by `ingestError(reason, message)`. Reasons: `unauthorized`, `consent_required`, `origin_forbidden`, `feature_off`, `invalid_payload`, `payload_too_large`, `clock_skew`, `rate_limited`, `daily_cap`, `slow_down` (`INGEST_ERROR_REASONS` maps each to status and code).
+- `ingestTurnV1Schema` is strict (unknown fields rejected at every level). `redaction.kinds` accepts any `[a-z_]{1,32}` for forward compatibility.
+- Contract helpers: `normalizeUserCode`, `sentAtWithinWindow`, `utf8Bytes`, `pairStartSchema`, `pairPollSchema`, `pairConfirmSchema`, and the `PAIR_*`, `INGEST_*` and cap constants.
+- Feature-flag constants: `ANALYSES_PER_SESSION_PER_DAY` (3), `QUEUE_RETENTION_DAYS` (7), `QUEUE_STALE_AFTER_HOURS` (48), `DAILY_ISSUE_CAP` (3).
+- `redactValue` returns `{value, count, kinds}`. Server-side it is applied to `turn` only, because the envelope hashes would match the high-entropy rule.
+- Extra test files: `insights-ingest-contract.test.ts` and `insights-pipeline-job.test.ts`. Privacy coverage of the new tables (export without `token_hash`, delete plus evidence cascade) lives in `insights-migration-schema.test.ts`.
+- Small additions beyond the schema draft: CHECKs `has_product_observation IN (0,1)`, `ai_handle IN (0,1)`, and evidence `confidence BETWEEN 0 AND 1`.

@@ -120,9 +120,11 @@ E2E (`e2e/insights.spec.ts`, phase 6): with the flag on locally, a member opens 
 
 New `docs/insights-ingest-contract.md` (phase 0). `docs/api-contract.md` gains Insights, Ingest, and Admin insights sections, and `README.md` gains a skill/insights section plus the new secrets and vars (phase 6).
 
-## Open questions (need the user)
+## Open questions (resolved by the orchestrator, 2026-10-26)
 
-1. **Aggregate basis.** Are anonymised aggregate counts (k ≥ 3) over learners with only `analysis` consent acceptable when the consent copy discloses it, or should aggregates require `share_operator` or `proposals`? Recommended default: counts only (no text) under `analysis`, disclosed. Signal text comes only from `proposals` consent.
-2. **Plugin distribution.** Should we also publish a Claude Code plugin via a `marketplace.json` in this public repo? Recommended default: not in v1. The plugin hook would be active at install without the in-skill consent step. Revisit as a skills-only plugin with no hooks.
-3. **GitHub credential type** for when it is enabled later: a fine-grained PAT (Issues: write on this repo only) or a GitHub App. Recommended default: a fine-grained PAT in `GITHUB_ISSUES_TOKEN`, rotated every 90 days. A GitHub App only if more repos are added.
-4. **Retention defaults.** Reports 90 days and queue rows 7 days (dead-letter rows 7 days with the payload nulled). Recommended: keep as written.
+1. **Aggregate basis.** Resolved: anonymised aggregate **counts only** (no text), cohort k ≥ 3, over learners with `analysis` consent. The consent copy must disclose this. Signal text comes only from learners with `proposals` consent.
+2. **Plugin distribution.** Resolved: **no Claude Code plugin in v1**. A plugin's `hooks/hooks.json` activates on install without the in-skill consent step. Revisit later as a skills-only plugin with no hooks.
+3. **GitHub credential type.** Resolved: a **fine-grained PAT** (Issues: write on this repo only) in the `GITHUB_ISSUES_TOKEN` secret, rotated every 90 days, set only when filing is enabled later. A GitHub App only if more repos are added.
+4. **Retention defaults.** Resolved: reports **90 days** (`INSIGHTS_RETENTION_DAYS`), queue rows **7 days** (dead-letter rows 7 days with the payload nulled).
+
+These decisions are also recorded in `docs/insights-ingest-contract.md` (Consents and retention, Feature flags).
