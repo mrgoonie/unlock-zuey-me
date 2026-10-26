@@ -7,11 +7,12 @@ import { purgeExpiredSessions } from '../identity/session-store';
 import { getOAuthHelpers } from './oauth-options';
 
 const CURSOR_KEY = 'oauth-purge:cursor';
-const BATCH_SIZE = 500;
+/** Grants (and then tokens) checked per run unless the caller passes a smaller batch. */
+export const OAUTH_PURGE_BATCH_SIZE = 500;
 
-export async function purgeExpiredAuthData(env: Env, now = new Date()): Promise<void> {
+export async function purgeExpiredAuthData(env: Env, now = new Date(), batchSize = OAUTH_PURGE_BATCH_SIZE): Promise<void> {
   const cursor = (await env.CACHE.get(CURSOR_KEY)) ?? undefined;
-  const result = await getOAuthHelpers(env).purgeExpiredData({ batchSize: BATCH_SIZE, cursor });
+  const result = await getOAuthHelpers(env).purgeExpiredData({ batchSize: Math.max(1, Math.floor(batchSize)), cursor });
   if (result.done || !result.cursor) await env.CACHE.delete(CURSOR_KEY);
   else await env.CACHE.put(CURSOR_KEY, result.cursor, { expirationTtl: 24 * 60 * 60 });
   await purgeExpiredLoginRequests(env.DB, now);

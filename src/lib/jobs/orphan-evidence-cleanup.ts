@@ -10,24 +10,32 @@
  *   attached to an unsent draft, and deleting it would lose the learner's work);
  * or simply when its owner no longer exists.
  *
- * The bucket is walked a few pages per run; the R2 list cursor is kept in CACHE so consecutive runs cover
- * the whole bucket, then the walk starts over.
+ * The bucket is walked a few pages per run, in key order. The last examined key is kept in CACHE and the
+ * next run lists from just after it (R2 `startAfter`), so consecutive runs cover the whole bucket, then the
+ * walk starts over. Because the position is a key rather than a page cursor, a run whose cron budget runs
+ * out in the middle of a page stops right there and the next run resumes at the following object.
  */
 import { evidenceKeyOwner } from '../learning/evidence-store';
+import { createCronBudget, type CronBudget } from './cron-budget';
 
 export const ORPHAN_MIN_AGE_HOURS = 24;
 export const OPEN_RUN_GRACE_DAYS = 7;
 /** R2 list pages (up to 1000 objects each) examined per cron run. */
 export const EVIDENCE_GC_PAGES_PER_RUN = 2;
-export const EVIDENCE_GC_CURSOR_KEY = 'evidence-gc:cursor';
+/** CACHE key holding the last examined R2 key of the current walk. */
+export const EVIDENCE_GC_POSITION_KEY = 'evidence-gc:after';
 const EVIDENCE_PREFIX = 'ev/';
 const OPEN_RUN_STATUSES = `'started','paused','awaiting_evidence','evaluating','needs_revision','evaluation_failed'`;
+/** D1 queries one owner lookup costs (learner row, submissions, open run). */
+const SUBREQUESTS_PER_OWNER = 3;
 
 export interface EvidenceGcResult {
   scanned: number;
   deleted: number;
   /** True when the walk reached the end of the bucket (the next run starts from the beginning). */
   completedPass: boolean;
+  /** True when the cron budget ran out mid-walk; the next run resumes from the saved position. */
+  deferred: boolean;
 }
 
 interface OwnerState {
@@ -60,51 +68,63 @@ async function ownerState(db: D1Database, ownerId: string, openRunSince: string)
 
 export async function deleteOrphanEvidence(
   env: Pick<Env, 'DB' | 'EVIDENCE' | 'CACHE'>, now = new Date(), pages = EVIDENCE_GC_PAGES_PER_RUN,
+  budget: CronBudget = createCronBudget(),
 ): Promise<EvidenceGcResult> {
-  const result: EvidenceGcResult = { scanned: 0, deleted: 0, completedPass: false };
+  const result: EvidenceGcResult = { scanned: 0, deleted: 0, completedPass: false, deferred: false };
+  // The position read and the final write/delete are two KV subrequests.
+  if (budget.remainingSubrequests() < 4 || budget.exhausted()) return { ...result, deferred: true };
   const uploadedBefore = now.getTime() - ORPHAN_MIN_AGE_HOURS * 60 * 60 * 1000;
   const openRunSince = new Date(now.getTime() - OPEN_RUN_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const savedCursor = (await env.CACHE.get(EVIDENCE_GC_CURSOR_KEY)) ?? undefined;
-  let cursor = savedCursor;
+  budget.charge(2);
+  const saved = (await env.CACHE.get(EVIDENCE_GC_POSITION_KEY)) ?? undefined;
+  let after = saved;
   const owners = new Map<string, OwnerState>();
 
-  for (let page = 0; page < pages; page++) {
-    let listing: R2Objects;
-    try {
-      listing = await env.EVIDENCE.list({ prefix: EVIDENCE_PREFIX, cursor, limit: 1000 });
-    } catch (err) {
-      if (!cursor) throw err;
-      // A stale cursor must not wedge the job: restart the walk next run.
-      console.warn('evidence gc: list with saved cursor failed, restarting', err instanceof Error ? err.message : err);
-      cursor = undefined;
+  walk: for (let page = 0; page < pages; page++) {
+    if (budget.exhausted()) {
+      result.deferred = true;
       break;
     }
+    budget.charge(1);
+    const listing = await env.EVIDENCE.list({ prefix: EVIDENCE_PREFIX, startAfter: after, limit: 1000 });
     const doomed: string[] = [];
-    for (const obj of listing.objects) {
-      result.scanned++;
-      if (obj.uploaded.getTime() > uploadedBefore) continue;
-      const ownerId = evidenceKeyOwner(obj.key);
-      if (!ownerId) continue; // Not an app-written key; leave it for a human.
-      let state = owners.get(ownerId);
-      if (!state) {
-        state = await ownerState(env.DB, ownerId, openRunSince);
-        owners.set(ownerId, state);
-      }
-      const orphan = state.referenced === null || (!state.referenced.has(obj.key) && !state.hasRecentOpenRun);
-      if (orphan) doomed.push(obj.key);
-    }
-    if (doomed.length > 0) {
+    const flush = async () => {
+      if (doomed.length === 0) return;
+      budget.charge(1);
       await env.EVIDENCE.delete(doomed);
       result.deleted += doomed.length;
+    };
+    for (const obj of listing.objects) {
+      const ownerId = obj.uploaded.getTime() > uploadedBefore ? null : evidenceKeyOwner(obj.key);
+      // ownerId stays null for recent uploads and for keys the app did not write (left for a human).
+      if (ownerId) {
+        let state = owners.get(ownerId);
+        if (!state) {
+          if (budget.exhausted()) {
+            // Stop before this object; `after` still points at the last one fully examined.
+            await flush();
+            result.deferred = true;
+            break walk;
+          }
+          budget.charge(SUBREQUESTS_PER_OWNER);
+          state = await ownerState(env.DB, ownerId, openRunSince);
+          owners.set(ownerId, state);
+        }
+        const orphan = state.referenced === null || (!state.referenced.has(obj.key) && !state.hasRecentOpenRun);
+        if (orphan) doomed.push(obj.key);
+      }
+      result.scanned++;
+      after = obj.key;
     }
-    cursor = listing.truncated ? listing.cursor : undefined;
-    if (!cursor) {
+    await flush();
+    if (!listing.truncated) {
       result.completedPass = true;
+      after = undefined;
       break;
     }
   }
 
-  if (cursor) await env.CACHE.put(EVIDENCE_GC_CURSOR_KEY, cursor, { expirationTtl: 7 * 24 * 60 * 60 });
-  else if (savedCursor) await env.CACHE.delete(EVIDENCE_GC_CURSOR_KEY);
+  if (after) await env.CACHE.put(EVIDENCE_GC_POSITION_KEY, after, { expirationTtl: 7 * 24 * 60 * 60 });
+  else if (saved) await env.CACHE.delete(EVIDENCE_GC_POSITION_KEY);
   return result;
 }
