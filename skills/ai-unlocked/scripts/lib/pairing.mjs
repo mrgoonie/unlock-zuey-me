@@ -3,11 +3,9 @@
 // The token goes straight into credentials.json and is never printed, so it never enters the agent chat.
 import { updateState } from './local-state.mjs';
 import { pairPoll, pairStart } from './ingest-client.mjs';
-import { INGEST_TOKEN_PATTERN } from './constants.mjs';
+import { INGEST_TOKEN_PATTERN, PAIR_DEVICE_CODE_PATTERN, PAIR_USER_CODE_PATTERN, PAIR_VERIFICATION_PATH } from './constants.mjs';
 import { writeCredentials } from './credentials.mjs';
 
-const USER_CODE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/;
-const DEVICE_CODE = /^[A-Za-z0-9_-]{43}$/;
 /** RFC 8628 §3.5: on `slow_down` the client adds 5 s to its interval. The server rejects polls < 4 s apart. */
 const SLOW_DOWN_STEP_MS = 5000;
 const MIN_INTERVAL_MS = 5000;
@@ -43,19 +41,16 @@ function startFailure(status) {
 export async function pairDevice({ paths, server, label, print, sleep = sleepMs, now = Date.now }) {
   const start = await pairStart(server, label);
   if (start.status !== 200 || !start.body) throw new PairingError(startFailure(start.status));
-  const { deviceCode, userCode, verificationUri, interval, expiresIn } = start.body;
-  // The verification page must be https (or the server's own origin, e.g. local `wrangler dev`).
-  let verifyOk = false;
-  try {
-    const u = new URL(verificationUri);
-    verifyOk = u.protocol === 'https:' || u.origin === server;
-  } catch { /* not a URL */ }
-  if (typeof deviceCode !== 'string' || !DEVICE_CODE.test(deviceCode) || typeof userCode !== 'string' || !USER_CODE.test(userCode)
-    || !verifyOk) {
+  const { deviceCode, userCode, interval, expiresIn } = start.body;
+  if (typeof deviceCode !== 'string' || !PAIR_DEVICE_CODE_PATTERN.test(deviceCode) || typeof userCode !== 'string' || !PAIR_USER_CODE_PATTERN.test(userCode)) {
     throw new PairingError('Máy chủ trả về dữ liệu ghép nối không hợp lệ.');
   }
+  // The approval page is always built from the server this CLI talks to (never a host taken from the response), so
+  // a tampered response cannot send the learner to another site. `?code=` pre-fills the code on /insights/pair.
+  const pairUrl = `${server}${PAIR_VERIFICATION_PATH}`;
   print(`Mã ghép nối: ${userCode}`);
-  print(`Mở ${verificationUri} trên trình duyệt (đã đăng nhập zuey.me), kiểm tra mã trùng khớp rồi bấm Đồng ý.`);
+  print(`Mở ${pairUrl}?code=${userCode} trên trình duyệt (đã đăng nhập zuey.me), kiểm tra mã ${userCode} trùng khớp rồi bấm Đồng ý.`);
+  print(`(Hoặc mở ${pairUrl} và nhập mã ${userCode}.)`);
   print('Đang chờ bạn xác nhận… (mã hết hạn sau 10 phút)');
 
   let waitMs = Math.max(MIN_INTERVAL_MS, Number.isInteger(interval) ? interval * 1000 : MIN_INTERVAL_MS);

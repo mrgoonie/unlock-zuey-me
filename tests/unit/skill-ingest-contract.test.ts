@@ -33,6 +33,9 @@ describe('skill constants mirror the ingest contract', () => {
     expect(skill.REDACTION_KINDS_MAX).toBe(contract.REDACTION_KINDS_MAX);
     expect(skill.INGEST_TOKEN_PATTERN.source).toBe(contract.INGEST_TOKEN_PATTERN.source);
     expect(contract.INGEST_ADAPTERS).toContain(skill.ADAPTER);
+    expect(skill.PAIR_VERIFICATION_PATH).toBe(contract.PAIR_VERIFICATION_PATH);
+    expect(skill.PAIR_USER_CODE_PATTERN.source).toBe(contract.PAIR_USER_CODE_PATTERN.source);
+    expect(skill.PAIR_DEVICE_CODE_PATTERN.source).toBe(contract.PAIR_DEVICE_CODE_PATTERN.source);
   });
 });
 

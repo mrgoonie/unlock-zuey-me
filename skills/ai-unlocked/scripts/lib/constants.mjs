@@ -40,6 +40,10 @@ export const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 export const MISSION_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
 export const RUN_ID_PATTERN = /^run_[A-Za-z0-9_-]{1,64}$/;
 export const INGEST_TOKEN_PATTERN = /^aiu_ing_[A-Za-z0-9_-]{43}$/;
+/** Device pairing (mirrors PAIR_* in src/lib/insights/ingest-contract.ts): the page the learner opens, the codes. */
+export const PAIR_VERIFICATION_PATH = '/insights/pair';
+export const PAIR_USER_CODE_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/;
+export const PAIR_DEVICE_CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 /** unlock.zuey.me MCP tools (src/lib/mcp/tools/*.ts). Only these feed `turn.platform`. */
 export const PLATFORM_MCP_TOOLS = new Set([

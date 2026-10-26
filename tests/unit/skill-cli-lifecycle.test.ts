@@ -173,7 +173,8 @@ describe('pairDevice', () => {
     const r = await pair(sleeps, lines);
     expect(r.expiresAt).toBe('2099-01-01T00:00:00.000Z');
     expect(sleeps).toEqual([5000, 5000, 10_000]);
-    expect(lines.join('\n')).toContain('ABCD-EFGH');
+    expect(lines.join('\n')).toContain(`Mã ghép nối: ABCD-EFGH`);
+    expect(lines.join('\n')).toContain(`${server.url}/insights/pair?code=ABCD-EFGH`);
     expect(lines.join('\n')).not.toContain(TEST_TOKEN);
     const credFile = configFiles(t).credentials;
     expect(JSON.parse(fs.readFileSync(credFile, 'utf8')).token).toBe(TEST_TOKEN);
@@ -200,8 +201,18 @@ describe('pairDevice', () => {
     expect(fs.existsSync(configFiles(t).credentials)).toBe(false);
   });
 
+  it('prints the approval page of the pairing server, never a host from the response', async () => {
+    server.setResponder((req) => (req.url.endsWith('/pair/start')
+      ? { ...start, body: { ...(start.body as object), verificationUri: 'https://evil.example/pair' } }
+      : { status: 200, body: { token: TEST_TOKEN, expiresAt: '2099-01-01T00:00:00.000Z' } }));
+    const lines: string[] = [];
+    await pair([], lines);
+    expect(lines.join('\n')).not.toContain('evil.example');
+    expect(lines.join('\n')).toContain(`${server.url}/insights/pair`);
+  });
+
   it('rejects malformed start data and a malformed token', async () => {
-    server.setResponder(() => ({ ...start, body: { ...(start.body as object), verificationUri: 'javascript:alert(1)' } }));
+    server.setResponder(() => ({ ...start, body: { ...(start.body as object), userCode: 'abcd-0000' } }));
     await expect(pair([])).rejects.toThrow(/không hợp lệ/);
     server.setResponder((req) => (req.url.endsWith('/pair/start') ? start : { status: 200, body: { token: 'nope' } }));
     await expect(pair([])).rejects.toThrow(/token không hợp lệ/);

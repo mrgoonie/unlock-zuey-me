@@ -1,5 +1,5 @@
 /**
- * The Stop hook must not slow a turn down: with the ingest server answering after 5 s, 40 spawned hook runs have
+ * The Stop hook must not slow a turn down: with a ~300 KB transcript and the ingest server answering after 5 s, 40 spawned hook runs have
  * p95 wall time < 250 ms (node start-up included), exit 0 and print nothing. Upload happens in the detached
  * uploader; once the server is fast again the spool drains and the lock is released.
  * SKILL_HOOK_P95_MS overrides the budget on slow CI machines.
@@ -30,7 +30,11 @@ describe('stop hook overhead', () => {
   });
 
   it(`p95 < ${P95_BUDGET_MS} ms over ${RUNS} runs with a 5 s server`, { retry: 1, timeout: 120_000 }, async () => {
-    const transcript = fixture('transcripts/claude-code-2.1.304-mission-turn.jsonl');
+    // ~300 KB transcript: earlier turns (filler) followed by the recorded mission turn.
+    const transcript = path.join(t.root, 'transcript-300kb.jsonl');
+    const filler = `${JSON.stringify({ type: 'attachment', attachment: { type: 'file', content: 'x'.repeat(1000) } })}\n`;
+    fs.writeFileSync(transcript, filler.repeat(300) + fs.readFileSync(fixture('transcripts/claude-code-2.1.304-mission-turn.jsonl'), 'utf8'));
+    expect(fs.statSync(transcript).size).toBeGreaterThan(300_000);
     const durations: number[] = [];
     for (let i = 0; i < RUNS; i++) {
       const stdin = JSON.stringify(stopPayload('stop.json', transcript, { prompt_id: `prompt-${i}`, last_assistant_message: `Lượt ${i}` }));
