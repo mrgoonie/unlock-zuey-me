@@ -23,3 +23,9 @@
 
 ## Câu hỏi chưa giải quyết
 - Không có.
+
+## Follow-up review (commit 6e4aabb)
+- M1: `openid` bắt buộc khi request có nó (checkbox disabled + server tự thêm); `profile`/`email` thiếu `openid` -> `invalid_scope`.
+- L2: copy email: "Xem địa chỉ email của bạn (và email đã được xác minh hay chưa)".
+- L4: token `/mcp` chỉ có identity scope -> 403 `insufficient_scope`.
+- `bun test` 2287 pass / 0 fail; build 0 errors / 0 warnings.
