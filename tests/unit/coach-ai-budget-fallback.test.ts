@@ -115,14 +115,14 @@ describe('global caps and concurrent reservations', () => {
     const capped = fakeEnv({ OPENROUTER_API_KEY: undefined, AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL: '3' });
     capped.AI.run.mockResolvedValue({ response: 'ok' });
     for (const learnerId of ['lrn_a', 'lrn_b', 'lrn_c']) {
-      expect((await runAi({ env: capped, now: () => NOW }, req({ learnerId }))).provider).toBe('workers-ai');
+      expect((await runAi({ env: capped, now: () => NOW }, req({ learnerId, purpose: 'grade' }))).provider).toBe('workers-ai');
     }
-    const err = await runAi({ env: capped, now: () => NOW }, req({ learnerId: 'lrn_fresh' })).catch((e) => e);
+    const err = await runAi({ env: capped, now: () => NOW }, req({ learnerId: 'lrn_fresh', purpose: 'grade' })).catch((e) => e);
     expect(err).toMatchObject({ reason: 'budget' });
     expect(capped.AI.run).toHaveBeenCalledTimes(3);
     expect((await readUsage(capped.DB, DAY, 'lrn_fresh')).global.workersAiRequests).toBe(3);
     const ev = await capped.DB.prepare(`SELECT props_json FROM events WHERE name = 'ai.budget_exceeded'`).first<{ props_json: string }>();
-    expect(JSON.parse(ev!.props_json)).toEqual({ purpose: 'chat', scope: 'workers_ai_global' });
+    expect(JSON.parse(ev!.props_json)).toEqual({ purpose: 'grade', scope: 'workers_ai_global' });
   });
 
   it('defaults the global Workers AI cap when the var is missing or malformed', () => {
@@ -165,18 +165,18 @@ describe('global caps and concurrent reservations', () => {
   it('reserves on both rows or on neither', async () => {
     const limits = { ...budgetLimits(env), perLearnerUsd: 1, globalUsd: 1 };
     await setUsage(GLOBAL_USAGE_ID, 0.9);
-    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.2, limits)).toBe(false);
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.2, limits, 'grading')).toBe(false);
     expect(await readUsage(env.DB, DAY, 'lrn_a')).toMatchObject({ learner: { reservedUsd: 0 }, global: { reservedUsd: 0 } });
-    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.1, limits)).toBe(true);
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.1, limits, 'grading')).toBe(true);
     expect(await readUsage(env.DB, DAY, 'lrn_a')).toMatchObject({ learner: { reservedUsd: 0.1 }, global: { reservedUsd: 0.1 } });
   });
 
   it('evaluates the cap check once per statement, so updating the first row cannot skip the second', async () => {
     // 0.2 fits under 0.25 before the update but would not after it; both rows must still move together.
     const limits = { ...budgetLimits(env), perLearnerUsd: 0.25, globalUsd: 5 };
-    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.2, limits)).toBe(true);
+    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.2, limits, 'grading')).toBe(true);
     expect(await readUsage(env.DB, DAY, 'lrn_b')).toMatchObject({ learner: { reservedUsd: 0.2 }, global: { reservedUsd: 0.2 } });
-    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.2, limits)).toBe(false);
+    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.2, limits, 'grading')).toBe(false);
   });
 });
 

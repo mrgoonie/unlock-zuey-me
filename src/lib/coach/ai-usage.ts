@@ -9,19 +9,31 @@
  * - Workers AI: `reserveWorkersAiCall` counts the call up front on both rows with the same conditional
  *   pattern, against the per-learner and the global daily request caps.
  * A Worker that dies mid-call leaves its reservation until the day rolls over, erring on the safe side.
+ *
+ * Grading is protected from coaching traffic: calls in the 'coaching' pool (practice chat and hints) are
+ * also tracked in the coach_* columns, and the same conditional UPDATE refuses them once the global row's
+ * coaching spend would pass `coachShare` of the global caps. Grading ('grading' pool) may use the full caps,
+ * so coaching alone can never leave grading without budget.
  */
 import {
-  DEFAULT_BUDGET_USD_GLOBAL, DEFAULT_BUDGET_USD_PER_LEARNER, DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL,
+  DEFAULT_BUDGET_USD_GLOBAL, DEFAULT_BUDGET_USD_PER_LEARNER, DEFAULT_COACH_SHARE, DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL,
   WORKERS_AI_DAILY_REQUESTS_PER_LEARNER,
 } from './ai-models';
 
 export const GLOBAL_USAGE_ID = '*';
+
+/** Which slice of the global caps a call draws from. */
+export type BudgetPool = 'grading' | 'coaching';
 
 export interface UsageTotals {
   requests: number;
   costUsd: number;
   reservedUsd: number;
   workersAiRequests: number;
+  /** The coaching part of the totals above (already included in them). */
+  coachCostUsd: number;
+  coachReservedUsd: number;
+  coachWorkersAiRequests: number;
 }
 
 export interface BudgetLimits {
@@ -29,6 +41,10 @@ export interface BudgetLimits {
   globalUsd: number;
   workersAiPerLearner: number;
   workersAiGlobal: number;
+  /** Global USD that coaching (chat + hints) may use per day: globalUsd × share. */
+  coachGlobalUsd: number;
+  /** Global Workers AI calls that coaching may use per day: floor(workersAiGlobal × share). */
+  coachWorkersAiGlobal: number;
 }
 
 const positive = (raw: string | undefined, fallback: number): number => {
@@ -36,33 +52,56 @@ const positive = (raw: string | undefined, fallback: number): number => {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 };
 
+/** Share of the global caps open to coaching, from AI_DAILY_COACH_SHARE; values outside [0, 1] use the default. */
+export function coachShare(raw: string | undefined): number {
+  const n = positive(raw, DEFAULT_COACH_SHARE);
+  return n <= 1 ? n : DEFAULT_COACH_SHARE;
+}
+
 export function budgetLimits(
-  env: Pick<Env, 'AI_DAILY_BUDGET_USD_PER_LEARNER' | 'AI_DAILY_BUDGET_USD_GLOBAL' | 'AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL'>,
+  env: Pick<Env, 'AI_DAILY_BUDGET_USD_PER_LEARNER' | 'AI_DAILY_BUDGET_USD_GLOBAL' | 'AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL' | 'AI_DAILY_COACH_SHARE'>,
 ): BudgetLimits {
+  const globalUsd = positive(env.AI_DAILY_BUDGET_USD_GLOBAL, DEFAULT_BUDGET_USD_GLOBAL);
+  const workersAiGlobal = Math.floor(positive(env.AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL, DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL));
+  const share = coachShare(env.AI_DAILY_COACH_SHARE);
   return {
     perLearnerUsd: positive(env.AI_DAILY_BUDGET_USD_PER_LEARNER, DEFAULT_BUDGET_USD_PER_LEARNER),
-    globalUsd: positive(env.AI_DAILY_BUDGET_USD_GLOBAL, DEFAULT_BUDGET_USD_GLOBAL),
+    globalUsd,
     workersAiPerLearner: WORKERS_AI_DAILY_REQUESTS_PER_LEARNER,
-    workersAiGlobal: Math.floor(positive(env.AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL, DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL)),
+    workersAiGlobal,
+    coachGlobalUsd: globalUsd * share,
+    coachWorkersAiGlobal: Math.floor(workersAiGlobal * share),
   };
 }
 
-interface UsageRow { learner_id: string; requests: number; cost_usd: number; reserved_usd: number; workers_ai_requests: number }
+interface UsageRow {
+  learner_id: string; requests: number; cost_usd: number; reserved_usd: number; workers_ai_requests: number;
+  coach_cost_usd: number; coach_reserved_usd: number; coach_workers_ai_requests: number;
+}
 
-const empty = (): UsageTotals => ({ requests: 0, costUsd: 0, reservedUsd: 0, workersAiRequests: 0 });
+const empty = (): UsageTotals => ({
+  requests: 0, costUsd: 0, reservedUsd: 0, workersAiRequests: 0, coachCostUsd: 0, coachReservedUsd: 0, coachWorkersAiRequests: 0,
+});
 
 export async function readUsage(db: D1Database, day: string, learnerId: string): Promise<{ learner: UsageTotals; global: UsageTotals }> {
   const { results } = await db.prepare(
-    'SELECT learner_id, requests, cost_usd, reserved_usd, workers_ai_requests FROM ai_usage WHERE day = ? AND learner_id IN (?, ?)',
+    `SELECT learner_id, requests, cost_usd, reserved_usd, workers_ai_requests, coach_cost_usd, coach_reserved_usd, coach_workers_ai_requests
+     FROM ai_usage WHERE day = ? AND learner_id IN (?, ?)`,
   ).bind(day, learnerId, GLOBAL_USAGE_ID).all<UsageRow>();
   const out = { learner: empty(), global: empty() };
   for (const r of results) {
-    const t = { requests: r.requests, costUsd: r.cost_usd, reservedUsd: r.reserved_usd, workersAiRequests: r.workers_ai_requests };
+    const t: UsageTotals = {
+      requests: r.requests, costUsd: r.cost_usd, reservedUsd: r.reserved_usd, workersAiRequests: r.workers_ai_requests,
+      coachCostUsd: r.coach_cost_usd, coachReservedUsd: r.coach_reserved_usd, coachWorkersAiRequests: r.coach_workers_ai_requests,
+    };
     if (r.learner_id === GLOBAL_USAGE_ID) out.global = t;
     else out.learner = t;
   }
   return out;
 }
+
+/** 1 for coaching, 0 for grading: scales the coach_* deltas and switches the share check on or off in SQL. */
+const coachFlag = (pool: BudgetPool): number => (pool === 'coaching' ? 1 : 0);
 
 const ensureRow = (db: D1Database, day: string, id: string) =>
   db.prepare('INSERT OR IGNORE INTO ai_usage (day, learner_id, requests) VALUES (?, ?, 0)').bind(day, id);
@@ -79,36 +118,49 @@ async function conditionalUpdateBothRows(db: D1Database, day: string, learnerId:
 }
 
 /**
- * Reserves `amountUsd` against both the learner's and the global daily USD caps. The cap check is an
- * uncorrelated subquery, evaluated once for the statement, so both rows move together or not at all.
+ * Reserves `amountUsd` against both the learner's and the global daily USD caps (and, for coaching, the
+ * global coaching share). The cap check is an uncorrelated subquery, evaluated once for the statement, so
+ * both rows move together or not at all.
  */
-export async function reserveUsd(db: D1Database, day: string, learnerId: string, amountUsd: number, limits: BudgetLimits): Promise<boolean> {
+export async function reserveUsd(
+  db: D1Database, day: string, learnerId: string, amountUsd: number, limits: BudgetLimits, pool: BudgetPool,
+): Promise<boolean> {
   const update = db.prepare(
-    `UPDATE ai_usage SET reserved_usd = reserved_usd + ?1
+    `UPDATE ai_usage SET reserved_usd = reserved_usd + ?1, coach_reserved_usd = coach_reserved_usd + ?1 * ?8
      WHERE day = ?2 AND learner_id IN (?3, ?4)
        AND (SELECT COUNT(*) FROM ai_usage WHERE day = ?2 AND (
-         (learner_id = ?3 AND cost_usd + reserved_usd + ?1 <= ?5) OR (learner_id = ?4 AND cost_usd + reserved_usd + ?1 <= ?6)
+         (learner_id = ?3 AND cost_usd + reserved_usd + ?1 <= ?5)
+         OR (learner_id = ?4 AND cost_usd + reserved_usd + ?1 <= ?6
+             AND (?8 = 0 OR coach_cost_usd + coach_reserved_usd + ?1 <= ?7))
        )) = 2`,
-  ).bind(amountUsd, day, learnerId, GLOBAL_USAGE_ID, limits.perLearnerUsd, limits.globalUsd);
+  ).bind(amountUsd, day, learnerId, GLOBAL_USAGE_ID, limits.perLearnerUsd, limits.globalUsd, limits.coachGlobalUsd, coachFlag(pool));
   return conditionalUpdateBothRows(db, day, learnerId, update);
 }
 
-/** Counts one Workers AI call against the per-learner and global daily caps; false when either is spent. */
-export async function reserveWorkersAiCall(db: D1Database, day: string, learnerId: string, limits: BudgetLimits): Promise<boolean> {
+/**
+ * Counts one Workers AI call against the per-learner and global daily caps (and, for coaching, the global
+ * coaching share); false when any of them is spent.
+ */
+export async function reserveWorkersAiCall(
+  db: D1Database, day: string, learnerId: string, limits: BudgetLimits, pool: BudgetPool,
+): Promise<boolean> {
   const update = db.prepare(
-    `UPDATE ai_usage SET workers_ai_requests = workers_ai_requests + 1
+    `UPDATE ai_usage SET workers_ai_requests = workers_ai_requests + 1, coach_workers_ai_requests = coach_workers_ai_requests + ?7
      WHERE day = ?1 AND learner_id IN (?2, ?3)
        AND (SELECT COUNT(*) FROM ai_usage WHERE day = ?1 AND (
-         (learner_id = ?2 AND workers_ai_requests < ?4) OR (learner_id = ?3 AND workers_ai_requests < ?5)
+         (learner_id = ?2 AND workers_ai_requests < ?4)
+         OR (learner_id = ?3 AND workers_ai_requests < ?5 AND (?7 = 0 OR coach_workers_ai_requests < ?6))
        )) = 2`,
-  ).bind(day, learnerId, GLOBAL_USAGE_ID, limits.workersAiPerLearner, limits.workersAiGlobal);
+  ).bind(day, learnerId, GLOBAL_USAGE_ID, limits.workersAiPerLearner, limits.workersAiGlobal, limits.coachWorkersAiGlobal, coachFlag(pool));
   return conditionalUpdateBothRows(db, day, learnerId, update);
 }
 
 /** Drops a reservation whose call never completed. */
-export async function releaseUsd(db: D1Database, day: string, learnerId: string, amountUsd: number): Promise<void> {
-  await db.prepare('UPDATE ai_usage SET reserved_usd = MAX(0, reserved_usd - ?) WHERE day = ? AND learner_id IN (?, ?)')
-    .bind(amountUsd, day, learnerId, GLOBAL_USAGE_ID).run();
+export async function releaseUsd(db: D1Database, day: string, learnerId: string, amountUsd: number, pool: BudgetPool): Promise<void> {
+  await db.prepare(
+    `UPDATE ai_usage SET reserved_usd = MAX(0, reserved_usd - ?1), coach_reserved_usd = MAX(0, coach_reserved_usd - ?1 * ?2)
+     WHERE day = ?3 AND learner_id IN (?4, ?5)`,
+  ).bind(amountUsd, coachFlag(pool), day, learnerId, GLOBAL_USAGE_ID).run();
 }
 
 /**
@@ -116,18 +168,20 @@ export async function releaseUsd(db: D1Database, day: string, learnerId: string,
  * reserved. Workers AI calls were already counted by `reserveWorkersAiCall`.
  */
 export async function settleUsage(
-  db: D1Database, day: string, learnerId: string,
+  db: D1Database, day: string, learnerId: string, pool: BudgetPool,
   delta: { inputTokens: number; outputTokens: number; costUsd: number; reservedUsd: number },
 ): Promise<void> {
   const upsert = (id: string) => db.prepare(
-    `INSERT INTO ai_usage (day, learner_id, requests, input_tokens, output_tokens, cost_usd)
-     VALUES (?, ?, 1, ?, ?, ?)
+    `INSERT INTO ai_usage (day, learner_id, requests, input_tokens, output_tokens, cost_usd, coach_cost_usd)
+     VALUES (?1, ?2, 1, ?3, ?4, ?5, ?5 * ?7)
      ON CONFLICT (day, learner_id) DO UPDATE SET
        requests = requests + 1,
        input_tokens = input_tokens + excluded.input_tokens,
        output_tokens = output_tokens + excluded.output_tokens,
        cost_usd = cost_usd + excluded.cost_usd,
-       reserved_usd = MAX(0, reserved_usd - ?)`,
-  ).bind(day, id, delta.inputTokens, delta.outputTokens, delta.costUsd, delta.reservedUsd);
+       coach_cost_usd = coach_cost_usd + excluded.coach_cost_usd,
+       reserved_usd = MAX(0, reserved_usd - ?6),
+       coach_reserved_usd = MAX(0, coach_reserved_usd - ?6 * ?7)`,
+  ).bind(day, id, delta.inputTokens, delta.outputTokens, delta.costUsd, delta.reservedUsd, coachFlag(pool));
   await db.batch([upsert(learnerId), upsert(GLOBAL_USAGE_ID)]);
 }

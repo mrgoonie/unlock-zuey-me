@@ -29,6 +29,8 @@ interface Env {
   AI_DAILY_BUDGET_USD_GLOBAL: string;
   /** Workers AI calls allowed per UTC day across all learners (falls back to a default when unset). */
   AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL?: string;
+  /** Share (0–1) of the global daily AI caps that practice chat and hints may use; grading may use all of it. */
+  AI_DAILY_COACH_SHARE?: string;
   VAPID_SUBJECT: string;
 
   OPENROUTER_API_KEY?: string;

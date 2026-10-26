@@ -2,6 +2,7 @@
  * One path for every model call: OpenRouter models in order (only while the learner and global daily USD
  * budgets allow), then Workers AI (capped per learner and globally per day). Budgets are reserved before
  * each call and settled after it (see ai-usage.ts), so concurrent requests cannot overshoot them.
+ * Practice chat and hints draw from a capped share of the global caps so they can never starve grading.
  * `parse` validates the raw text; a rejected output moves on to the next model just like an HTTP error.
  */
 import { recordEventSafe } from '../observer/events';
@@ -11,7 +12,7 @@ import {
 } from './ai-clients';
 import { estimateCostUsd, WORKERS_AI_TIMEOUT_MS } from './ai-models';
 import {
-  budgetLimits, readUsage, releaseUsd, reserveUsd, reserveWorkersAiCall, settleUsage, type UsageTotals,
+  budgetLimits, readUsage, releaseUsd, reserveUsd, reserveWorkersAiCall, settleUsage, type BudgetPool, type UsageTotals,
 } from './ai-usage';
 
 export interface AiDeps {
@@ -22,6 +23,9 @@ export interface AiDeps {
 }
 
 export type AiPurpose = 'grade' | 'hint' | 'chat';
+
+/** Grading may use the full global caps; practice chat and hints share the capped coaching slice. */
+export const budgetPool = (purpose: AiPurpose): BudgetPool => (purpose === 'grade' ? 'grading' : 'coaching');
 
 export interface AiRequest<T> {
   purpose: AiPurpose;
@@ -57,19 +61,24 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
   const day = utcDay(now);
   const limits = budgetLimits(env);
   const db = env.DB;
+  const pool = budgetPool(req.purpose);
   const event = (name: 'ai.budget_exceeded' | 'ai.fallback_used', props: Record<string, string>) =>
     recordEventSafe(db, { learnerId: req.learnerId, name, runId: req.runId, missionId: req.missionId, props: { purpose: req.purpose, ...props } });
   /** Which cap stopped a reservation, for the budget event (read only on the refusal path). */
-  const exceededScope = async (overGlobal: (u: UsageTotals) => boolean): Promise<'global' | 'learner'> => {
+  const exceededScope = async (
+    overGlobal: (u: UsageTotals) => boolean, overCoachShare: (u: UsageTotals) => boolean,
+  ): Promise<'global' | 'coach_share' | 'learner'> => {
     try {
-      return overGlobal((await readUsage(db, day, req.learnerId)).global) ? 'global' : 'learner';
+      const { global } = await readUsage(db, day, req.learnerId);
+      if (overGlobal(global)) return 'global';
+      return pool === 'coaching' && overCoachShare(global) ? 'coach_share' : 'learner';
     } catch {
       return 'learner';
     }
   };
   const settle = async (c: AiCompletion, reservedUsd: number) => {
     try {
-      await settleUsage(db, day, req.learnerId, {
+      await settleUsage(db, day, req.learnerId, pool, {
         inputTokens: c.inputTokens, outputTokens: c.outputTokens, costUsd: estimateCostUsd(c.model, c.inputTokens, c.outputTokens), reservedUsd,
       });
     } catch (err) {
@@ -86,7 +95,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
       const reserved = estimateCostUsd(model, inputTokens, req.maxTokens);
       let ok: boolean;
       try {
-        ok = await reserveUsd(db, day, req.learnerId, reserved, limits);
+        ok = await reserveUsd(db, day, req.learnerId, reserved, limits, pool);
       } catch (err) {
         // Without usage numbers we cannot prove we are under budget: skip paid models, still try the fallback.
         console.error('ai usage reservation failed', err);
@@ -95,7 +104,12 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
       }
       if (!ok) {
         fallbackReason = 'budget';
-        await event('ai.budget_exceeded', { scope: await exceededScope((g) => g.costUsd + g.reservedUsd + reserved > limits.globalUsd) });
+        await event('ai.budget_exceeded', {
+          scope: await exceededScope(
+            (g) => g.costUsd + g.reservedUsd + reserved > limits.globalUsd,
+            (g) => g.coachCostUsd + g.coachReservedUsd + reserved > limits.coachGlobalUsd,
+          ),
+        });
         break;
       }
       let c: AiCompletion;
@@ -107,7 +121,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
         });
       } catch (err) {
         console.warn('openrouter attempt failed', req.purpose, model, err instanceof Error ? err.message : err);
-        await releaseUsd(db, day, req.learnerId, reserved).catch((e) => console.error('ai usage release failed', e));
+        await releaseUsd(db, day, req.learnerId, reserved, pool).catch((e) => console.error('ai usage release failed', e));
         continue;
       }
       // A completed call is paid for even when its output is then rejected.
@@ -122,14 +136,17 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
 
   let allowed = true;
   try {
-    allowed = await reserveWorkersAiCall(db, day, req.learnerId, limits);
+    allowed = await reserveWorkersAiCall(db, day, req.learnerId, limits, pool);
   } catch (err) {
     // Same stance as before reservations existed: a usage-store outage must not block the fallback.
     console.error('workers ai reservation failed', err);
   }
   if (!allowed) {
-    const scope = await exceededScope((g) => g.workersAiRequests >= limits.workersAiGlobal);
-    await event('ai.budget_exceeded', { scope: scope === 'global' ? 'workers_ai_global' : 'workers_ai' });
+    const scope = await exceededScope(
+      (g) => g.workersAiRequests >= limits.workersAiGlobal,
+      (g) => g.coachWorkersAiRequests >= limits.coachWorkersAiGlobal,
+    );
+    await event('ai.budget_exceeded', { scope: scope === 'learner' ? 'workers_ai' : `workers_ai_${scope}` });
     throw new AiUnavailableError('budget');
   }
   await event('ai.fallback_used', { reason: fallbackReason, model: req.workersAiModel });

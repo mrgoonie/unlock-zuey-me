@@ -39,6 +39,8 @@
     "AI_DAILY_BUDGET_USD_GLOBAL": "5",
     // Global daily cap on Workers AI fallback calls (the per-learner cap lives in src/lib/coach/ai-models.ts).
     "AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL": "2000",
+    // Practice chat + hints may use at most this share of both global caps above; grading may use all of it.
+    "AI_DAILY_COACH_SHARE": "0.5",
     "VAPID_SUBJECT": "mailto:digitop.vn@gmail.com"
   }
   // Secrets (wrangler secret put / CI): OPENROUTER_API_KEY, SESSION_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
