@@ -1,4 +1,4 @@
-/** Picks the renderer for a step type. Every type in src/lib/content/schema.ts stepSchema is handled. */
+/** Picks the renderer for a step type. Every type of the learner-safe step view is handled. */
 import type { StepProps } from './steps/step-props';
 import AiTaskStep from './steps/AiTaskStep';
 import { PredictionStep, QuizStep } from './steps/QuizSteps';

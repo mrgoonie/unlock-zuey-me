@@ -1,6 +1,6 @@
 /** Non-success outcomes: grading in progress, needs revision (per-criterion fix links), grading failed. */
 import { forwardRef, useEffect, useState } from 'react';
-import type { Mission } from '../../lib/content/schema';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import type { Evaluation } from '../../lib/learning/types';
 import { criterionStepIndex } from '../../lib/ui/mission-steps';
 import { pct } from '../../lib/ui/labels';
@@ -29,7 +29,7 @@ export const EvaluatingView = forwardRef<HTMLHeadingElement>(function Evaluating
   );
 });
 
-export const NeedsRevisionView = forwardRef<HTMLHeadingElement, { mission: Mission; evaluation: Evaluation; onFix: (stepIndex: number) => void }>(
+export const NeedsRevisionView = forwardRef<HTMLHeadingElement, { mission: LearnerMission; evaluation: Evaluation; onFix: (stepIndex: number) => void }>(
   function NeedsRevisionView({ mission, evaluation, onFix }, ref) {
     const weak = evaluation.criteria.filter((c) => c.score < 0.7).sort((a, b) => a.score - b.score);
     const firstFix = weak.map((c) => criterionStepIndex(mission, c.id)).find((i) => i >= 0) ?? 0;

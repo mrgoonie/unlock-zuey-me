@@ -1,11 +1,13 @@
 /**
- * Runner state machine: load (start/resume run), edit answers with autosave, submit with a stable
- * idempotency key, and map the outcome to a phase the UI renders.
+ * Runner state machine: load (open run, else the latest completed result, else a new run), edit answers
+ * with autosave, reveal quiz/prediction answers on the server, submit with a stable idempotency key, map
+ * the outcome to a phase the UI renders, and "Làm lại" (explicit new run of a completed mission).
+ * Answer keys come only from the server (`answerKey`): revealed items, or all once the run is completed.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Mission } from '../../lib/content/schema';
-import type { Evaluation, MissionRun, SubmitResult } from '../../lib/learning/types';
-import { ApiError, api, friendlyMessage } from '../../lib/ui/api-client';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
+import type { AnswerKey, Evaluation, MissionRun } from '../../lib/learning/types';
+import { ApiError, api, friendlyMessage, type SubmitResponse } from '../../lib/ui/api-client';
 import { isRun } from '../../lib/ui/autosave-queue';
 import {
   clearAttempt, ensureAttemptKey, loadDraft, mergeServerRun, removeDraft, restoreDraft, saveDraft, setField, type AnswerValue, type RunDraft,
@@ -25,14 +27,15 @@ function phaseFor(run: MissionRun, evaluation: Evaluation | null): Phase {
   return 'steps';
 }
 
-export function useRunSession(missionId: string, fallbackMission: Mission) {
+export function useRunSession(missionId: string, fallbackMission: LearnerMission) {
   const [phase, setPhase] = useState<Phase>('loading');
-  const [mission, setMission] = useState<Mission>(fallbackMission);
+  const [mission, setMission] = useState<LearnerMission>(fallbackMission);
   const [run, setRunState] = useState<MissionRun | null>(null);
   const [draft, setDraftState] = useState<RunDraft | null>(null);
   const [stepIndex, setStepIndexState] = useState(0);
-  const [result, setResult] = useState<SubmitResult | null>(null);
+  const [result, setResult] = useState<SubmitResponse | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [answerKey, setAnswerKey] = useState<AnswerKey>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const runRef = useRef<MissionRun | null>(null);
@@ -45,10 +48,11 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
   const currentStepId = useCallback(() => missionRef.current.steps[stepRef.current]?.id, []);
   const autosave = useRunAutosave({ draftRef, runRef, setDraft: setDraftState, setRun, currentStepId });
 
-  const applyLoaded = useCallback((r: MissionRun, m: Mission, ev: Evaluation | null) => {
+  const applyLoaded = useCallback((r: MissionRun, m: LearnerMission, ev: Evaluation | null, key: AnswerKey) => {
     setRun(r);
     setMission(m);
     setEvaluation(ev);
+    setAnswerKey(key);
     const d = restoreDraft(r, loadDraft(r.id));
     draftRef.current = d;
     saveDraft(d);
@@ -59,18 +63,34 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
     setPhase(phaseFor(r, ev));
   }, [setRun]);
 
+  /** Opens the mission (`again`: start a new run even if it was completed) and loads the run detail. */
+  const open = useCallback(async (again: boolean) => {
+    const { run: started } = await api.startMission(missionId, { again });
+    const detail = await api.getRun(started.id).catch(() => null);
+    setResult(null);
+    applyLoaded(detail?.run ?? started, detail?.mission ?? fallbackMission, detail?.evaluation ?? null, detail?.answerKey ?? {});
+  }, [applyLoaded, fallbackMission, missionId]);
+
   const load = useCallback(async () => {
     setPhase('loading');
     setError(null);
     try {
-      const { run: started } = await api.startMission(missionId);
-      const detail = await api.getRun(started.id).catch(() => null);
-      applyLoaded(detail?.run ?? started, detail?.mission ?? fallbackMission, detail?.evaluation ?? null);
+      await open(false);
     } catch (e) {
       setError(friendlyMessage(e));
       setPhase('load_error');
     }
-  }, [applyLoaded, fallbackMission, missionId]);
+  }, [open]);
+
+  /** "Làm lại": a new run of a completed mission. Resolves to an error message, or null on success. */
+  const startAgain = useCallback(async (): Promise<string | null> => {
+    try {
+      await open(true);
+      return null;
+    } catch (e) {
+      return friendlyMessage(e);
+    }
+  }, [open]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -87,6 +107,7 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
         if (d.run.status !== 'evaluating') {
           setRun(d.run);
           setEvaluation(d.evaluation);
+          setAnswerKey(d.answerKey);
           setPhase(phaseFor(d.run, d.evaluation));
           return;
         }
@@ -117,7 +138,31 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
     if (d) autosave.schedule(setField(d, stepId, fieldId, value));
   }, [autosave]);
 
-  /** Local-only draft changes (images, confidence, hints, reveals): mirrored to localStorage. */
+  /**
+   * Reveals one quiz question / prediction on the server after saving pending edits (the server only
+   * reveals a saved answer and locks it). Resolves to an error message, or null on success.
+   */
+  const reveal = useCallback(async (stepId: string, itemId: string): Promise<string | null> => {
+    const saved = await autosave.settle();
+    const r = runRef.current;
+    if (!saved || !r) return 'Chưa lưu được câu trả lời (có thể do mạng). Bạn thử lại sau giây lát nhé.';
+    try {
+      const res = await api.reveal(r.id, stepId, itemId);
+      setRun(res.run);
+      setAnswerKey((k) => ({ ...k, [`${stepId}:${itemId}`]: res.key }));
+      return null;
+    } catch (e) {
+      const server = e instanceof ApiError && e.code === 'conflict' ? (e.body as { run?: unknown } | null)?.run : undefined;
+      if (isRun(server)) {
+        setRun(server);
+        if (draftRef.current) autosave.commitDraft(mergeServerRun(draftRef.current, server));
+        return 'Bài làm vừa được cập nhật. Bạn bấm lại một lần nữa nhé.';
+      }
+      return friendlyMessage(e);
+    }
+  }, [autosave, setRun]);
+
+  /** Local-only draft changes (images, confidence, hints): mirrored to localStorage. */
   const patchDraft = useCallback((fn: (d: RunDraft) => RunDraft) => {
     const d = draftRef.current;
     if (d) autosave.commitDraft(fn(d));
@@ -160,7 +205,7 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
     autosave.commitDraft(keyed);
     const key = keyed.attempt!.key;
     try {
-      let res: SubmitResult;
+      let res: SubmitResponse;
       try {
         res = await sendSubmit(r.id, key, keyed);
       } catch (e) {
@@ -179,6 +224,7 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
       setRun(res.run);
       setResult(res);
       setEvaluation(res.evaluation);
+      setAnswerKey(res.answerKey ?? {});
       if (res.evaluation.status === 'failed' || res.run.status === 'evaluation_failed') {
         setPhase('evaluation_failed');
         return;
@@ -201,8 +247,8 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
   }
 
   return {
-    phase, setPhase, mission, run, draft, stepIndex, result, evaluation, error,
-    saveState: autosave.saveState, submitting, load, goToStep, openReview, updateField, patchDraft, submit,
+    phase, setPhase, mission, run, draft, stepIndex, result, evaluation, answerKey, error,
+    saveState: autosave.saveState, submitting, load, startAgain, goToStep, openReview, updateField, patchDraft, reveal, submit,
   };
 }
 

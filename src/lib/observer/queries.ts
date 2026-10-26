@@ -40,9 +40,12 @@ export async function listObservedLearners(db: D1Database): Promise<ObservedLear
   return rows.results.map(toLearner);
 }
 
-/** One consenting learner, or null when the id is unknown or the learner has not consented. */
+/**
+ * One consenting learner, or null when the id is unknown, the learner has not consented, or it is a guest
+ * row merged into a member (its data now lives under the member, governed by the member's consent).
+ */
 export async function getObservedLearner(db: D1Database, learnerId: string): Promise<ObservedLearner | null> {
-  const row = await db.prepare(`${LEARNER_SELECT} WHERE l.id = ? AND ${CONSENTED_LEARNER}`).bind(learnerId).first<LearnerRow>();
+  const row = await db.prepare(`${LEARNER_SELECT} WHERE l.id = ? AND ${CONSENTED_LEARNER} AND l.merged_into IS NULL`).bind(learnerId).first<LearnerRow>();
   return row ? toLearner(row) : null;
 }
 

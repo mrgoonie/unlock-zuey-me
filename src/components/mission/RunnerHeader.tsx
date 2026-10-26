@@ -1,5 +1,5 @@
 /** Runner top bar: exit link, progress dots (current/done/todo) and the autosave status. */
-import type { Mission } from '../../lib/content/schema';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import type { SaveState } from './use-run-autosave';
 
 const SAVE_COPY: Record<SaveState, string> = {
@@ -10,7 +10,7 @@ const SAVE_COPY: Record<SaveState, string> = {
 };
 
 interface Props {
-  mission: Mission;
+  mission: LearnerMission;
   stepIndex: number;
   completed: boolean[];
   saveState: SaveState;

@@ -26,6 +26,9 @@ class Statement {
     return { results: rows.map((r) => ({ ...r })), success: true, meta: {} };
   }
   async run() {
+    return this.runSync();
+  }
+  runSync() {
     const r = this.db.prepare(this.sql).run(...this.values);
     return { success: true, results: [], meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid) } };
   }
@@ -43,12 +46,12 @@ export function createTestD1(): D1Database {
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) db.exec(readFileSync(join(dir, f), 'utf8'));
   const d1 = {
     prepare: (sql: string) => new Statement(db, sql),
-    // D1 batches are atomic; emulate with a transaction.
+    // D1 batches are atomic and never interleave with other queries; emulate with a synchronous transaction.
     batch: async (stmts: Statement[]) => {
       db.exec('BEGIN');
       try {
         const out = [];
-        for (const s of stmts) out.push(await s.run());
+        for (const s of stmts) out.push(s.runSync());
         db.exec('COMMIT');
         return out;
       } catch (e) {

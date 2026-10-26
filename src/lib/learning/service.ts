@@ -7,12 +7,15 @@
  */
 import { getMission } from '../content/loader';
 import type { Mission } from '../content/schema';
+import { revealAnswerImpl } from './answer-reveals';
 import { requestHintImpl } from './hints';
-import { getRunDetail, loadRun, saveAnswersImpl, startMissionImpl } from './mission-runs';
+import {
+  getRunDetail, loadRun, openMissionImpl, runAnswerKey, saveAnswersImpl, startMissionImpl, type RunDetail,
+} from './mission-runs';
 import { getProgressImpl, listMissionsImpl } from './progress';
 import { submitEvidenceImpl } from './submit-evidence';
 import type {
-  Answers, Evaluation, HintResult, LearnerContext, MissionListItem, MissionRun, ProgressSummary, Source, SubmitResult,
+  AnswerKey, AnswerKeyEntry, Answers, HintResult, LearnerContext, MissionListItem, MissionRun, ProgressSummary, Source, SubmitResult,
 } from './types';
 import { LearningError } from './types';
 
@@ -39,22 +42,48 @@ export function getMissionContent(missionId: string): Mission {
   return m;
 }
 
-/** Starts (or resumes the open) run of a mission. Idempotent: an open run is returned instead of a new one. */
+/**
+ * Starts (or resumes the open) run of a mission. Idempotent: an open run is returned instead of a new one.
+ * On a completed mission this starts a new run (an explicit "do it again"); mission XP is still paid once.
+ */
 export async function startMission(
   deps: LearningDeps, learner: LearnerContext, missionId: string, source: Source,
 ): Promise<MissionRun> {
   return startMissionImpl(deps, learner, missionId, source);
 }
 
+/** Opens a mission: its open run, else its latest completed run (result, read-only), else a new run. */
+export async function openMission(
+  deps: LearningDeps, learner: LearnerContext, missionId: string, source: Source,
+): Promise<MissionRun> {
+  return openMissionImpl(deps, learner, missionId, source);
+}
+
 export async function getRun(deps: LearningDeps, learner: LearnerContext, runId: string): Promise<MissionRun> {
   return loadRun(deps, learner, runId);
 }
 
-/** Run + its mission content + latest evaluation (null before the first submission). */
-export async function getRunWithEvaluation(
-  deps: LearningDeps, learner: LearnerContext, runId: string,
-): Promise<{ run: MissionRun; mission: Mission; evaluation: Evaluation | null }> {
+/**
+ * Run + the learner-safe mission view (no answer keys) + latest evaluation (null before the first submission)
+ * + the answer keys the learner may see (revealed items, or all once the run is completed).
+ */
+export async function getRunWithEvaluation(deps: LearningDeps, learner: LearnerContext, runId: string): Promise<RunDetail> {
   return getRunDetail(deps, learner, runId);
+}
+
+/** Answer keys visible for a run in its current state (see getRunWithEvaluation). */
+export function getRunAnswerKey(run: MissionRun): AnswerKey {
+  return runAnswerKey(run);
+}
+
+/**
+ * Reveals the answer of one quiz question (itemId = question id) or prediction (itemId = "prediction")
+ * before submitting. Recorded on the run; the revealed answer cannot be changed afterwards.
+ */
+export async function revealAnswer(
+  deps: LearningDeps, learner: LearnerContext, runId: string, input: { stepId: string; itemId: string },
+): Promise<{ run: MissionRun; key: AnswerKeyEntry }> {
+  return revealAnswerImpl(deps, learner, runId, input);
 }
 
 /** Autosaves draft answers for one step. `rev` is the run's revision the client last saw (optimistic lock). */
@@ -92,3 +121,4 @@ export { issueCertificate } from './certificates';
 export { recordClientEvent, CLIENT_EVENTS } from './client-events';
 export { storeEvidenceImage, readEvidence, EVIDENCE_MAX_BYTES } from './evidence-store';
 export { RunConflictError } from './errors';
+export type { RunDetail } from './mission-runs';

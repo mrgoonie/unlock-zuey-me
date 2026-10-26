@@ -6,7 +6,7 @@ import { emptyDraft, setField, type RunDraft } from '../../src/lib/ui/run-draft'
 
 const run = (rev: number, answers: Answers = {}): MissionRun => ({
   id: 'run_1', learnerId: 'l', missionId: 'm', missionVersion: 1, status: 'started', currentStep: null, answers, confidence: null,
-  hintMaxLevel: 0, hintsUsed: 0, source: 'web', rev, startedAt: '', updatedAt: '', completedAt: null,
+  hintMaxLevel: 0, hintsUsed: 0, revealed: [], source: 'web', rev, startedAt: '', updatedAt: '', completedAt: null,
 });
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));

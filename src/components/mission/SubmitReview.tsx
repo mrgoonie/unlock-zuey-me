@@ -3,13 +3,13 @@
  * ("Bạn tự chấm mình bao nhiêu %?") used for calibration, and the submit button.
  */
 import { forwardRef, useEffect } from 'react';
-import type { Mission } from '../../lib/content/schema';
+import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import type { Answers } from '../../lib/learning/types';
 import { stepGaps } from '../../lib/ui/mission-steps';
 import ConfidenceSlider from '../ui/ConfidenceSlider';
 
 interface Props {
-  mission: Mission;
+  mission: LearnerMission;
   answers: Answers;
   confidence: number | null;
   onConfidence: (v: number) => void;

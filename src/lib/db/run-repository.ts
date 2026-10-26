@@ -16,6 +16,7 @@ interface RunRow {
   confidence: number | null;
   hint_max_level: number;
   hints_used: number;
+  revealed_json: string | null;
   source: Source;
   rev: number;
   started_at: string;
@@ -35,6 +36,7 @@ export function rowToRun(r: RunRow): MissionRun {
     confidence: r.confidence,
     hintMaxLevel: r.hint_max_level,
     hintsUsed: r.hints_used,
+    revealed: parseJson<string[]>(r.revealed_json ?? '[]', []),
     source: r.source,
     rev: r.rev,
     startedAt: r.started_at,
@@ -48,7 +50,16 @@ export async function findRun(db: D1Database, learnerId: string, runId: string):
   return row ? rowToRun(row) : null;
 }
 
-/** The learner's most recent run of a mission that is not completed/abandoned. */
+/** The learner's most recently completed run of a mission (its result is shown read-only). */
+export async function findLatestCompletedRun(db: D1Database, learnerId: string, missionId: string): Promise<MissionRun | null> {
+  const row = await db.prepare(
+    `SELECT * FROM mission_runs WHERE learner_id = ? AND mission_id = ? AND status = 'completed'
+     ORDER BY completed_at DESC, updated_at DESC LIMIT 1`,
+  ).bind(learnerId, missionId).first<RunRow>();
+  return row ? rowToRun(row) : null;
+}
+
+/** The learner's open run of a mission (not completed/abandoned; a partial unique index allows at most one). */
 export async function findOpenRun(db: D1Database, learnerId: string, missionId: string): Promise<MissionRun | null> {
   const row = await db.prepare(
     `SELECT * FROM mission_runs WHERE learner_id = ? AND mission_id = ? AND status NOT IN ('completed', 'abandoned')
@@ -70,11 +81,11 @@ export async function listRunsByStatus(
 export function insertRunStatement(db: D1Database, run: MissionRun): D1PreparedStatement {
   return db.prepare(
     `INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, current_step, answers_json, confidence,
-       hint_max_level, hints_used, source, rev, started_at, updated_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       hint_max_level, hints_used, revealed_json, source, rev, started_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     run.id, run.learnerId, run.missionId, run.missionVersion, run.status, run.currentStep, JSON.stringify(run.answers),
-    run.confidence, run.hintMaxLevel, run.hintsUsed, run.source, run.rev, run.startedAt, run.updatedAt, run.completedAt,
+    run.confidence, run.hintMaxLevel, run.hintsUsed, JSON.stringify(run.revealed), run.source, run.rev, run.startedAt, run.updatedAt, run.completedAt,
   );
 }
 

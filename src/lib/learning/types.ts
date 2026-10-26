@@ -47,6 +47,8 @@ export interface MissionRun {
   confidence: number | null;
   hintMaxLevel: number;
   hintsUsed: number;
+  /** Answer-key items the learner revealed ("stepId:itemId"); their answers are locked from then on. */
+  revealed: string[];
   source: Source;
   rev: number;
   startedAt: string;
@@ -80,6 +82,19 @@ export interface Evaluation {
   graderModel: string | null;
   createdAt: string;
 }
+
+/** The reference answer of one quiz question, prediction or verification claim. */
+export interface AnswerKeyEntry {
+  /** Correct option ids (quiz/prediction) or the reference verdict (claim). */
+  correct: string[];
+  explanation: string;
+}
+
+/**
+ * Answer keys the learner may see, keyed "stepId:itemId" (itemId = question id, claim id or "prediction").
+ * Only items revealed on the server, or every item once the run is completed.
+ */
+export type AnswerKey = Record<string, AnswerKeyEntry>;
 
 /** What a submission earned. XP is only granted when the evaluation passed. */
 export interface Rewards {

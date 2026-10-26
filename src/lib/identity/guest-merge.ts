@@ -1,6 +1,8 @@
 /**
  * Guest → member merge statements. Run them in ONE D1 batch (atomic) together with the session rotation.
  *
+ * When both sides have an open run of the same mission, the older one (by updated_at, then id) is abandoned
+ * first: a learner has at most one open run per mission (idx_runs_one_open_per_mission).
  * Plain learner-owned rows move over. Tables with a uniqueness key keep the member's row on conflict:
  * - xp_ledger (learner, reason, ref): duplicates stay on the guest, so a reward is never paid twice.
  * - badge_grants / concept_views: the earliest grant / first view wins, leftovers are dropped.
@@ -20,6 +22,13 @@ export function guestMergeStatements(db: D1Database, guestId: string, memberId: 
   const m = memberId;
   const s = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds);
   return [
+    s(`UPDATE mission_runs SET status = 'abandoned', rev = rev + 1, updated_at = ?3
+        WHERE learner_id IN (?1, ?2) AND status NOT IN ('completed', 'abandoned') AND EXISTS (
+          SELECT 1 FROM mission_runs o
+           WHERE o.learner_id IN (?1, ?2) AND o.mission_id = mission_runs.mission_id AND o.id <> mission_runs.id
+             AND o.status NOT IN ('completed', 'abandoned')
+             AND (o.updated_at > mission_runs.updated_at OR (o.updated_at = mission_runs.updated_at AND o.id > mission_runs.id)))`,
+    g, m, nowIso),
     ...MOVE_TABLES.map((t) => s(`UPDATE ${t} SET learner_id = ? WHERE learner_id = ?`, m, g)),
 
     s('UPDATE OR IGNORE xp_ledger SET learner_id = ? WHERE learner_id = ?', m, g),

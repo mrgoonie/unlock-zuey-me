@@ -1,8 +1,12 @@
 /**
- * Evidence screenshots in R2 (EVIDENCE). Keys are `ev/<learnerId>/<id>.<ext>`, so ownership is part of the
- * key and checked on every use. Only real images (magic bytes sniffed, not the client's content-type) up to
- * 5 MB are accepted. Reads are allowed for the owner, or an admin while the owner's observer consent is on
- * (checked against the database at request time, so revoking consent hides evidence immediately).
+ * Evidence screenshots in R2 (EVIDENCE). Keys are `ev/<uploaderId>/<id>.<ext>`, so the uploader is part of
+ * the key and checked on every use. Only real images (magic bytes sniffed, not the client's content-type) up
+ * to 5 MB are accepted.
+ *
+ * Ownership follows the guest → member merge chain: a key uploaded by a guest that was later merged into a
+ * member belongs to that member (the R2 object keeps its guest prefix). Reads and re-submission are allowed
+ * for the resolved owner; admins may read while the resolved owner's observer consent is on (checked against
+ * the database at request time, so revoking consent hides evidence immediately).
  */
 import { newId } from '../db/ids';
 import { LearningError, type LearnerContext } from './types';
@@ -41,26 +45,42 @@ export async function storeEvidenceImage(env: Env, learner: LearnerContext, byte
   return key;
 }
 
-/** Every key must belong to the learner and exist in R2. */
+/**
+ * The active learner who owns keys uploaded by `uploaderId`: the uploader itself, or the member a merged
+ * guest uploader was folded into. Null when that learner is unknown or deleted.
+ */
+async function resolveKeyOwner(db: D1Database, uploaderId: string): Promise<{ id: string; consent: boolean } | null> {
+  const row = await db.prepare(
+    `SELECT COALESCE(m.id, l.id) AS id, COALESCE(m.observer_consent, l.observer_consent) AS consent
+       FROM learners l LEFT JOIN learners m ON m.id = l.merged_into
+      WHERE l.id = ? AND (l.merged_into IS NULL OR m.id IS NOT NULL)
+        AND (CASE WHEN l.merged_into IS NULL THEN l.deleted_at ELSE m.deleted_at END) IS NULL`,
+  ).bind(uploaderId).first<{ id: string; consent: number }>();
+  return row ? { id: row.id, consent: row.consent === 1 } : null;
+}
+
+/** Every key must belong to the learner (directly or through a merged guest) and exist in R2. */
 export async function assertOwnedEvidenceKeys(env: Env, learnerId: string, keys: string[]): Promise<void> {
   if (keys.length > MAX_IMAGES_PER_SUBMISSION) throw new LearningError('invalid', `Tối đa ${MAX_IMAGES_PER_SUBMISSION} ảnh cho mỗi lần nộp.`);
+  const owned = new Map<string, boolean>([[learnerId, true]]);
   for (const key of keys) {
-    if (evidenceKeyOwner(key) !== learnerId) throw new LearningError('invalid', 'Ảnh đính kèm không hợp lệ.');
+    const uploader = evidenceKeyOwner(key);
+    if (uploader && !owned.has(uploader)) owned.set(uploader, (await resolveKeyOwner(env.DB, uploader))?.id === learnerId);
+    if (!uploader || !owned.get(uploader)) throw new LearningError('invalid', 'Ảnh đính kèm không hợp lệ.');
     const head = await env.EVIDENCE.head(key);
     if (!head) throw new LearningError('invalid', 'Không tìm thấy ảnh đính kèm. Hãy tải ảnh lên lại.');
   }
 }
 
-async function ownerConsents(db: D1Database, ownerId: string): Promise<boolean> {
-  const row = await db.prepare('SELECT observer_consent FROM learners WHERE id = ? AND deleted_at IS NULL').bind(ownerId).first<{ observer_consent: number }>();
-  return row?.observer_consent === 1;
-}
-
 export async function readEvidence(env: Env, viewer: LearnerContext, key: string): Promise<R2ObjectBody> {
-  const owner = evidenceKeyOwner(key);
+  const uploader = evidenceKeyOwner(key);
   const notFound = new LearningError('not_found', 'Không tìm thấy ảnh.');
-  if (!owner) throw notFound;
-  const allowed = owner === viewer.id || (viewer.isAdmin && (await ownerConsents(env.DB, owner)));
+  if (!uploader) throw notFound;
+  let allowed = uploader === viewer.id;
+  if (!allowed) {
+    const owner = await resolveKeyOwner(env.DB, uploader);
+    allowed = !!owner && (owner.id === viewer.id || (viewer.isAdmin && owner.consent));
+  }
   if (!allowed) throw notFound;
   const obj = await env.EVIDENCE.get(key);
   if (!obj) throw notFound;

@@ -32,13 +32,15 @@ export async function competencyRows(db: D1Database, learnerId: string): Promise
   return results;
 }
 
-export function upsertCompetencyStatement(
-  db: D1Database, learnerId: string, competency: CompetencyId, score: number, evidenceCount: number, nowIso: string,
+/** Upserts a competency EMA only if the given evaluation row exists (same batch as its guarded insert). */
+export function upsertCompetencyIfEvaluatedStatement(
+  db: D1Database, learnerId: string, competency: CompetencyId, score: number, evidenceCount: number, nowIso: string, evaluationId: string,
 ): D1PreparedStatement {
   return db.prepare(
-    `INSERT INTO competency_scores (learner_id, competency, score, evidence_count, updated_at) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO competency_scores (learner_id, competency, score, evidence_count, updated_at)
+     SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM evaluations WHERE id = ?)
      ON CONFLICT (learner_id, competency) DO UPDATE SET score = excluded.score, evidence_count = excluded.evidence_count, updated_at = excluded.updated_at`,
-  ).bind(learnerId, competency, score, evidenceCount, nowIso);
+  ).bind(learnerId, competency, score, evidenceCount, nowIso, evaluationId);
 }
 
 export async function badgeGrants(db: D1Database, learnerId: string): Promise<Array<{ badge_id: string; granted_at: string }>> {

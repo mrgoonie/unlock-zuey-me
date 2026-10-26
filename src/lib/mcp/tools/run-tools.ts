@@ -23,10 +23,12 @@ export function registerRunTools(server: McpServer, ctx: McpToolContext): void {
     title: 'Submit evidence for evaluation',
     description:
       'Submits the learner\'s answers for a run, evaluates them against the mission rubric and returns the '
-      + 'per-criterion evaluation plus rewards (XP and badges only when it passed). Submit only what the learner '
-      + 'actually did or decided. Reuse the same idempotency_key when retrying the same submission: a replay '
-      + 'returns the stored result and never grants rewards twice. Errors: not_found (run), conflict (run not '
-      + 'in a submittable state), invalid (answers incomplete), budget_exceeded. Needs the learn:write scope.',
+      + 'per-criterion evaluation plus rewards (only when it passed; mission XP is paid once per learner per '
+      + 'mission, so a later passing run earns 0 XP). Submit only what the learner actually did or decided. Reuse '
+      + 'the same idempotency_key when retrying the same submission: a replay returns the stored result and never '
+      + 'grants rewards twice. Errors: not_found (run), conflict (run not in a submittable state), invalid (answers '
+      + 'incomplete), forbidden (changes an answer the learner already revealed on the web), budget_exceeded. '
+      + 'Needs the learn:write scope.',
     inputSchema: z.object({
       run_id: runIdSchema,
       answers: answersSchema,
@@ -50,7 +52,8 @@ export function registerRunTools(server: McpServer, ctx: McpToolContext): void {
     description:
       'Returns a coaching hint for one step of a run. Levels unlock in order: 1 nudge to think, 2 next step, '
       + '3 similar example, 4 direct explanation. Prefer the lowest level that helps; hints used are recorded on '
-      + 'the run. Errors: not_found, invalid (level not unlocked yet), budget_exceeded. Needs the learn:write scope.',
+      + 'the run. Errors: not_found, forbidden (level not unlocked yet: request level n-1 first), invalid (unknown step or '
+      + 'level), conflict (run already finished), budget_exceeded. Needs the learn:write scope.',
     inputSchema: z.object({
       run_id: runIdSchema,
       step_id: stepIdSchema,

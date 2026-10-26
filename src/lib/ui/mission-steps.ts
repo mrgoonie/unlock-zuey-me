@@ -2,8 +2,12 @@
  * Pure helpers about mission steps used by the runner: is a step filled enough to continue, which step a
  * rubric criterion points to (to jump back on needs_revision), and list-field parsing.
  */
-import type { Mission, MissionStep } from '../content/schema';
+import type { MissionStep } from '../content/schema';
+import type { LearnerMission, LearnerStep } from '../learning/learner-mission-view';
 import type { Answers } from '../learning/types';
+
+/** The runner works on the learner-safe view; full content steps are accepted too (same fields used). */
+type AnyStep = LearnerStep | MissionStep;
 
 /** List fields are edited as one item per line; empty lines are dropped. */
 export const listItems = (v: unknown): string[] =>
@@ -18,7 +22,7 @@ export interface StepGap { fieldId: string; message: string }
  * Lists what is still missing for a step (empty = complete). Messages are shown to the learner, so they are
  * friendly and concrete ("cần thêm 2 dòng"), never blocking: the learner may still move on.
  */
-export function stepGaps(step: MissionStep, answers: Answers): StepGap[] {
+export function stepGaps(step: AnyStep, answers: Answers): StepGap[] {
   const a = answers[step.id] ?? {};
   const gaps: StepGap[] = [];
   const needText = (fieldId: string, min: number, label: string) => {
@@ -60,18 +64,16 @@ export function stepGaps(step: MissionStep, answers: Answers): StepGap[] {
   return gaps;
 }
 
-export const isStepComplete = (step: MissionStep, answers: Answers): boolean => stepGaps(step, answers).length === 0;
+export const isStepComplete = (step: AnyStep, answers: Answers): boolean => stepGaps(step, answers).length === 0;
 
-/** Index of the step a rubric criterion is about (its check step, else its first step ref), or -1. */
-export function criterionStepIndex(mission: Mission, criterionId: string): number {
-  const c = mission.rubric.criteria.find((x) => x.id === criterionId);
-  if (!c) return -1;
-  const stepId = c.check?.step ?? c.step_refs[c.step_refs.length - 1] ?? c.step_refs[0];
+/** Index of the step a rubric criterion is about (its check step, else its last step ref), or -1. */
+export function criterionStepIndex(mission: LearnerMission, criterionId: string): number {
+  const stepId = mission.rubric.criteria.find((x) => x.id === criterionId)?.step;
   return stepId ? mission.steps.findIndex((s) => s.id === stepId) : -1;
 }
 
 /** Vietnamese label per step type (shown above the step title). */
-export const STEP_KIND_LABEL: Record<MissionStep['type'], string> = {
+export const STEP_KIND_LABEL: Record<LearnerStep['type'], string> = {
   intro: 'Giới thiệu',
   'guided-input': 'Ghi ra ý của bạn',
   'ai-task': 'Làm cùng AI',

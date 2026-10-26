@@ -18,11 +18,12 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 | `GET /api/v1/me` | – | `{ learner: LearnerContext, progress: ProgressSummary }` |
 | `PATCH /api/v1/me/profile` | `{ profile?: Partial<LearnerProfile>, displayName?: string }` | `{ learner }` |
 | `GET /api/v1/missions` | – | `{ missions: MissionListItem[] }` |
-| `POST /api/v1/missions/:id/start` | `{}` | `{ run: MissionRun }` (resumes the open run if any) |
-| `GET /api/v1/runs/:id` | – | `{ run, mission: Mission, evaluation: Evaluation \| null }` |
+| `POST /api/v1/missions/:id/start` | `{ again?: boolean }` (body optional) | `{ run: MissionRun }`: the open run, else the latest completed run (result, read-only), else a new run. `again: true` starts a new run of a completed mission ("Làm lại") |
+| `GET /api/v1/runs/:id` | – | `{ run, mission: LearnerMission, evaluation: Evaluation \| null, answerKey: AnswerKey }` |
 | `PATCH /api/v1/runs/:id/answers` | `{ stepId, answers, currentStep?, rev }` | `{ run }`; `409 conflict` with `{ error, run }` when `rev` is stale |
 | `POST /api/v1/runs/:id/hints` | `{ stepId, level: 1..4 }` | `HintResult` |
-| `POST /api/v1/runs/:id/submit` | `{ idempotencyKey, confidence?: 0..100, imageKeys?: string[] }` | `SubmitResult` |
+| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards (`403 forbidden` on change) |
+| `POST /api/v1/runs/:id/submit` | `{ idempotencyKey, confidence?: 0..100, imageKeys?: string[] }` | `SubmitResult & { answerKey }` |
 | `POST /api/v1/evidence/upload` | multipart `file` (image ≤ 5 MB) | `{ key }` |
 | `GET /api/v1/evidence/:key` | – | image bytes (owner, or admin observer with consent) |
 | `POST /api/v1/coach/chat` | `{ runId?, stepId?, messages: [{role, content}] }` (1–20 messages; `assistant` turns are kept only if they match a reply the server stored for this learner in the last 24 h) | `{ reply, model, remainingToday }` |
@@ -32,7 +33,11 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 | `POST /api/v1/certificates` | `{ displayName }` | `{ code, url }` (`403 forbidden` if not eligible) |
 | `POST /api/v1/events` | `{ name, missionId?, runId?, props? }` (allow-listed client events only) | `{ ok: true }` |
 
-Rewards rules: XP only from a **passed** evaluation (once per run, via `xp_ledger` uniqueness). Badges from `content/badges.yaml`. Soft streak counts active days and tolerates 1 rest day per 7.
+Answer keys: the browser only gets `LearnerMission` (`src/lib/learning/learner-mission-view.ts`), which has no claim verdicts, quiz/prediction answers, explanations, static hints or rubric checks. `answerKey` (`"stepId:itemId"` → `{ correct, explanation }`) holds only items revealed on the server, or every item once the run is `completed`.
+
+Runs: at most one open run per learner and mission (partial unique index). Evidence image keys stay readable and re-submittable by the member a guest uploader was merged into; admin reads follow that member's consent.
+
+Rewards rules: XP only from a **passed** evaluation, once per learner per mission (`xp_ledger` ref = mission id; later passing runs earn 0 XP). Badges from `content/badges.yaml`. Soft streak counts active days and tolerates 1 rest day per 7.
 
 ## Identity (owner: identity module)
 

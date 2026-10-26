@@ -1,17 +1,22 @@
 /**
  * Persists an evaluation and its consequences. One atomic batch writes the evaluation, the run status, the
- * XP ledger row (passed only; unique per run so retries never pay twice) and competency EMAs (graded only).
+ * XP ledger row (passed only; keyed by mission, so a mission pays XP once per learner: retries and later
+ * passing runs of the same mission earn 0 XP) and competency EMAs (graded only).
+ * The batch is guarded on the claim: the evaluation is inserted only while the run is still `evaluating` at
+ * the claimed `rev`, and every other write requires that evaluation row. A stale evaluation that finishes
+ * after the run was re-claimed (e.g. a retry of a stuck evaluation) therefore writes nothing and gets a
+ * conflict, so it can neither overwrite the newer result nor apply competency scores twice.
  * Badges, streak and level are derived afterwards and the earned rewards are stored for idempotent replay.
  */
 import type { Mission } from '../content/schema';
 import { newId, nowIso } from '../db/ids';
-import { insertEvaluationStatement, saveEvaluationRewards } from '../db/evaluation-repository';
-import { competencyRows, sumXp, upsertCompetencyStatement } from '../db/progress-queries';
+import { insertEvaluationIfClaimedStatement, saveEvaluationRewards } from '../db/evaluation-repository';
+import { competencyRows, sumXp, upsertCompetencyIfEvaluatedStatement } from '../db/progress-queries';
 import { findRun } from '../db/run-repository';
 import { recordEventSafe } from '../observer/events';
 import { loadStreak } from './activity';
 import { grantEligibleBadges } from './badges';
-import { runNotFound } from './errors';
+import { RunConflictError, runNotFound } from './errors';
 import type { EvaluationDraft } from './evaluate-submission';
 import { transition } from './mission-state-machine';
 import { competencyAverages, emaUpdate } from './scoring';
@@ -21,6 +26,7 @@ import { computeMissionXp, levelForXp } from './xp-and-levels';
 export const MISSION_PASS_XP_REASON = 'mission_pass';
 
 export async function finalizeEvaluation(env: Env, input: {
+  /** The run as claimed by the submit batch: status `evaluating` at the post-claim `rev`. */
   learner: LearnerContext; run: MissionRun; mission: Mission; submissionId: string; draft: EvaluationDraft; source: Source; now: Date;
 }): Promise<{ run: MissionRun; evaluation: Evaluation; rewards: Rewards }> {
   const { learner, run, mission, draft, now } = input;
@@ -33,26 +39,35 @@ export async function finalizeEvaluation(env: Env, input: {
   const xpBefore = await sumXp(db, learner.id);
   const xp = passed ? computeMissionXp({ estimatedMinutes: mission.estimated_minutes, hintsUsed: run.hintsUsed, confidence: run.confidence, score: draft.score }) : null;
 
+  // Every write after the first requires the evaluation row, which exists only if the claim still holds.
+  const ifEvaluated = 'EXISTS (SELECT 1 FROM evaluations WHERE id = ?)';
   const statements: D1PreparedStatement[] = [
-    insertEvaluationStatement(db, learner.id, evaluation),
+    insertEvaluationIfClaimedStatement(db, learner.id, evaluation, run.rev),
     db.prepare(
-      `UPDATE mission_runs SET status = ?, completed_at = ?, rev = rev + 1, updated_at = ? WHERE id = ? AND learner_id = ? AND status = 'evaluating'`,
-    ).bind(nextStatus, nextStatus === 'completed' ? at : null, at, run.id, learner.id),
+      `UPDATE mission_runs SET status = ?, completed_at = ?, rev = rev + 1, updated_at = ?
+       WHERE id = ? AND learner_id = ? AND status = 'evaluating' AND rev = ? AND ${ifEvaluated}`,
+    ).bind(nextStatus, nextStatus === 'completed' ? at : null, at, run.id, learner.id, run.rev, evaluation.id),
   ];
   const xpIndex = statements.length;
   if (xp) {
-    statements.push(db.prepare('INSERT OR IGNORE INTO xp_ledger (id, learner_id, amount, reason, ref, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(newId('xp'), learner.id, xp.total, MISSION_PASS_XP_REASON, run.id, at));
+    statements.push(db.prepare(
+      `INSERT OR IGNORE INTO xp_ledger (id, learner_id, amount, reason, ref, created_at) SELECT ?, ?, ?, ?, ?, ? WHERE ${ifEvaluated}`,
+    ).bind(newId('xp'), learner.id, xp.total, MISSION_PASS_XP_REASON, mission.id, at, evaluation.id));
   }
   if (draft.status !== 'failed') {
     const current = new Map((await competencyRows(db, learner.id)).map((c) => [c.competency, c]));
     for (const [competency, observed] of competencyAverages(draft.criteria)) {
       const prev = current.get(competency);
       const next = emaUpdate({ score: prev?.score ?? 0, evidenceCount: prev?.evidence_count ?? 0 }, observed);
-      statements.push(upsertCompetencyStatement(db, learner.id, competency, next.score, next.evidenceCount, at));
+      statements.push(upsertCompetencyIfEvaluatedStatement(db, learner.id, competency, next.score, next.evidenceCount, at, evaluation.id));
     }
   }
   const results = await db.batch(statements);
+  if ((results[0]?.meta.changes ?? 0) === 0) {
+    const current = await findRun(db, learner.id, run.id);
+    if (!current) throw runNotFound();
+    throw new RunConflictError(current, 'Bài làm đã được chấm lại ở lượt khác. Đã tải kết quả mới nhất.');
+  }
   const xpGained = xp && (results[xpIndex]?.meta.changes ?? 0) > 0 ? xp.total : 0;
 
   const ev = { learnerId: learner.id, runId: run.id, missionId: mission.id, missionVersion: run.missionVersion, source: input.source };
