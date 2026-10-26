@@ -7,6 +7,7 @@
  * resume position (look-back window, KV cursor, saved key), so the next tick carries on. A failing job is
  * logged and the next job still runs.
  */
+import type { PurgeResult } from '@cloudflare/workers-oauth-provider';
 import { OAUTH_PURGE_BATCH_SIZE, purgeExpiredAuthData } from '../mcp/oauth-purge';
 import { MAX_SENDS_PER_RUN, sendDueReminders, TIME_BUDGET_MS as PUSH_TIME_BUDGET_MS } from '../push/reminder-job';
 import { createCronBudget, type CronBudget } from './cron-budget';
@@ -22,10 +23,32 @@ export interface CronJob {
 const PUSH_SUBREQUESTS_PER_SEND = 5;
 /** Push job queries that do not scale with sends (timezone list, batch selects). */
 const PUSH_OVERHEAD_SUBREQUESTS = 20;
-/** Worst case per OAuth item checked (read, client read, revoke), for both the grant and the token phase. */
+/**
+ * Worst case per unit of OAuth batch (record read, owner read, revoke), for both the grant and the token
+ * phase. Used only to size the batch so even the worst case fits what is left of the budget.
+ */
 const OAUTH_SUBREQUESTS_PER_ITEM = 10;
 /** CACHE cursor read/write and the two D1 purges. */
 const OAUTH_OVERHEAD_SUBREQUESTS = 6;
+/** Estimate per OAuth record checked: its KV read plus the read of its client (grant) or grant (token). */
+const OAUTH_SUBREQUESTS_PER_CHECKED = 2;
+/** Extra estimate per record purged: revocation lists and deletes the grant's tokens and the record. */
+const OAUTH_SUBREQUESTS_PER_PURGED = 4;
+/** KV list page size used by the OAuth sweep. */
+const OAUTH_LIST_PAGE = 1000;
+
+/**
+ * Subrequests charged for one OAuth purge batch: proportional to what it actually checked and purged (KV
+ * list pages included), capped at the worst case reserved for `batch`, so an idle sweep does not starve the
+ * jobs after it.
+ */
+export function oauthPurgeSubrequests(result: PurgeResult, batch: number): number {
+  const listPages = Math.ceil(result.grantsChecked / OAUTH_LIST_PAGE) + Math.ceil(result.tokensChecked / OAUTH_LIST_PAGE) + 2;
+  const estimate = OAUTH_OVERHEAD_SUBREQUESTS + listPages
+    + (result.grantsChecked + result.tokensChecked) * OAUTH_SUBREQUESTS_PER_CHECKED
+    + (result.grantsPurged + result.tokensPurged) * OAUTH_SUBREQUESTS_PER_PURGED;
+  return Math.min(estimate, OAUTH_OVERHEAD_SUBREQUESTS + batch * OAUTH_SUBREQUESTS_PER_ITEM);
+}
 
 /** The cron jobs, in run order. */
 export function scheduledJobs(env: Env): CronJob[] {
@@ -55,8 +78,14 @@ export function scheduledJobs(env: Env): CronJob[] {
           OAUTH_PURGE_BATCH_SIZE, Math.floor((budget.remainingSubrequests() - OAUTH_OVERHEAD_SUBREQUESTS) / OAUTH_SUBREQUESTS_PER_ITEM),
         );
         if (batch <= 0) return { deferred: true };
-        budget.charge(OAUTH_OVERHEAD_SUBREQUESTS + batch * OAUTH_SUBREQUESTS_PER_ITEM);
-        return purgeExpiredAuthData(env, new Date(), batch);
+        let result: PurgeResult | undefined;
+        try {
+          result = await purgeExpiredAuthData(env, new Date(), batch);
+          return result;
+        } finally {
+          // On failure the work done is unknown, so the worst case reserved for this batch is charged.
+          budget.charge(result ? oauthPurgeSubrequests(result, batch) : OAUTH_OVERHEAD_SUBREQUESTS + batch * OAUTH_SUBREQUESTS_PER_ITEM);
+        }
       },
     },
     // Abuse/cost hygiene: abandoned guests and evidence images that were never submitted.

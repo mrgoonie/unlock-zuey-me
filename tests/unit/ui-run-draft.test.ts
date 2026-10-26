@@ -69,6 +69,22 @@ describe('run draft: 409 merge', () => {
     expect(restored.confidence).toBe(70);
     expect(restoreDraft(run(), null).runId).toBe('run_1');
   });
+
+  it('prefers the server value for fields locked by a reveal made on another device', () => {
+    let local = emptyDraft('run_1', 'plan-weekend');
+    local = setField(local, 'quiz', 'q1', 'b'); // revealed elsewhere: locked at 'a'
+    local = setField(local, 'quiz', 'q2', 'mine'); // not revealed: the local edit wins
+    local = setField(local, 'predict', 'choice', 'opt-x'); // prediction reveal locks choice + confidence
+    local = setField(local, 'predict', 'confidence', 90);
+    local = setField(local, 'predict', 'note', 'giữ lại');
+    const server = run({
+      answers: { quiz: { q1: 'a', q2: 'x' }, predict: { choice: 'opt-y', confidence: 40 } },
+      revealed: ['quiz:q1', 'predict:prediction'],
+    });
+    const restored = restoreDraft(server, local);
+    expect(restored.answers).toEqual({ quiz: { q1: 'a', q2: 'mine' }, predict: { choice: 'opt-y', confidence: 40, note: 'giữ lại' } });
+    expect(restored.dirty).toEqual({ quiz: ['q2'], predict: ['note'] });
+  });
 });
 
 describe('run draft: idempotency key per attempt', () => {

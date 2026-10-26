@@ -1,6 +1,7 @@
 /**
- * Data export ("tải dữ liệu của tôi"): every row the learner owns across all tables, with JSON columns
- * expanded, plus the R2 keys of their evidence images. Never includes another learner's rows.
+ * Data export ("tải dữ liệu của tôi"): every row the learner owns across all tables (directly, or through
+ * their runs, e.g. run_hints), with JSON columns expanded, plus the R2 keys of their evidence images. Never
+ * includes another learner's rows.
  *
  * The export is bounded so it always fits in one Worker invocation: each table contributes at most
  * EXPORT_LIMITS.rowsPerTable rows and the whole document at most EXPORT_LIMITS.maxBytes of row JSON. A table
@@ -9,7 +10,9 @@
  */
 import { nowIso } from '../db/ids';
 import { LearningError } from '../learning/types';
-import { evidencePrefix, expandJsonColumns, LEARNER_TABLES, ownedLearnerIds, type LearnerTable } from './learner-data-tables';
+import {
+  evidencePrefix, expandJsonColumns, LEARNER_TABLES, ownedLearnerIds, RUN_OWNED_TABLES, type LearnerTable,
+} from './learner-data-tables';
 
 export const EXPORT_LIMITS = {
   rowsPerTable: 1000,
@@ -54,6 +57,19 @@ export interface LearnerExportPage {
 const placeholders = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 const ROWID = '__export_rowid';
 
+/** A table in the export; `viaRuns` tables are owned through the learner's mission runs. */
+interface ExportTable extends LearnerTable {
+  viaRuns?: boolean;
+}
+
+/** Every exported table, in export order: learner-owned tables, then tables owned through runs. */
+const EXPORT_TABLES: ExportTable[] = [...LEARNER_TABLES, ...RUN_OWNED_TABLES.map((t) => ({ ...t, viaRuns: true }))];
+
+/** SQL condition selecting the rows of `t` owned by `idCount` learner ids (bound as parameters). */
+const ownerCondition = (t: ExportTable, idCount: number): string => (t.viaRuns
+  ? `${t.column} IN (SELECT id FROM mission_runs WHERE learner_id IN (${placeholders(idCount)}))`
+  : `${t.column} IN (${placeholders(idCount)})`);
+
 /** Lists R2 keys under a prefix, following pagination, up to `max` keys. */
 export async function listR2Keys(bucket: R2Bucket, prefix: string, max = Number.POSITIVE_INFINITY): Promise<string[]> {
   const keys: string[] = [];
@@ -75,11 +91,11 @@ const continuationFor = (table: string, after: number): ExportContinuation => ({
  * (at least one row, so paging always progresses). `next` is the last rowid when more rows remain.
  */
 async function readTablePage(
-  db: D1Database, t: LearnerTable, ids: string[], after: number, rowLimit: number, byteBudget: number,
+  db: D1Database, t: ExportTable, ids: string[], after: number, rowLimit: number, byteBudget: number,
 ): Promise<{ rows: Record<string, unknown>[]; bytes: number; next: number | null }> {
-  // Table and column names come from the LEARNER_TABLES constant, never from input.
+  // Table and column names come from the EXPORT_TABLES constant, never from input.
   const { results } = await db.prepare(
-    `SELECT rowid AS ${ROWID}, * FROM ${t.table} WHERE ${t.column} IN (${placeholders(ids.length)}) AND rowid > ?
+    `SELECT rowid AS ${ROWID}, * FROM ${t.table} WHERE ${ownerCondition(t, ids.length)} AND rowid > ?
      ORDER BY rowid LIMIT ?`,
   ).bind(...ids, after, rowLimit + 1).all<Record<string, unknown>>();
   const rows: Record<string, unknown>[] = [];
@@ -104,7 +120,7 @@ export async function exportLearnerData(db: D1Database, bucket: R2Bucket | undef
   const tables: LearnerExport['tables'] = {};
   const continuation: LearnerExport['continuation'] = {};
   let remaining = EXPORT_LIMITS.maxBytes;
-  for (const t of LEARNER_TABLES) {
+  for (const t of EXPORT_TABLES) {
     if (remaining <= 0) {
       tables[t.table] = [];
       continuation[t.table] = continuationFor(t.table, 0);
@@ -145,7 +161,7 @@ export async function exportLearnerData(db: D1Database, bucket: R2Bucket | undef
 
 /** The next page of one table of the export (see `continuation`). `table` comes from the query string. */
 export async function exportLearnerTablePage(db: D1Database, learnerId: string, table: string, after: number): Promise<LearnerExportPage> {
-  const t = LEARNER_TABLES.find((x) => x.table === table);
+  const t = EXPORT_TABLES.find((x) => x.table === table);
   if (!t) throw new LearningError('invalid', 'Bảng dữ liệu không hợp lệ.');
   if (!Number.isSafeInteger(after) || after < 0) throw new LearningError('invalid', 'Tham số after không hợp lệ.');
   const ids = await ownedLearnerIds(db, learnerId);

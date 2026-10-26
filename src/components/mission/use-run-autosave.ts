@@ -3,7 +3,8 @@
  * - Every edit is mirrored to localStorage immediately (nothing is lost offline or on AI errors).
  * - Saves are serialized by src/lib/ui/autosave-queue.ts: one PATCH in flight, newest rev, edits coalesced.
  * - On 409 the server run is adopted and unsaved local edits are re-applied on top, then saved again.
- * - On 403 (an answer whose key was revealed is locked) the server value is restored and `notice` explains it.
+ * - On 403 `answer_locked` (an answer whose key was revealed is locked) only the locked fields get the server
+ *   value back and `notice` explains it; any other 403 keeps every local edit and shows a neutral notice.
  * - Network failures keep the dirty flags; the next edit, step change or `online` event retries.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
@@ -45,7 +46,6 @@ export function useRunAutosave(opts: {
     setRun: (r) => { runRef.current = r; depsRef.current.setRun(r); },
     currentStepId: () => depsRef.current.currentStepId(),
     save: (runId, input) => api.saveAnswers(runId, input),
-    refetchRun: async (runId) => (await api.getRun(runId)).run,
     onState: setSaveState,
     onNotice: setNotice,
   });

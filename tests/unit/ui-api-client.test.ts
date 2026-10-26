@@ -25,6 +25,12 @@ describe('api client error mapping', () => {
     expect(toApiError(500, null).message).toMatch(/vẫn được giữ/);
   });
 
+  it('maps only an explicit answer_locked body to answer_locked; any other 403 is the generic forbidden', () => {
+    expect(toApiError(403, { error: { code: 'answer_locked', message: 'đã khoá' }, run: {} }).code).toBe('answer_locked');
+    expect(toApiError(403, null).code).toBe('forbidden');
+    expect(toApiError(403, { error: { code: 'forbidden' } }).code).toBe('forbidden');
+  });
+
   it('keeps the body so a 409 exposes the server run', async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse(409, { error: { code: 'conflict', message: 'stale' }, run: { rev: 7 } }));
     const err = await fail(request('PATCH', '/api/v1/runs/r/answers', { rev: 1 }, { fetcher }));

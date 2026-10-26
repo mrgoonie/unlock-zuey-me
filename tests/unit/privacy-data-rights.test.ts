@@ -3,8 +3,8 @@ import { createTestD1 } from '../helpers/d1-sqlite';
 import { GET as exportRoute } from '../../src/pages/api/v1/me/export';
 import { POST as deleteRoute } from '../../src/pages/api/v1/me/delete';
 import { deleteLearnerData, expireAllCookies } from '../../src/lib/privacy/delete-learner-data';
-import type { LearnerExport } from '../../src/lib/privacy/export-learner-data';
-import { LEARNER_TABLES } from '../../src/lib/privacy/learner-data-tables';
+import { exportLearnerTablePage, type LearnerExport } from '../../src/lib/privacy/export-learner-data';
+import { LEARNER_TABLES, RUN_OWNED_TABLES } from '../../src/lib/privacy/learner-data-tables';
 import { fakeBucket, learnerCtx, routeContext, seedLearner } from './observer-seed-fixtures';
 
 let db: D1Database;
@@ -38,6 +38,14 @@ describe('learner table registry', () => {
   it('covers every table that has a learner_id column', async () => {
     expect(LEARNER_TABLES.map((t) => t.table).sort()).toEqual(await tablesWithLearnerColumn());
   });
+
+  it('run-owned tables cascade from mission_runs, so deleting the runs deletes them', async () => {
+    for (const t of RUN_OWNED_TABLES) {
+      const fk = await db.prepare(`SELECT "table" AS parent, "from" AS col, on_delete FROM pragma_foreign_key_list(?)`)
+        .bind(t.table).all<{ parent: string; col: string; on_delete: string }>();
+      expect(fk.results, t.table).toContainEqual({ parent: 'mission_runs', col: t.column, on_delete: 'CASCADE' });
+    }
+  });
 });
 
 describe('GET /api/v1/me/export', () => {
@@ -68,6 +76,32 @@ describe('GET /api/v1/me/export', () => {
     const res = await exportRoute(routeContext({ learner: learnerCtx('lrn_me'), env: { DB: db } }));
     const data = (await res.json()) as LearnerExport;
     expect(data.tables.concept_views.map((r) => r.concept_id)).toContain('hallucination');
+  });
+
+  it('includes the hints of the learner and merged guest runs, and pages them like other tables', async () => {
+    const t = '2026-10-01T00:00:00.000Z';
+    await db.prepare(`INSERT INTO learners (id, kind, merged_into, created_at, updated_at) VALUES ('lrn_guest', 'guest', 'lrn_me', ?, ?)`).bind(t, t).run();
+    await db.prepare(`INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, answers_json, started_at, updated_at)
+      VALUES ('run_guest', 'lrn_guest', 'plan-weekend', 1, 'started', '{}', ?, ?)`).bind(t, t).run();
+    const hint = (id: string, runId: string, text: string) => db.prepare(
+      `INSERT INTO run_hints (id, run_id, step_id, level, text, origin, model, created_at) VALUES (?, ?, 'constraints', 1, ?, 'ai', 'm', ?)`,
+    ).bind(id, runId, text, t).run();
+    await hint('hnt_me', 'run_lrn_me', 'Gợi ý của lrn_me');
+    await hint('hnt_guest', 'run_guest', 'Gợi ý của khách');
+    await hint('hnt_you', 'run_lrn_you', 'Gợi ý của lrn_you');
+
+    const res = await exportRoute(routeContext({ learner: learnerCtx('lrn_me'), env: { DB: db } }));
+    const data = (await res.json()) as LearnerExport;
+    expect(data.tables.run_hints.map((r) => r.id).sort()).toEqual(['hnt_guest', 'hnt_me']);
+    expect(data.continuation).not.toHaveProperty('run_hints');
+
+    const first = await exportLearnerTablePage(db, 'lrn_me', 'run_hints', 0);
+    expect(first.rows.map((r) => r.id)).toEqual(['hnt_me', 'hnt_guest']);
+    expect(first.next).toBeNull();
+    const firstRowid = Number(await db.prepare(`SELECT rowid AS r FROM run_hints WHERE id = 'hnt_me'`).first('r'));
+    const rest = await exportLearnerTablePage(db, 'lrn_me', 'run_hints', firstRowid);
+    expect(rest.rows.map((r) => r.id)).toEqual(['hnt_guest']);
+    expect(JSON.stringify(rest)).not.toContain('lrn_you');
   });
 });
 
