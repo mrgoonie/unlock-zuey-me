@@ -67,7 +67,7 @@ export const CONTENT_SECURITY_POLICY = [
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data: blob: https:",
+  "img-src 'self' data: blob:",
   "connect-src 'self'",
   "media-src 'self' data: blob:",
   "worker-src 'self'",
@@ -82,6 +82,9 @@ export const BASE_SECURITY_HEADERS: Record<string, string> = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
 };
 
+/** Sent with the CSP (HTML responses) so browsers stay on HTTPS for a year, subdomains included. */
+export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains';
+
 export const HTML_SECURITY_HEADERS: Record<string, string> = {
   'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
@@ -95,7 +98,10 @@ export function withSecurityHeaders(response: Response, options: { csp: boolean 
     if (!isHtml) return;
     for (const [k, v] of Object.entries(HTML_SECURITY_HEADERS)) if (!headers.has(k)) headers.set(k, v);
     // Appended, not replaced: a page-specific CSP (e.g. the consent page's) stays enforced alongside ours.
-    if (options.csp) headers.append('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+    if (options.csp) {
+      headers.append('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+      if (!headers.has('Strict-Transport-Security')) headers.set('Strict-Transport-Security', STRICT_TRANSPORT_SECURITY);
+    }
   };
   try {
     apply(response.headers);

@@ -57,6 +57,8 @@ describe('withSecurityHeaders', () => {
   it('adds CSP and frame protection to HTML only, keeps a page CSP, and copes with immutable headers', () => {
     const html = withSecurityHeaders(new Response('<p>', { headers: { 'content-type': 'text/html; charset=utf-8' } }), { csp: true });
     expect(html.headers.get('content-security-policy')).toBe(CONTENT_SECURITY_POLICY);
+    expect(html.headers.get('strict-transport-security')).toBe('max-age=31536000; includeSubDomains');
+    expect(CONTENT_SECURITY_POLICY).toContain("img-src 'self' data: blob:;");
     expect(html.headers.get('x-frame-options')).toBe('DENY');
     expect(html.headers.get('x-content-type-options')).toBe('nosniff');
 

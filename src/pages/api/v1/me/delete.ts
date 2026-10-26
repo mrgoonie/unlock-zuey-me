@@ -13,7 +13,9 @@ export const POST: APIRoute = async ({ locals, request }) => {
   const body = await readBody(request, deleteSchema);
   if ('response' in body) return body.response;
   try {
-    const result = await deleteLearnerData(ctx.env.DB, ctx.env.EVIDENCE, ctx.learner.id);
+    // Loaded lazily: the OAuth provider module only resolves inside the Workers runtime.
+    const oauth = ctx.env.OAUTH_KV ? (await import('../../../../lib/mcp/oauth-options')).getOAuthHelpers(ctx.env) : undefined;
+    const result = await deleteLearnerData(ctx.env.DB, ctx.env.EVIDENCE, ctx.learner.id, oauth);
     const headers = new Headers({ 'content-type': 'application/json', 'cache-control': 'no-store' });
     for (const c of expireAllCookies(request.headers.get('cookie'))) headers.append('set-cookie', c);
     return new Response(JSON.stringify({ ok: true, ...result }), { status: 200, headers });

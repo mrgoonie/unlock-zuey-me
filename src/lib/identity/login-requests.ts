@@ -26,6 +26,8 @@ export function validateReturnTo(raw: string | null | undefined): string {
     return DEFAULT_RETURN_TO;
   }
   if (url.origin !== SITE_BASE) return DEFAULT_RETURN_TO;
+  // Normalization can collapse `/.//evil.com` into `//evil.com`, which a Location header treats as protocol-relative.
+  if (!url.pathname.startsWith('/') || url.pathname.startsWith('//')) return DEFAULT_RETURN_TO;
   if (url.pathname === '/auth' || url.pathname.startsWith('/auth/')) return DEFAULT_RETURN_TO;
   return `${url.pathname}${url.search}${url.hash}`;
 }

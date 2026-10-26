@@ -51,11 +51,15 @@ export default function EvidenceImageUpload({ keys, onAdd, onRemove }: Props) {
         </ul>
       )}
       {keys.length < MAX_FILES && (
-        <label htmlFor={id} className={`btn-ghost cursor-pointer self-start ${busy ? 'pointer-events-none opacity-60' : ''}`}>
-          📷 {busy ? 'Đang tải ảnh…' : 'Thêm ảnh chụp'}
-          <input id={id} type="file" accept="image/*" className="sr-only" disabled={busy} data-testid="evidence-upload"
+        <div className="self-start">
+          {/* Visually hidden input stays focusable; `peer-focus-visible` paints the ring on the visible label. */}
+          <input id={id} type="file" accept="image/*" className="peer sr-only" disabled={busy} data-testid="evidence-upload"
             onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} />
-        </label>
+          <label htmlFor={id}
+            className={`btn-ghost cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-accent ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+            📷 {busy ? 'Đang tải ảnh…' : 'Thêm ảnh chụp'}
+          </label>
+        </div>
       )}
       <p className="text-xs text-ink-muted" aria-live="polite">{message ?? 'Che bớt thông tin cá nhân trước khi chụp nếu có.'}</p>
     </div>
