@@ -6,8 +6,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Mission } from '../../lib/content/schema';
 import type { Evaluation, MissionRun, SubmitResult } from '../../lib/learning/types';
 import { ApiError, api, friendlyMessage } from '../../lib/ui/api-client';
+import { isRun } from '../../lib/ui/autosave-queue';
 import {
-  clearAttempt, ensureAttemptKey, loadDraft, removeDraft, restoreDraft, saveDraft, setField, type AnswerValue, type RunDraft,
+  clearAttempt, ensureAttemptKey, loadDraft, mergeServerRun, removeDraft, restoreDraft, saveDraft, setField, type AnswerValue, type RunDraft,
 } from '../../lib/ui/run-draft';
 import { useRunAutosave } from './use-run-autosave';
 
@@ -137,11 +138,19 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
     }
   }
 
+  /** Sends one submit with `key`. Throws ApiError on failure. */
+  const sendSubmit = (runId: string, key: string, d: RunDraft) => api.submit(runId, {
+    idempotencyKey: key,
+    confidence: d.confidence ?? undefined,
+    imageKeys: d.imageKeys.length ? d.imageKeys : undefined,
+  });
+
   async function submitOnce(r: MissionRun) {
     setError(null);
     setResult(null);
     setPhase('evaluating');
-    const saved = await autosave.flush();
+    // Wait for every queued/in-flight autosave: a PATCH racing the submit would bump rev and fail the claim.
+    const saved = await autosave.settle();
     if (!saved || !draftRef.current) {
       setError('Chưa lưu được bài lên máy chủ (có thể do mạng). Bài vẫn nằm trên máy này, hãy thử nộp lại.');
       setPhase('evaluation_failed');
@@ -149,12 +158,24 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
     }
     const keyed = ensureAttemptKey(draftRef.current);
     autosave.commitDraft(keyed);
+    const key = keyed.attempt!.key;
     try {
-      const res = await api.submit(r.id, {
-        idempotencyKey: keyed.attempt!.key,
-        confidence: keyed.confidence ?? undefined,
-        imageKeys: keyed.imageKeys.length ? keyed.imageKeys : undefined,
-      });
+      let res: SubmitResult;
+      try {
+        res = await sendSubmit(r.id, key, keyed);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'conflict')) throw e;
+        // The run changed under us (concurrent save or another tab). Adopt it, save, retry once, same key.
+        const server = (e.body as { run?: unknown } | null)?.run;
+        if (isRun(server)) {
+          setRun(server);
+          if (server.status === 'evaluating') return; // already being graded: the poller picks up the outcome
+          autosave.commitDraft(mergeServerRun(draftRef.current ?? keyed, server));
+        }
+        const again = await autosave.settle();
+        if (!again) throw e;
+        res = await sendSubmit(r.id, key, draftRef.current ?? keyed);
+      }
       setRun(res.run);
       setResult(res);
       setEvaluation(res.evaluation);
@@ -168,8 +189,9 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
         setPhase('passed');
       } else setPhase('needs_revision');
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'invalid') {
-        setError(e.message);
+      if (e instanceof ApiError && (e.code === 'invalid' || e.code === 'conflict')) {
+        // A conflict is never a grading failure: send the learner back to submit again calmly.
+        setError(e.code === 'conflict' ? 'Bài làm vừa được cập nhật. Mình đã tải bản mới nhất, bạn bấm nộp lại nhé.' : e.message);
         setPhase('review');
         return;
       }
@@ -180,7 +202,7 @@ export function useRunSession(missionId: string, fallbackMission: Mission) {
 
   return {
     phase, setPhase, mission, run, draft, stepIndex, result, evaluation, error,
-    saveState: autosave.saveState, load, goToStep, openReview, updateField, patchDraft, submit,
+    saveState: autosave.saveState, submitting, load, goToStep, openReview, updateField, patchDraft, submit,
   };
 }
 
