@@ -77,7 +77,8 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
         {header}
         <SubmitReview ref={heading} mission={mission} answers={draft.answers} confidence={draft.confidence}
           onConfidence={(v) => s.patchDraft((d) => ({ ...d, confidence: v }))} onJump={s.goToStep}
-          onSubmit={() => void s.submit()} onBack={() => s.goToStep(mission.steps.length - 1)} error={s.error} />
+          onSubmit={() => void s.submit()} onBack={() => s.goToStep(mission.steps.length - 1)} error={s.error}
+          busy={s.submitting || s.saveState === 'saving'} />
       </div>
     );
   }

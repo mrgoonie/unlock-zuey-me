@@ -17,10 +17,12 @@ interface Props {
   onSubmit: () => void;
   onBack: () => void;
   error: string | null;
+  /** A save or submit is running: the button waits so a submit never races an autosave. */
+  busy: boolean;
 }
 
 const SubmitReview = forwardRef<HTMLHeadingElement, Props>(function SubmitReview(
-  { mission, answers, confidence, onConfidence, onJump, onSubmit, onBack, error }, headingRef,
+  { mission, answers, confidence, onConfidence, onJump, onSubmit, onBack, error, busy }, headingRef,
 ) {
   // The slider shows 50% before it is touched; store that value so what is shown is what gets submitted.
   useEffect(() => { if (confidence === null) onConfidence(50); }, [confidence, onConfidence]);
@@ -50,7 +52,9 @@ const SubmitReview = forwardRef<HTMLHeadingElement, Props>(function SubmitReview
       {error && <p role="alert" className="rounded-xl border border-danger/40 bg-danger/5 p-3 text-sm">{error}</p>}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
         <button type="button" className="btn-ghost" onClick={onBack}>← Xem lại bài</button>
-        <button type="button" className="btn-primary text-lg" onClick={onSubmit} data-testid="submit-evidence">Nộp bằng chứng</button>
+        <button type="button" className="btn-primary text-lg" onClick={onSubmit} disabled={busy} aria-busy={busy} data-testid="submit-evidence">
+          {busy ? 'Đang lưu bài…' : 'Nộp bằng chứng'}
+        </button>
       </div>
     </section>
   );

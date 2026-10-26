@@ -18,6 +18,7 @@ const KNOWN_CODES = new Set<ApiErrorCode>([
 
 /** Friendly Vietnamese fallback copy when the server sent no message (or we never reached it). */
 const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
+  // 'network' also covers timeouts: the outcome is unknown, so retrying (same idempotency key) is safe.
   unauthorized: 'Phiên đăng nhập đã hết. Hãy tải lại trang.',
   forbidden: 'Bạn chưa thể làm việc này.',
   not_found: 'Không tìm thấy nội dung này.',
@@ -27,7 +28,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   budget_exceeded: 'Hôm nay đã hết lượt dùng AI trong app. Bạn vẫn có thể dùng ChatGPT bên ngoài.',
   unavailable: 'AI đang bận. Bài làm của bạn vẫn được giữ.',
   internal: 'Có lỗi không mong muốn. Bài làm của bạn vẫn được giữ.',
-  network: 'Mất kết nối mạng. Bài làm vẫn được lưu trên máy này.',
+  network: 'Mạng chậm hoặc mất kết nối. Bài làm vẫn được lưu trên máy này, bạn thử lại nhé.',
 };
 
 export class ApiError extends Error {
@@ -62,6 +63,9 @@ export const friendlyMessage = (e: unknown): string =>
 /** Minimal fetch signature (injectable in tests). */
 type Fetcher = (input: string, init: RequestInit) => Promise<Response>;
 
+/** Every call has a deadline so no screen can hang on a spinner; slow AI calls pass a longer one. */
+export const DEFAULT_TIMEOUT_MS = 20_000;
+
 /**
  * Low-level request. `body` is JSON unless it is FormData. `timeoutMs` aborts slow calls (reported as
  * 'network', which callers treat as "outcome unknown, safe to retry with the same idempotency key").
@@ -73,8 +77,9 @@ export async function request<T>(
   opts: { fetcher?: Fetcher; timeoutMs?: number } = {},
 ): Promise<T> {
   const fetcher: Fetcher = opts.fetcher ?? ((input, init) => fetch(input, init));
-  const controller = opts.timeoutMs ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   const init: RequestInit = {
     method, credentials: 'same-origin', headers: { accept: 'application/json' }, signal: controller?.signal,
   };
@@ -84,15 +89,17 @@ export async function request<T>(
     init.headers = { ...init.headers, 'content-type': 'application/json' };
   }
   let res: Response;
+  let text: string;
   try {
     res = await fetcher(path, init);
+    // The deadline covers the body too: a stalled body must not hang the caller.
+    text = await res.text();
   } catch {
     throw new ApiError('network', DEFAULT_MESSAGES.network, 0);
   } finally {
     if (timer) clearTimeout(timer);
   }
   let data: unknown = null;
-  const text = await res.text().catch(() => '');
   if (text) {
     try {
       data = JSON.parse(text);
@@ -128,13 +135,13 @@ export const api = {
   saveAnswers: (runId: string, input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number }) =>
     request<{ run: MissionRun }>('PATCH', `/api/v1/runs/${enc(runId)}/answers`, input),
   hint: (runId: string, stepId: string, level: 1 | 2 | 3 | 4) =>
-    request<HintResult>('POST', `/api/v1/runs/${enc(runId)}/hints`, { stepId, level }, { timeoutMs: 20_000 }),
+    request<HintResult>('POST', `/api/v1/runs/${enc(runId)}/hints`, { stepId, level }),
   submit: (runId: string, input: { idempotencyKey: string; confidence?: number; imageKeys?: string[] }) =>
     request<SubmitResult>('POST', `/api/v1/runs/${enc(runId)}/submit`, input, { timeoutMs: 90_000 }),
   uploadEvidence: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return request<{ key: string }>('POST', '/api/v1/evidence/upload', form);
+    return request<{ key: string }>('POST', '/api/v1/evidence/upload', form, { timeoutMs: 60_000 });
   },
   coachChat: (input: { runId?: string; stepId?: string; messages: ChatMessage[] }) =>
     request<ChatReply>('POST', '/api/v1/coach/chat', input, { timeoutMs: 45_000 }),

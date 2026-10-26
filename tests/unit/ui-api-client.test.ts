@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, friendlyMessage, request, toApiError } from '../../src/lib/ui/api-client';
+import { ApiError, DEFAULT_TIMEOUT_MS, friendlyMessage, request, toApiError } from '../../src/lib/ui/api-client';
 
 /** Resolves with the ApiError a request rejected with (fails the test if it resolved). */
 const fail = (p: Promise<unknown>): Promise<ApiError> =>
@@ -36,7 +36,7 @@ describe('api client error mapping', () => {
     const fetcher = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     const err = await fail(request('GET', '/api/v1/missions', undefined, { fetcher }));
     expect(err.code).toBe('network');
-    expect(friendlyMessage(err)).toMatch(/Mất kết nối/);
+    expect(friendlyMessage(err)).toMatch(/mất kết nối/);
   });
 
   it('aborts slow calls after timeoutMs as a network error', async () => {
@@ -45,6 +45,22 @@ describe('api client error mapping', () => {
     }));
     const err = await fail(request('POST', '/x', {}, { fetcher, timeoutMs: 10 }));
     expect(err.code).toBe('network');
+  });
+
+  it('applies a default deadline to calls without timeoutMs (start/getRun never hang)', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }));
+      const pending = fail(request('GET', '/api/v1/runs/r', undefined, { fetcher }));
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
+      const err = await pending;
+      expect(err.code).toBe('network');
+      expect(err.message).toMatch(/thử lại/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('sends JSON with same-origin credentials and parses the reply', async () => {
