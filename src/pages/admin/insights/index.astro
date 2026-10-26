@@ -1,0 +1,67 @@
+---
+/**
+ * /admin/insights: ai-tutor pipeline health, k-anonymous learning patterns, product signals and the learners
+ * who share detail. Admins with insights enabled only; everyone else gets a plain 404. Never cached.
+ */
+import AppLayout from '../../../layouts/AppLayout.astro';
+import AdminNotFound from '../../../components/admin/AdminNotFound.astro';
+import PipelineHealth from '../../../components/admin/insights/summary/PipelineHealth.astro';
+import LearningPatterns from '../../../components/admin/insights/summary/LearningPatterns.astro';
+import ProductSignals from '../../../components/admin/insights/summary/ProductSignals.astro';
+import SharingLearners from '../../../components/admin/insights/summary/SharingLearners.astro';
+import { insightsEnabledFor } from '../../../lib/insights/feature-flags';
+import { operatorSummary, type OperatorSummary } from '../../../lib/insights/operator-insight-queries';
+
+const learner = Astro.locals.learner;
+const allowed = learner?.isAdmin === true && insightsEnabledFor(Astro.locals.runtime.env, learner);
+let summary: OperatorSummary | null = null;
+let failed = false;
+if (!allowed) {
+  Astro.response.status = 404;
+} else {
+  Astro.response.headers.set('cache-control', 'no-store');
+  try {
+    summary = await operatorSummary(Astro.locals.runtime.env.DB);
+  } catch (err) {
+    console.error('admin insights: summary failed', err);
+    failed = true;
+    Astro.response.status = 500;
+  }
+}
+const section = 'card flex flex-col gap-3';
+---
+{allowed ? (
+  <AppLayout title="Insights ai-tutor">
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <a href="/admin" class="btn-ghost mt-2 text-sm">← Quan sát</a>
+    <h1 class="mt-3 text-2xl font-bold">Insights ai-tutor</h1>
+    <p class="mt-2 mb-4 text-sm text-ink-muted">
+      Số liệu tổng hợp không chứa tên hay nội dung của người học. Báo cáo chi tiết chỉ mở được với người học đã bật cả quyền quan sát và quyền chia sẻ báo cáo; khi họ tắt, trang chi tiết biến mất ngay ở lần tải tiếp theo.
+    </p>
+    <a href="/admin/insights/proposals" class="btn-ghost mb-4 text-sm">📋 Đề xuất cải tiến sản phẩm</a>
+    {failed || !summary ? (
+      <p role="alert" class="card text-danger">Không tải được số liệu. Thử tải lại trang.</p>
+    ) : (
+      <div class="flex flex-col gap-4">
+        <section class={section} aria-labelledby="h-health">
+          <h2 id="h-health" class="text-lg font-semibold">Sức khoẻ pipeline</h2>
+          <PipelineHealth health={summary.health} />
+        </section>
+        <section class={section} aria-labelledby="h-patterns">
+          <h2 id="h-patterns" class="text-lg font-semibold">Xu hướng học tập</h2>
+          <LearningPatterns patterns={summary.patterns} />
+        </section>
+        <section class={section} aria-labelledby="h-signals">
+          <h2 id="h-signals" class="text-lg font-semibold">Tín hiệu sản phẩm</h2>
+          <ProductSignals signals={summary.signals} />
+        </section>
+        <section class={section} aria-labelledby="h-sharing">
+          <h2 id="h-sharing" class="text-lg font-semibold">Người học chia sẻ báo cáo chi tiết</h2>
+          <SharingLearners learners={summary.sharingLearners} />
+        </section>
+      </div>
+    )}
+  </AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy"><AdminNotFound /></AppLayout>
+)}

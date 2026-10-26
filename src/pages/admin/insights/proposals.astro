@@ -1,0 +1,46 @@
+---
+/**
+ * Insights proposal triage. Admins only, and only while the insights feature is enabled for them; everyone
+ * else (and everyone while INSIGHTS_MODE=off) gets a plain 404.
+ */
+import AppLayout from '../../../layouts/AppLayout.astro';
+import AdminNotFound from '../../../components/admin/AdminNotFound.astro';
+import ProposalTriage from '../../../components/admin/insights/proposals/ProposalTriage';
+import { insightsEnabledFor } from '../../../lib/insights/feature-flags';
+import { automationSettings, type AutomationSettings } from '../../../lib/insights/proposal-stage';
+import { listProposalSummaries, type ProposalSummary } from '../../../lib/insights/proposal-store';
+
+const env = Astro.locals.runtime.env;
+const learner = Astro.locals.learner;
+const allowed = learner?.isAdmin === true && insightsEnabledFor(env, learner);
+let proposals: ProposalSummary[] = [];
+let settings: AutomationSettings | null = null;
+let failed = false;
+if (!allowed) {
+  Astro.response.status = 404;
+} else {
+  Astro.response.headers.set('cache-control', 'no-store');
+  try {
+    const now = new Date();
+    [proposals, settings] = await Promise.all([listProposalSummaries(env.DB, null, now), automationSettings(env, now)]);
+  } catch (err) {
+    console.error('admin: insights proposals failed', err instanceof Error ? err.name : 'error');
+    failed = true;
+  }
+}
+---
+{allowed ? (
+  <AppLayout title="Đề xuất cải tiến">
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <h1 class="text-2xl font-bold mt-2">Đề xuất cải tiến từ ai-tutor</h1>
+    <p class="mt-2 mb-4 text-sm text-ink-muted">
+      Tổng hợp ẩn danh từ người học đã đồng ý cho dùng gợi ý cải tiến. Mỗi đề xuất cần đủ người học gặp cùng vấn đề và qua kiểm tra quyền riêng tư.
+      Phản hồi học tập cá nhân không bao giờ thành đề xuất hay issue.
+    </p>
+    {failed || !settings
+      ? <p role="alert" class="card text-danger">Không tải được danh sách đề xuất. Thử tải lại trang.</p>
+      : <ProposalTriage client:load initialProposals={proposals} initialSettings={settings} />}
+  </AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy"><AdminNotFound /></AppLayout>
+)}

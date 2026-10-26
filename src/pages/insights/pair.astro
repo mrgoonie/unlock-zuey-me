@@ -1,0 +1,66 @@
+---
+/**
+ * /insights/pair?code=XXXX-XXXX: a signed-in member approves or denies a device pairing code shown by the
+ * ai-unlocked CLI. 404 while INSIGHTS_MODE=off and for members the feature is not enabled for; guests get a
+ * sign-in CTA that returns here. The device label/adapter come from peekPairing (display only); approval
+ * itself goes through POST /api/v1/insights/pair/confirm.
+ */
+import AppLayout from '../../layouts/AppLayout.astro';
+import NotFound from '../../components/ui/NotFound.astro';
+import PairApproval, { normalizeCode, type PairDevice } from '../../components/insights/PairApproval';
+import { insightsEnabledFor, insightsMode } from '../../lib/insights/feature-flags';
+import { peekPairing } from '../../lib/insights/device-pairing';
+
+const env = Astro.locals.runtime.env;
+const learner = Astro.locals.learner;
+const isMember = learner?.kind === 'member';
+const enabled = insightsEnabledFor(env, learner);
+// Guests cannot be checked against the pilot list yet, so they see the sign-in CTA whenever the feature exists.
+const showSignIn = !isMember && insightsMode(env) !== 'off';
+const code = normalizeCode(Astro.url.searchParams.get('code') ?? '') ?? '';
+
+/** Label and adapter of the pending pairing (display only); null when absent, expired, decided or unreadable. */
+async function pendingDevice(userCode: string): Promise<PairDevice | null> {
+  if (!userCode || !env.CACHE) return null;
+  try {
+    const p = await peekPairing(env.CACHE, userCode);
+    return p ? { label: p.label, adapter: p.adapter } : null;
+  } catch (err) {
+    console.error('insights pair: device lookup failed', err instanceof Error ? err.message : 'error');
+    return null;
+  }
+}
+
+const device = enabled ? await pendingDevice(code) : null;
+if (!enabled && !showSignIn) Astro.response.status = 404;
+Astro.response.headers.set('cache-control', 'no-store');
+const returnTo = `/insights/pair${code ? `?code=${encodeURIComponent(code)}` : ''}`;
+---
+{enabled ? (
+  <AppLayout title="Kết nối thiết bị">
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <div class="flex flex-col gap-4 pt-2">
+      <header class="flex flex-col gap-2">
+        <h1 class="text-2xl font-bold">🔗 Kết nối Claude Code với AI Unlocked</h1>
+        <p class="text-sm text-ink-muted">
+          Một thiết bị đang xin quyền gửi các lượt làm việc với AI (đã che thông tin bí mật) để bộ phân tích nền ai-tutor trên máy chủ tạo báo cáo học tập cho riêng bạn.
+        </p>
+      </header>
+      <PairApproval client:load initialCode={code} device={device} />
+      <p class="text-sm text-ink-muted">Quản lý hoặc ngắt kết nối thiết bị bất cứ lúc nào trong <a href="/settings#s-insights" class="font-semibold text-accent">Cài đặt</a>.</p>
+    </div>
+  </AppLayout>
+) : showSignIn ? (
+  <AppLayout title="Kết nối thiết bị">
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <section class="card mt-4 flex flex-col gap-3">
+      <h1 class="text-2xl font-bold">🔗 Đăng nhập để kết nối thiết bị</h1>
+      <p class="text-sm text-ink-muted">Chỉ thành viên zuey.me mới kết nối được Claude Code với AI Unlocked. Đăng nhập xong bạn sẽ quay lại đây với mã đã điền sẵn.</p>
+      <a href={`/auth/zuey/login?return_to=${encodeURIComponent(returnTo)}`} class="btn-primary self-start">Đăng nhập với zuey.me</a>
+    </section>
+  </AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy">
+    <NotFound what="trang" backHref="/home" backLabel="Về trang Hôm nay" />
+  </AppLayout>
+)}

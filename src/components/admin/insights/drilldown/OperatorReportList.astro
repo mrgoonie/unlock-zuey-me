@@ -1,0 +1,44 @@
+---
+/**
+ * The operator's read-only view of one consenting learner's ai-tutor reports. Reports only (never the queued
+ * turn text). Astro escapes every interpolated string, so model-written text cannot inject markup.
+ */
+import { COMPETENCY_LABELS, formatDateTime, missionTitle } from '../../admin-format';
+import { confidenceLabel, provenanceLine, RISK_KIND_LABELS, type InsightReportView } from '../../../insights/insights-api';
+import type { CompetencyId } from '../../../../lib/content/schema';
+
+interface Props { reports: InsightReportView[] }
+const { reports } = Astro.props;
+const usefulLabel = (u: boolean | null) => (u === null ? 'chưa đánh giá' : u ? 'người học thấy hữu ích' : 'người học thấy không hữu ích');
+---
+{reports.length === 0 ? (
+  <p class="card text-sm text-ink-muted">Người học này chưa có báo cáo nào.</p>
+) : (
+  <ul class="flex flex-col gap-3">
+    {reports.map((r) => (
+      <li>
+        <article class="card flex flex-col gap-2 text-sm" aria-labelledby={`op-r-${r.id}`}>
+          <p class="text-xs text-ink-muted">
+            <time datetime={r.createdAt}>{formatDateTime(r.createdAt)}</time>
+            {r.missionId && <> · Mission: {missionTitle(r.missionId)}</>} · {usefulLabel(r.useful)}
+          </p>
+          <h3 id={`op-r-${r.id}`} class="font-semibold">🎯 {r.intent.text} <span class="font-normal text-ink-muted">({confidenceLabel(r.intent.confidence)})</span></h3>
+          {r.workflow.length > 0 && (
+            <div><h4 class="font-medium">Đã thử</h4><ol class="list-decimal pl-5">{r.workflow.map((w) => <li>{w.step}</li>)}</ol></div>
+          )}
+          {r.gaps.length > 0 && (
+            <div><h4 class="font-medium">Chỗ chưa kiểm chứng</h4><ul class="list-disc pl-5">{r.gaps.map((g) => <li>{g.note}</li>)}</ul></div>
+          )}
+          {r.risks.length > 0 && (
+            <div><h4 class="font-medium">Điều cần lưu ý</h4><ul class="list-disc pl-5">{r.risks.map((k) => <li>{RISK_KIND_LABELS[k.kind] ?? k.kind}: {k.note}</li>)}</ul></div>
+          )}
+          {r.learning.length > 0 && (
+            <div><h4 class="font-medium">Điểm tiến bộ</h4><ul class="list-disc pl-5">{r.learning.map((l) => <li>{COMPETENCY_LABELS[l.skill as CompetencyId] ?? l.skill}: {l.note}</li>)}</ul></div>
+          )}
+          {r.next && <p><span class="font-medium">Gợi ý tiếp theo:</span> {r.next.text}{r.next.missionId && <> ({missionTitle(r.next.missionId)})</>}</p>}
+          <p class="text-xs text-ink-muted">{provenanceLine(r.provenance)} · {confidenceLabel(r.confidence)}</p>
+        </article>
+      </li>
+    ))}
+  </ul>
+)}
