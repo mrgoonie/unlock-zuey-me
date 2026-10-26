@@ -12,7 +12,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('cron dispatcher', () => {
   it('runs push reminders first, then the cleanup jobs', () => {
-    expect(scheduledJobs({} as Env).map((j) => j.name)).toEqual(['push-reminders', 'oauth-purge', 'guest-cleanup', 'evidence-gc']);
+    expect(scheduledJobs({} as Env).map((j) => j.name)).toEqual(['push-reminders', 'oauth-purge', 'guest-cleanup', 'evidence-gc', 'insights-pipeline']);
   });
 
   it('runs jobs one at a time in order, never overlapping', async () => {

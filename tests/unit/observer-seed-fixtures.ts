@@ -44,6 +44,21 @@ export async function seedLearner(db: D1Database, id: string, opts: { consent: b
     db.prepare(`INSERT INTO feedback (id, learner_id, message, created_at) VALUES (?, ?, 'Hay', ?)`).bind(`fb_${id}`, id, at(41)),
     db.prepare(`INSERT INTO login_requests (state, code_verifier, learner_id, created_at, expires_at) VALUES (?, 'verifier', ?, ?, ?)`)
       .bind(`state_${id}`, id, T0, at(10)),
+    // ai-tutor insights tables (migration 0008).
+    db.prepare(`INSERT INTO insight_consents (learner_id, analysis, share_operator, proposals, analysis_at, updated_at) VALUES (?, 1, 0, 0, ?, ?)`)
+      .bind(id, T0, T0),
+    db.prepare(`INSERT INTO insight_tokens (id, learner_id, token_hash, label, adapter, created_at, expires_at) VALUES (?, ?, ?, 'MacBook', 'claude-code', ?, ?)`)
+      .bind(`itk_${id}`, id, `ihash_${id}`, T0, at(60 * 24 * 90)),
+    db.prepare(`INSERT INTO insight_reports (id, learner_id, session_ref, report_json, intent_summary, confidence, source_runtime, model, prompt_version, event_count,
+        window_started_at, window_ended_at, created_at, expires_at)
+      VALUES (?, ?, ?, '{"relevant":true}', ?, 0.7, 'claude-code', 'test-model', 1, 1, ?, ?, ?, ?)`)
+      .bind(`irp_${id}`, id, `sref_${id}`, `Mục tiêu của ${id}`, at(50), at(51), at(60), at(60 * 24 * 90)),
+    db.prepare(`INSERT INTO insight_events (id, learner_id, token_id, idempotency_key, session_ref, source_runtime, adapter_version, payload_json, payload_bytes,
+        status, next_attempt_at, report_id, turn_ended_at, received_at, processed_at)
+      VALUES (?, ?, ?, ?, ?, 'claude-code', '0.1.0', NULL, 120, 'done', ?, ?, ?, ?, ?)`)
+      .bind(`iev_${id}`, id, `itk_${id}`, `idem_${id}`, `sref_${id}`, at(55), `irp_${id}`, at(50), at(50), at(60)),
+    db.prepare(`INSERT INTO insight_access_audit (id, learner_id, actor_id, action, target_ref, created_at) VALUES (?, ?, 'lrn_admin', 'view_report', ?, ?)`)
+      .bind(`iau_${id}`, id, `irp_${id}`, at(61)),
   ];
   await db.batch(stmts);
 }

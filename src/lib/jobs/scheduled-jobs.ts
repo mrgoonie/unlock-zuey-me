@@ -4,12 +4,14 @@
  * All jobs share one Worker invocation and therefore one D1 query limit and one subrequest limit, so they
  * run one after another (push reminders first: they are time-sensitive) against a shared budget
  * (cron-budget.ts). Push reminders only see the budget above CLEANUP_RESERVE, so the cleanup jobs always get
- * a slice of every tick even when a busy quarter hour has more reminders than one tick can send. Each job
+ * a slice of every tick even when a busy quarter hour has more reminders than one tick can send. The
+ * insights pipeline runs last and only sees what the cleanup jobs left. Each job
  * sizes its work to what is left and stops early when the budget is spent; every job keeps its own resume
  * position (look-back window, KV cursor, saved key), so the next tick carries on. A failing job is logged
  * and the next job still runs.
  */
 import type { PurgeResult } from '@cloudflare/workers-oauth-provider';
+import { runInsightsPipeline } from '../insights/pipeline-job';
 import { OAUTH_PURGE_BATCH_SIZE, purgeExpiredAuthData } from '../mcp/oauth-purge';
 import { sendDueReminders, TIME_BUDGET_MS as PUSH_TIME_BUDGET_MS } from '../push/reminder-job';
 import { createCronBudget, type CronBudget, type CronCost, type CronReserve } from './cron-budget';
@@ -88,6 +90,9 @@ export function scheduledJobs(env: Env): CronJob[] {
     // Abuse/cost hygiene: abandoned guests and evidence images that were never submitted.
     { name: 'guest-cleanup', run: (budget) => removeInactiveGuests(env, new Date(), GUEST_CLEANUP_BATCH, budget) },
     { name: 'evidence-gc', run: (budget) => deleteOrphanEvidence(env, new Date(), EVIDENCE_GC_PAGES_PER_RUN, budget) },
+    // ai-tutor insights (retention → analyzer → proposals). Last, so it only uses what the jobs above left;
+    // a no-op that charges nothing while INSIGHTS_MODE is off.
+    { name: 'insights-pipeline', run: (budget) => runInsightsPipeline(env, budget, new Date()) },
   ];
 }
 

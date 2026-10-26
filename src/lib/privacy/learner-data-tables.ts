@@ -31,6 +31,12 @@ export const LEARNER_TABLES: LearnerTable[] = [
   { table: 'mission_runs', column: 'learner_id' },
   { table: 'certificates', column: 'learner_id' },
   { table: 'push_subscriptions', column: 'learner_id', omitFromExport: ['endpoint', 'p256dh', 'auth'] },
+  // ai-tutor insights (0008). insight_signal_evidence has no learner column: it cascades from insight_reports.
+  { table: 'insight_access_audit', column: 'learner_id' },
+  { table: 'insight_events', column: 'learner_id' },
+  { table: 'insight_reports', column: 'learner_id' },
+  { table: 'insight_tokens', column: 'learner_id', omitFromExport: ['token_hash'] },
+  { table: 'insight_consents', column: 'learner_id' },
   { table: 'ai_usage', column: 'learner_id' },
   { table: 'events', column: 'learner_id' },
   { table: 'feedback', column: 'learner_id' },
