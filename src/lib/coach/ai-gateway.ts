@@ -13,7 +13,7 @@ import {
 } from './ai-clients';
 import { estimateCostUsd, WORKERS_AI_TIMEOUT_MS } from './ai-models';
 import {
-  budgetLimits, readUsage, releaseUsd, reserveUsd, reserveWorkersAiCall, settleUsage, type BudgetPool, type UsageTotals,
+  budgetLimits, readUsage, releaseUsd, reserveUsd, reserveWorkersAiCall, settleUsage, type BudgetLimits, type BudgetPool, type UsageTotals,
 } from './ai-usage';
 
 export interface AiDeps {
@@ -26,11 +26,30 @@ export interface AiDeps {
 export type AiPurpose = 'grade' | 'hint' | 'chat' | 'insights';
 
 /**
- * Grading may use the full caps. Practice chat, hints and the ai-tutor insights analyzer (a server-side
- * background analyzer run by the cron) share the capped coaching slice of each, so insights can never
+ * Grading may use the full caps. Practice chat, hints and the ai-tutor insights work (the cron's background
+ * analyzer and proposal drafts) share the capped coaching slice of the global caps, so insights can never
  * starve grading.
  */
 export const budgetPool = (purpose: AiPurpose): BudgetPool => (purpose === 'grade' ? 'grading' : 'coaching');
+
+/**
+ * ai_usage row charged for every 'insights' call instead of a learner's row. Background analysis is not
+ * something the learner asked for in the web app, so it must never use up their own hint and practice-chat
+ * share; it stays bounded by the global caps (and their coaching share) and by the insights daily quotas.
+ */
+export const INSIGHTS_USAGE_ID = 'system:insights';
+
+/** Per-learner caps lifted for the insights row: only the global caps (and the insights quotas) bound it. */
+const UNCAPPED = 1e9;
+
+/** Which ai_usage row a call is charged to, and the caps that apply to it. */
+export function usageScope(purpose: AiPurpose, learnerId: string, limits: BudgetLimits): { usageId: string; limits: BudgetLimits } {
+  if (purpose !== 'insights') return { usageId: learnerId, limits };
+  return {
+    usageId: INSIGHTS_USAGE_ID,
+    limits: { ...limits, perLearnerUsd: UNCAPPED, coachPerLearnerUsd: UNCAPPED, workersAiPerLearner: UNCAPPED, coachWorkersAiPerLearner: UNCAPPED },
+  };
+}
 
 export interface AiRequest<T> {
   purpose: AiPurpose;
@@ -66,7 +85,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
   const { env } = deps;
   const now = deps.now?.() ?? new Date();
   const day = utcDay(now);
-  const limits = budgetLimits(env);
+  const { usageId, limits } = usageScope(req.purpose, req.learnerId, budgetLimits(env));
   const db = env.DB;
   const pool = budgetPool(req.purpose);
   const event = (name: 'ai.budget_exceeded' | 'ai.fallback_used', props: Record<string, string>) =>
@@ -78,7 +97,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
     overLearnerCoachShare: (u: UsageTotals) => boolean,
   ): Promise<'global' | 'coach_share' | 'learner_coach_share' | 'learner'> => {
     try {
-      const { learner, global } = await readUsage(db, day, req.learnerId);
+      const { learner, global } = await readUsage(db, day, usageId);
       if (overGlobal(global)) return 'global';
       if (pool === 'coaching' && overCoachShare(global)) return 'coach_share';
       return pool === 'coaching' && overLearnerCoachShare(learner) ? 'learner_coach_share' : 'learner';
@@ -88,7 +107,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
   };
   const settle = async (c: AiCompletion, reservedUsd: number) => {
     try {
-      await settleUsage(db, day, req.learnerId, pool, {
+      await settleUsage(db, day, usageId, pool, {
         inputTokens: c.inputTokens, outputTokens: c.outputTokens, costUsd: estimateCostUsd(c.model, c.inputTokens, c.outputTokens), reservedUsd,
       });
     } catch (err) {
@@ -105,7 +124,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
       const reserved = estimateCostUsd(model, inputTokens, req.maxTokens);
       let ok: boolean;
       try {
-        ok = await reserveUsd(db, day, req.learnerId, reserved, limits, pool);
+        ok = await reserveUsd(db, day, usageId, reserved, limits, pool);
       } catch (err) {
         // Without usage numbers we cannot prove we are under budget: skip paid models, still try the fallback.
         console.error('ai usage reservation failed', err);
@@ -132,7 +151,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
         });
       } catch (err) {
         console.warn('openrouter attempt failed', req.purpose, model, err instanceof Error ? err.message : err);
-        await releaseUsd(db, day, req.learnerId, reserved, pool).catch((e) => console.error('ai usage release failed', e));
+        await releaseUsd(db, day, usageId, reserved, pool).catch((e) => console.error('ai usage release failed', e));
         continue;
       }
       // A completed call is paid for even when its output is then rejected.
@@ -147,7 +166,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
 
   let allowed = true;
   try {
-    allowed = await reserveWorkersAiCall(db, day, req.learnerId, limits, pool);
+    allowed = await reserveWorkersAiCall(db, day, usageId, limits, pool);
   } catch (err) {
     // Same stance as before reservations existed: a usage-store outage must not block the fallback.
     console.error('workers ai reservation failed', err);
