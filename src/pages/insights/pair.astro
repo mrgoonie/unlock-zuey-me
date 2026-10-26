@@ -2,13 +2,14 @@
 /**
  * /insights/pair?code=XXXX-XXXX: a signed-in member approves or denies a device pairing code shown by the
  * ai-unlocked CLI. 404 while INSIGHTS_MODE=off and for members the feature is not enabled for; guests get a
- * sign-in CTA that returns here. The device label/adapter are read (display only) from the pending pairing
- * record in KV; approval itself goes through POST /api/v1/insights/pair/confirm.
+ * sign-in CTA that returns here. The device label/adapter come from peekPairing (display only); approval
+ * itself goes through POST /api/v1/insights/pair/confirm.
  */
 import AppLayout from '../../layouts/AppLayout.astro';
 import NotFound from '../../components/ui/NotFound.astro';
 import PairApproval, { normalizeCode, type PairDevice } from '../../components/insights/PairApproval';
 import { insightsEnabledFor, insightsMode } from '../../lib/insights/feature-flags';
+import { peekPairing } from '../../lib/insights/device-pairing';
 
 const env = Astro.locals.runtime.env;
 const learner = Astro.locals.learner;
@@ -18,25 +19,12 @@ const enabled = insightsEnabledFor(env, learner);
 const showSignIn = !isMember && insightsMode(env) !== 'off';
 const code = normalizeCode(Astro.url.searchParams.get('code') ?? '') ?? '';
 
-/** Pending pairing record (device-pairing.ts key scheme); null when absent, expired or unreadable. */
+/** Label and adapter of the pending pairing (display only); null when absent, expired, decided or unreadable. */
 async function pendingDevice(userCode: string): Promise<PairDevice | null> {
   if (!userCode || !env.CACHE) return null;
   try {
-    const pointer = await env.CACHE.get(`insights:pair:user:${userCode}`);
-    if (!pointer) return null;
-    let deviceKey = pointer;
-    try {
-      const parsed: unknown = JSON.parse(pointer);
-      if (typeof parsed === 'string') deviceKey = parsed;
-      else if (parsed && typeof parsed === 'object') {
-        const p = parsed as Record<string, unknown>;
-        deviceKey = String(p.deviceHash ?? p.hash ?? p.deviceKey ?? '');
-      }
-    } catch { /* a bare hash string */ }
-    if (!/^[0-9a-f]{64}$/.test(deviceKey)) return null;
-    const record = await env.CACHE.get<Record<string, unknown>>(`insights:pair:dev:${deviceKey}`, 'json');
-    if (!record || record.status !== 'pending' || typeof record.label !== 'string' || typeof record.adapter !== 'string') return null;
-    return { label: record.label.slice(0, 64), adapter: record.adapter.slice(0, 32) };
+    const p = await peekPairing(env.CACHE, userCode);
+    return p ? { label: p.label, adapter: p.adapter } : null;
   } catch (err) {
     console.error('insights pair: device lookup failed', err instanceof Error ? err.message : 'error');
     return null;
