@@ -1,0 +1,67 @@
+---
+/**
+ * MCP OAuth consent page (/authorize). Logic lives in src/lib/mcp/authorize-consent.ts; this page only
+ * renders it. Every client-supplied string (name, domain, scopes) is escaped by Astro.
+ */
+import AppLayout from '../layouts/AppLayout.astro';
+import { authorizeGet, authorizePost, type AuthorizeOutcome } from '../lib/mcp/authorize-consent';
+import { SCOPE_DESCRIPTIONS } from '../lib/mcp/mcp-scopes';
+import { getOAuthHelpers } from '../lib/mcp/oauth-options';
+
+const env = Astro.locals.runtime.env;
+const learner = Astro.locals.learner;
+const oauth = getOAuthHelpers(env);
+let outcome: AuthorizeOutcome;
+if (Astro.request.method === 'POST') outcome = await authorizePost(oauth, Astro.request, learner);
+else if (Astro.request.method === 'GET') outcome = await authorizeGet(oauth, Astro.request, learner);
+else return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, POST' } });
+
+if (outcome.kind === 'redirect') return new Response(null, { status: 302, headers: outcome.headers });
+
+Astro.response.headers.set('cache-control', 'no-store');
+if (outcome.kind === 'error') Astro.response.status = outcome.status;
+if (outcome.kind === 'consent') {
+  for (const [name, value] of outcome.headers) if (name.toLowerCase() !== 'set-cookie') Astro.response.headers.set(name, value);
+  for (const cookie of outcome.headers.getSetCookie()) Astro.response.headers.append('set-cookie', cookie);
+}
+const who = learner?.displayName ?? learner?.email ?? 'tài khoản zuey.me của bạn';
+---
+<AppLayout title="Cấp quyền kết nối" bare>
+  {outcome.kind === 'error' && (
+    <section class="card mx-auto mt-10 flex max-w-md flex-col gap-3" aria-labelledby="authorize-title">
+      <h1 id="authorize-title" class="text-xl font-bold">{outcome.title}</h1>
+      <p class="text-ink-muted">Bạn quay lại ứng dụng AI vừa mở trang này và thử kết nối lại nhé.</p>
+      {outcome.detail && <p class="text-xs text-ink-muted">Chi tiết: {outcome.detail}</p>}
+      <a href="/home" class="btn-ghost w-fit">Về AI Unlocked</a>
+    </section>
+  )}
+  {outcome.kind === 'consent' && (
+    <section class="card mx-auto mt-6 flex max-w-md flex-col gap-4" aria-labelledby="authorize-title">
+      <h1 id="authorize-title" class="text-xl font-bold">Cho phép <span class="break-words">{outcome.details.clientName}</span> dùng AI Unlocked thay bạn?</h1>
+      {outcome.details.clientDomain
+        ? <p>Ứng dụng này thuộc tên miền <strong>{outcome.details.clientDomain}</strong>.</p>
+        : <p class="text-warn">Ứng dụng này tự đăng ký nên tên của nó chưa được xác minh. Chỉ đồng ý nếu bạn vừa tự mở kết nối này.</p>}
+      <p>Quyền truy cập sẽ được gửi tới <strong>{outcome.details.redirectHost}</strong>.</p>
+      {outcome.details.redirectIsLoopback && (
+        <p class="text-warn">Quyền sẽ được gửi tới một ứng dụng chạy trên máy tính của bạn. Chỉ tiếp tục nếu bạn vừa bắt đầu kết nối từ ứng dụng đó.</p>
+      )}
+      <form method="post" class="flex flex-col gap-4">
+        <input type="hidden" name="handle" value={outcome.handle} />
+        <fieldset class="flex flex-col gap-2">
+          <legend class="mb-1 font-semibold">Ứng dụng sẽ được phép:</legend>
+          {outcome.scopes.map((scope) => (
+            <label class="flex items-start gap-2">
+              <input type="checkbox" name="scope" value={scope} checked class="mt-1 h-5 w-5" />
+              <span>{SCOPE_DESCRIPTIONS[scope]}</span>
+            </label>
+          ))}
+        </fieldset>
+        <p class="text-sm text-ink-muted">Đăng nhập với: {who}. Quyền kết nối tự hết hạn sau tối đa 30 ngày.</p>
+        <div class="flex flex-col gap-3 sm:flex-row">
+          <button type="submit" name="decision" value="approve" class="btn-primary">Cho phép</button>
+          <button type="submit" name="decision" value="deny" class="btn-ghost">Từ chối</button>
+        </div>
+      </form>
+    </section>
+  )}
+</AppLayout>
