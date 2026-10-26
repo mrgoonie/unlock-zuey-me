@@ -113,12 +113,9 @@ describe('POST /api/v1/runs/:id/abandon', () => {
     expect((await body(done)).error?.code).toBe('conflict');
   });
 
-  it('throttles per learner', async () => {
+  it('is repeatable and still hides the run from another learner', async () => {
     const run = await startMission(deps, alice, 'plan-weekend', 'web');
-    const statuses: number[] = [];
-    for (let i = 0; i < 31; i++) statuses.push((await call(alice, run.id)).status);
-    expect(statuses.slice(0, 30).every((s) => s === 200)).toBe(true);
-    expect(statuses[30]).toBe(429);
+    for (let i = 0; i < 3; i++) expect((await call(alice, run.id)).status).toBe(200);
     expect((await call(bob, run.id)).status).toBe(404);
   });
 });

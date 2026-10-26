@@ -20,7 +20,7 @@ describe('throttled routes', () => {
     expect(throttledRoute('/api/v1/evidence/upload', 'POST')).toMatchObject({ scope: 'upload', ipLimiter: 'RL_AI_IP' });
     for (const [path, scope] of [
       ['/api/v1/events', 'event'], ['/api/v1/labs/context-lab/result', 'lab'],
-      ['/api/v1/missions/plan-weekend/start', 'start'], ['/api/v1/push/subscribe', 'push'],
+      ['/api/v1/missions/plan-weekend/start', 'start'], ['/api/v1/runs/run_1/abandon', 'abandon'], ['/api/v1/push/subscribe', 'push'],
     ]) {
       expect(throttledRoute(path, 'POST')).toEqual({ scope, ipLimiter: 'RL_WRITE_IP', learnerLimiter: 'RL_WRITE_LEARNER' });
     }
