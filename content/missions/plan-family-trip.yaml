@@ -1,0 +1,187 @@
+schema_version: 1
+id: plan-family-trip
+version: 1
+locale: vi
+status: published
+title: Lên kế hoạch chuyến đi gia đình
+tagline: Nhờ AI lên lịch một chuyến đi 2 ngày 1 đêm cho cả nhà, rồi tự kiểm những chỗ dễ sai.
+emoji: "🧳"
+outcome: Bạn có lịch trình chuyến đi hợp với cả người già lẫn trẻ nhỏ, và biết chi tiết nào phải tự gọi điện hoặc tra lại.
+why_it_matters: >-
+  Đây là cùng kỹ năng với mission cuối tuần, nhưng với dữ liệu khác: nhiều người hơn, xa nhà hơn, có tiền phòng và tiền xe.
+  Làm lại được với tình huống mới chứng tỏ bạn đã nắm cách làm, chứ không chỉ nhớ một đáp án.
+persona_tags: [beginner, basic, everyday-life]
+estimated_minutes: 18
+risk_tier: low
+safety_notes:
+  - Không cần gửi số CCCD, số điện thoại hay địa chỉ nhà cho AI để lên lịch.
+  - Đặt phòng, đặt xe qua kênh chính thức. Đừng chuyển khoản theo số tài khoản do AI đưa ra.
+competency_targets:
+  - { id: describe, weight: 2 }
+  - { id: verify, weight: 2 }
+  - { id: operate, weight: 1 }
+  - { id: reflect, weight: 1 }
+concept_refs: [prompt, context, hallucination, knowledge-cutoff, web-search]
+transfer_variant: plan-weekend
+steps:
+  - id: constraints
+    type: guided-input
+    title: Chuyến đi này cần gì?
+    prompt: >-
+      Hãy nghĩ về một chuyến đi thật mà nhà bạn muốn đi (ví dụ về quê, đi biển gần nhà). Ghi điểm đến, người đi cùng
+      và các ràng buộc. Càng cụ thể, AI càng lên lịch sát với nhà bạn.
+    fields:
+      - { id: destination, label: Điểm đến và thời gian đi, placeholder: "Vũng Tàu, 2 ngày 1 đêm, cuối tháng 11", kind: text, min: 8 }
+      - { id: travellers, label: Ai đi cùng? (chỉ cần tuổi và nhu cầu đặc biệt), placeholder: "2 vợ chồng, bé 5 tuổi, bà ngoại 70 tuổi đi chậm", kind: text, min: 10 }
+      - { id: constraints, label: Ràng buộc (mỗi dòng một ý), placeholder: "Tổng ngân sách 4 triệu\nĐi xe khách, không tự lái\nBà cần nghỉ trưa\nBé ăn được hải sản", kind: list, min: 4 }
+    hints:
+      - Điều gì sẽ làm chuyến đi mệt hoặc tốn kém hơn dự tính nếu AI không biết trước?
+      - Nghĩ theo bốn nhóm - tiền, phương tiện, sức khoẻ từng người, và giờ giấc (đi lúc nào, phải về lúc nào).
+      - Ví dụ "Ngân sách 4 triệu cả nhà", "Bà ngoại không leo dốc được", "Phải về đến nhà trước 20h Chủ Nhật", "Bé say xe".
+      - Bạn cần ít nhất 4 ràng buộc. Viết một dòng về tiền, một về phương tiện, một về sức khoẻ, một về giờ về.
+  - id: ask-ai
+    type: ai-task
+    title: Nhờ AI lên lịch trình
+    instruction: >-
+      Mở AI bạn hay dùng (hoặc chat trong app). Gửi điểm đến, người đi cùng và ràng buộc, xin lịch trình theo giờ cho
+      2 ngày, có chi phí ước tính từng mục. Dán câu trả lời của AI vào ô bên dưới (hoặc chụp màn hình).
+    prompt_suggestions:
+      - "Mình muốn lên lịch chuyến đi [điểm đến], [thời gian]. Người đi: [người đi cùng]. Ràng buộc: [ràng buộc]. Hãy lập lịch theo giờ cho 2 ngày, ghi chi phí ước tính từng mục và tổng cộng."
+      - "Trước khi lên lịch, hãy hỏi mình 3 câu để hiểu rõ nhu cầu của cả nhà."
+      - "Trong lịch này, chi tiết nào (giá, giờ mở cửa, thời gian đi đường) bạn không chắc và mình nên tự kiểm tra?"
+    allow_in_app_chat: true
+    capture: { id: ai_answer, label: Lịch trình AI đưa ra (dán vào đây), min: 120, allow_image: true }
+    hints:
+      - AI có biết bà đi chậm và bé say xe không? Nếu bạn chưa nói, nó sẽ không tự biết.
+      - Dùng gợi ý câu lệnh đầu tiên, thay phần trong ngoặc vuông bằng những gì bạn vừa viết.
+      - Ví dụ "...Người đi - 2 vợ chồng, bé 5 tuổi, bà 70 tuổi đi chậm. Ràng buộc - 4 triệu, đi xe khách, bà nghỉ trưa..."
+      - Sao chép gợi ý đầu, dán vào ChatGPT, sửa phần ngoặc vuông, gửi đi, rồi dán toàn bộ câu trả lời vào đây.
+  - id: predict
+    type: prediction
+    title: Đoán trước chỗ dễ sai
+    question: Trong một lịch trình du lịch do AI viết, loại thông tin nào dễ sai nhất?
+    options:
+      - { id: opt-sequence, text: "Thứ tự hoạt động trong ngày (sáng đi biển, trưa ăn, chiều nghỉ)" }
+      - { id: opt-prices, text: "Giá phòng, giá vé và giờ xe chạy cụ thể" }
+      - { id: opt-tips, text: "Lời khuyên chung như mang kem chống nắng cho bé" }
+    correct: opt-prices
+    explanation: >-
+      Giá phòng, giá vé và giờ xe là dữ kiện thay đổi theo thời gian. AI học từ dữ liệu cũ và hay đưa ra con số nghe rất
+      hợp lý dù không có thật. Thứ tự hoạt động và lời khuyên chung thì ít rủi ro hơn, bạn tự đánh giá được bằng kinh nghiệm.
+    hints:
+      - Loại thông tin nào thay đổi theo tháng, theo mùa?
+      - AI không xem được bảng giá hôm nay. Loại thông tin nào cần bảng giá hôm nay?
+      - Ví dụ AI có thể nói "vé cáp treo 150.000đ" trong khi giá thật đã tăng từ năm ngoái.
+      - Đáp án là giá phòng, giá vé và giờ xe. Hãy chọn nó và đặt mức tự tin theo cảm nhận thật của bạn.
+  - id: verify
+    type: verification
+    title: Kiểm chứng lịch trình
+    instruction: >-
+      Chọn mức tin cậy cho từng câu dưới đây (kiểu câu AI hay viết trong lịch trình). Sau đó chọn ít nhất HAI chi tiết
+      trong lịch của BẠN, tra lại (Google Maps, trang chính thức, gọi điện, hỏi người quen) và ghi kết quả.
+    claims:
+      - id: claim-bus
+        text: "Xe khách từ TP.HCM đi Vũng Tàu chạy mỗi 30 phút, giá 160.000đ một vé."
+        answer: needs_lookup
+        explanation: Giờ chạy và giá vé do nhà xe quyết định và thay đổi. Hãy tra trang hoặc tổng đài của nhà xe.
+      - id: claim-nap
+        text: "Người lớn tuổi nên có thời gian nghỉ giữa các hoạt động khi đi chơi xa."
+        answer: verified
+        explanation: Đây là lời khuyên chung, hợp lẽ thường và rủi ro thấp nếu sai.
+      - id: claim-hotel
+        text: "Khách sạn Z còn phòng gia đình cuối tuần đó, giá 900.000đ một đêm."
+        answer: insufficient
+        explanation: AI chat không xem được tình trạng phòng thật. Chỉ trang đặt phòng hoặc khách sạn mới biết còn phòng hay không.
+      - id: claim-seasick
+        text: "Bé 5 tuổi say xe có thể uống thuốc chống say xe loại người lớn, nửa viên."
+        answer: expert
+        explanation: Thuốc và liều cho trẻ em phải hỏi dược sĩ hoặc bác sĩ. Không làm theo AI với chuyện thuốc men của trẻ.
+    notes: { id: check_notes, label: Bạn đã kiểm tra hai chi tiết nào? Kết quả khác AI ở đâu?, min: 60 }
+    hints:
+      - Với mỗi câu, tự hỏi - AI có thể biết điều này hôm nay không? Nếu sai thì hậu quả lớn hay nhỏ?
+      - Giá vé, giờ xe là "cần tra cứu". Phòng còn trống là "không đủ dữ liệu". Thuốc cho trẻ là "cần chuyên gia".
+      - Ví dụ ghi chú "AI nói xe chạy mỗi 30 phút, trang nhà xe ghi mỗi 1 tiếng vào cuối tuần. AI nói vé 160k, thật là 180k."
+      - Chọn như gợi ý số 2, rồi mở Google Maps hoặc trang nhà xe, tra hai thứ trong lịch của bạn và ghi lại con số thật.
+  - id: adjust
+    type: guided-input
+    title: Có chuyện bất ngờ
+    prompt: >-
+      Chuyến đi thật luôn có thay đổi. Nói với AI một tình huống mới (ví dụ "bà mệt, muốn về sớm nửa ngày" hoặc "ngân sách
+      giảm còn 3 triệu") và ghi lại AI đã sửa lịch thế nào.
+    fields:
+      - { id: change, label: Bạn đã đổi điều gì?, placeholder: "Bà mệt, cả nhà phải về trước 12h Chủ Nhật", kind: text, min: 10 }
+      - { id: revised, label: AI sửa lịch ra sao? Có chỗ nào bạn không đồng ý?, kind: textarea, min: 50 }
+    hints:
+      - Nếu chỉ được đổi một thứ, điều gì dễ xảy ra nhất với nhà bạn?
+      - Gõ tiếp trong cùng cuộc trò chuyện để AI còn nhớ lịch cũ.
+      - Ví dụ "Bà mệt, phải về trước 12h Chủ Nhật. Bỏ bớt hoạt động nào, giữ hoạt động nào cho bé?"
+      - Gửi tình huống mới cho AI, đọc lịch đã sửa, rồi ghi lại một chỗ hợp lý và một chỗ bạn muốn chỉnh thêm.
+  - id: reflect
+    type: reflection
+    title: So với lần trước
+    prompt: >-
+      So với lần lên kế hoạch cuối tuần (hoặc lần đầu bạn nhờ AI lên lịch), lần này bạn làm gì khác? Điều gì bạn sẽ giữ
+      cho mọi chuyến đi sau?
+    field_id: lesson
+    min: 40
+    hints:
+      - Lần này bạn có nói rõ hơn ngay từ đầu không? Có kiểm nhiều hơn không?
+      - Nghĩ về hai việc - cách bạn dặn AI, và chỗ bạn đã bắt được AI sai.
+      - Ví dụ "Lần này mình ghi sức khoẻ của bà ngay từ đầu nên AI xếp giờ nghỉ hợp lý. Giá xe AI nói sai 20k."
+      - Viết 2 câu - một điều bạn dặn AI tốt hơn, một điều bạn sẽ luôn tự kiểm lại.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: clear-constraints
+      label: Nêu đủ người đi và ràng buộc
+      weight: 20
+      competency: describe
+      method: deterministic
+      check: { kind: list_min, step: constraints, field: constraints, min: 4 }
+    - id: fits-family
+      label: Lịch trình hợp với từng người trong nhà
+      weight: 20
+      competency: delegate
+      method: ai
+      guidance: >-
+        The pasted AI answer should be a two-day hour-by-hour itinerary with cost estimates that visibly accounts for
+        the stated travellers (e.g. rest time for an elderly person, child-friendly activities) and the budget and
+        transport constraints. Score low if the pasted text ignores the travellers or is not an itinerary.
+      step_refs: [constraints, ask-ai]
+    - id: risk-sense
+      label: Đoán đúng loại thông tin dễ sai
+      weight: 10
+      competency: verify
+      method: deterministic
+      check: { kind: prediction_correct, step: predict }
+    - id: verdicts
+      label: Phân loại đúng mức tin cậy
+      weight: 15
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: verify }
+    - id: real-checks
+      label: Tự kiểm hai chi tiết thật
+      weight: 15
+      competency: verify
+      method: ai
+      guidance: >-
+        Strong notes name at least two concrete details from the learner's own itinerary (a price, a bus time, an
+        opening hour, a distance), say which outside source was used (map, official site, phone call, a person), and
+        report what was found, including any mismatch with the AI. Generic statements like "I checked everything" score low.
+      step_refs: [verify, ask-ai]
+    - id: adapt
+      label: Xử lý tình huống thay đổi
+      weight: 10
+      competency: operate
+      method: ai
+      guidance: >-
+        The learner states one realistic change, reports how the AI revised the itinerary, and gives their own
+        judgement, ideally naming at least one part they agree with or would still adjust.
+      step_refs: [adjust]
+    - id: lesson
+      label: Rút ra điều mang sang lần sau
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 40 }

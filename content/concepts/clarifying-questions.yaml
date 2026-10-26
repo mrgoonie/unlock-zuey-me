@@ -1,0 +1,28 @@
+id: clarifying-questions
+label_vi: Để AI phỏng vấn mình trước
+label_en: Clarifying questions
+emoji: "🙋"
+layer: foundation
+group: prompt-knowledge
+one_liner: Trước khi để AI làm, hãy bảo nó hỏi bạn vài câu để hiểu đúng điều bạn cần.
+beginner_explanation: >-
+  Nhiều khi mình chưa biết phải dặn AI những gì. Cách đơn giản là viết "Trước khi trả lời, hãy hỏi tôi 3–5 câu để hiểu
+  rõ nhu cầu". AI sẽ hỏi về ngân sách, thời gian, người dùng... Trả lời xong, kết quả sát ý bạn hơn nhiều. Câu hỏi mơ hồ
+  thì nhận câu trả lời mơ hồ.
+analogy: Như thợ may giỏi hỏi số đo, dịp mặc, màu thích trước khi cắt vải, chứ không may đại một cái áo.
+rigorous_explanation: >-
+  Mô hình mặc định cố trả lời ngay với thông tin đang có, tự lấp chỗ trống bằng giả định phổ biến. Yêu cầu hỏi lại buộc
+  nó nêu các biến còn thiếu, giúp thu hẹp khoảng cách giữa kỳ vọng của người dùng và đầu ra. Đây là bước làm rõ phạm vi
+  (scope) trước khi thực hiện, áp dụng được cho mọi loại việc.
+misconceptions:
+  - Phải tự viết một câu lệnh hoàn hảo ngay từ đầu. Bạn có thể để AI giúp mình làm rõ yêu cầu.
+  - AI hỏi lại là AI kém. Hỏi lại đúng chỗ là dấu hiệu làm việc cẩn thận.
+examples:
+  - '"Tôi muốn mua máy giặt. Trước khi gợi ý, hãy hỏi tôi 5 câu cần thiết."'
+  - '"Tôi cần viết tin nhắn xin nghỉ phép. Hỏi tôi vài câu trước khi viết."'
+when_you_need_it: Khi bạn chưa rõ mình cần gì, hoặc kết quả lần đầu của AI chung chung, không đúng ý.
+when_you_dont: Khi việc đơn giản và bạn đã biết chính xác mình muốn gì.
+related: [prompt, context, few-shot]
+prerequisites: [prompt]
+last_reviewed_at: "2026-10-26"
+confidence: high

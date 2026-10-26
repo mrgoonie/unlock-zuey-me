@@ -1,0 +1,27 @@
+id: training-vs-inference
+label_vi: Huấn luyện và suy luận
+label_en: Training vs inference
+emoji: "🏋️"
+layer: foundation
+group: fundamentals
+one_liner: Huấn luyện là lúc AI "đi học". Suy luận là lúc AI "đi làm", tức là trả lời bạn.
+beginner_explanation: >-
+  Huấn luyện tốn rất nhiều máy, tiền và thời gian, và chỉ công ty làm AI mới làm. Khi bạn chat, AI không học thêm
+  từ câu bạn gõ trong lúc đó. Nó chỉ dùng những gì đã học để trả lời. Việc trả lời đó gọi là suy luận (inference).
+analogy: >-
+  Như đầu bếp học nghề nhiều năm (huấn luyện), rồi mỗi ngày nấu món cho khách (suy luận). Nấu cho bạn một bữa không làm
+  đầu bếp giỏi lên ngay lập tức.
+rigorous_explanation: >-
+  Huấn luyện điều chỉnh trọng số mô hình bằng lan truyền ngược trên dữ liệu lớn, cần cụm GPU lớn trong nhiều tuần.
+  Suy luận là chạy mô hình với trọng số cố định để sinh đầu ra cho một đầu vào. Dữ liệu chat có thể được nhà cung cấp
+  dùng cho lần huấn luyện sau (tuỳ chính sách và cài đặt), nhưng không thay đổi mô hình ngay trong cuộc trò chuyện.
+misconceptions:
+  - Sửa AI một lần thì nó sẽ nhớ và đúng mãi. Trong cuộc trò chuyện khác, nó có thể sai lại y như cũ.
+  - Nói chuyện với AI là đang dạy nó ngay lập tức.
+examples:
+  - Bạn sửa AI rằng quán đóng cửa thứ Hai. Mở cuộc trò chuyện mới, AI lại nói quán mở thứ Hai.
+when_you_need_it: Khi bạn thắc mắc vì sao AI không "nhớ" lời sửa của mình, hoặc vì sao kiến thức của nó đã cũ.
+related: [knowledge-cutoff, fine-tuning, memory, gpu]
+prerequisites: [model]
+last_reviewed_at: "2026-10-26"
+confidence: high

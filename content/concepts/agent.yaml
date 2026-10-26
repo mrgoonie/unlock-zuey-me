@@ -1,0 +1,29 @@
+id: agent
+label_vi: Tác tử AI (AI agent)
+label_en: AI agent
+emoji: "🦾"
+layer: just-in-time
+group: agents-integration
+one_liner: AI không chỉ trả lời mà tự lên kế hoạch, dùng công cụ và làm nhiều bước liên tiếp để hoàn thành việc.
+beginner_explanation: >-
+  Chatbot thường hỏi một câu, đáp một câu. Agent thì nhận một mục tiêu ("tìm 3 khách sạn dưới 1 triệu gần biển, so sánh
+  và lập bảng"), rồi tự tìm kiếm, đọc, so sánh, sửa lại, cho đến khi xong. Nó làm được nhiều hơn, nhưng cũng có thể sai
+  nhiều bước hơn, nên bạn vẫn phải kiểm kết quả cuối và cẩn thận khi cho nó quyền thanh toán hay gửi tin.
+analogy: >-
+  Chatbot như người tư vấn qua điện thoại. Agent như người trợ lý được giao việc, tự đi lại, gọi điện, ghi chép rồi báo cáo.
+rigorous_explanation: >-
+  Agent là một vòng lặp quanh LLM, gồm nhận mục tiêu, lập kế hoạch, gọi công cụ (tool call), đọc kết quả, quyết định
+  bước tiếp theo, và dừng khi đạt điều kiện. Độ tin cậy phụ thuộc chất lượng mô hình, công cụ, giới hạn quyền và cách
+  kiểm chứng. Lỗi ở một bước có thể lan sang các bước sau.
+misconceptions:
+  - Agent là AI có ý chí riêng. Nó vẫn là mô hình chạy theo vòng lặp và quyền hạn do con người đặt ra.
+  - Giao cho agent là xong, không cần kiểm. Agent càng tự động càng cần kiểm bằng chứng cụ thể.
+examples:
+  - Chế độ "nghiên cứu sâu" trong app AI tự tìm và đọc hàng chục trang web rồi viết báo cáo.
+  - Trợ lý lập trình như Claude Code tự sửa code, chạy thử và sửa tiếp khi gặp lỗi.
+when_you_need_it: Khi việc cần nhiều bước, nhiều nguồn, và bạn muốn AI làm thay thay vì hỏi đáp từng câu.
+when_you_dont: Người dùng ChatGPT trên điện thoại cho việc hằng ngày thường chưa cần agent riêng.
+related: [tool-use, automation, mcp, agent-skill, guardrails]
+prerequisites: [llm, tool-use]
+last_reviewed_at: "2026-10-26"
+confidence: high

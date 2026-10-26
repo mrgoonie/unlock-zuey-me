@@ -1,0 +1,26 @@
+id: knowledge-cutoff
+label_vi: Mốc kiến thức
+label_en: Knowledge cutoff
+emoji: "📅"
+layer: foundation
+group: fundamentals
+one_liner: AI chỉ học dữ liệu đến một ngày nhất định. Sau ngày đó, nó không tự biết chuyện gì đã xảy ra.
+beginner_explanation: >-
+  Mỗi model được huấn luyện với dữ liệu đến một thời điểm, gọi là mốc kiến thức. Giá cả, giờ mở cửa, tin tức, luật
+  mới sau mốc đó thì AI không biết, trừ khi nó được bật tìm kiếm web. Tệ hơn, nó có thể đoán bừa như thể đã biết.
+analogy: Như người vừa đi tàu biển một năm mới về. Họ kể chuyện rất hay, nhưng giá xăng và tin tức thì đã cũ.
+rigorous_explanation: >-
+  Mốc kiến thức là thời điểm cuối cùng của dữ liệu huấn luyện. Kiến thức sát mốc thường mỏng vì còn ít dữ liệu.
+  Mô hình không tự cảm nhận thời gian thực, trừ khi ngày hiện tại được đưa vào ngữ cảnh. Tìm kiếm web hoặc RAG bổ sung
+  thông tin mới vào ngữ cảnh nhưng không cập nhật trọng số mô hình.
+misconceptions:
+  - AI biết hôm nay là ngày mấy và chuyện gì đang xảy ra. Nó chỉ biết nếu ứng dụng cho nó biết hoặc nó tra web.
+  - Hỏi lại AI "bạn có chắc không" là đủ để kiểm tra thông tin mới. Nó vẫn có thể khẳng định sai.
+examples:
+  - AI báo giá vé máy bay hoặc lãi suất ngân hàng của năm ngoái.
+  - Hỏi về một quy định vừa sửa đổi, AI trả lời theo bản cũ.
+when_you_need_it: Mỗi khi câu hỏi liên quan đến giá, lịch, luật, tin tức hay sản phẩm mới.
+related: [hallucination, web-search, training-vs-inference]
+prerequisites: [training-vs-inference]
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,29 @@
+id: llm
+label_vi: Mô hình ngôn ngữ lớn (LLM)
+label_en: Large Language Model
+emoji: "📚"
+layer: foundation
+group: fundamentals
+one_liner: Bộ não phía sau ChatGPT, Gemini, Claude. Nó học từ rất nhiều chữ để đoán chữ tiếp theo.
+beginner_explanation: >-
+  LLM là loại AI chuyên về chữ. Nó được cho "đọc" một lượng văn bản khổng lồ từ sách báo và trang web. Từ đó, nó học
+  cách viết tiếp một đoạn văn sao cho nghe hợp lý nhất. Khi bạn hỏi, nó viết câu trả lời từng chút một, giống như đang
+  viết tiếp câu của bạn.
+analogy: >-
+  Như tính năng gợi ý chữ trên bàn phím điện thoại, nhưng mạnh hơn rất nhiều lần. Nó không chỉ đoán một chữ mà viết
+  được cả một bức thư.
+rigorous_explanation: >-
+  LLM là mạng nơ-ron (thường theo kiến trúc Transformer) với hàng tỷ tham số trở lên, được huấn luyện trước để dự đoán
+  token tiếp theo trên kho văn bản lớn. Sau đó mô hình được tinh chỉnh bằng dữ liệu hội thoại và học tăng cường từ phản
+  hồi (ví dụ RLHF) để làm theo chỉ dẫn và trả lời an toàn hơn.
+misconceptions:
+  - LLM tra cứu câu trả lời trong một cơ sở dữ liệu. Thực ra nó sinh chữ dựa trên quy luật đã học, trừ khi được nối với công cụ tìm kiếm.
+  - LLM biết mọi thứ mới nhất. Kiến thức của nó dừng ở một mốc thời gian.
+examples:
+  - ChatGPT, Gemini, Claude đều chạy trên các LLM khác nhau.
+  - Nhờ AI tóm tắt một bài báo dài thành 5 ý chính.
+when_you_need_it: Khi bạn muốn hiểu vì sao chatbot viết hay nhưng vẫn có thể sai.
+related: [next-token-prediction, token, model, slm]
+prerequisites: [ai]
+last_reviewed_at: "2026-10-26"
+confidence: high

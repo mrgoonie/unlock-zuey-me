@@ -1,0 +1,28 @@
+id: chain-of-thought
+label_vi: Suy nghĩ từng bước (chain-of-thought)
+label_en: Chain-of-thought / reasoning
+emoji: "🪜"
+layer: foundation
+group: prompt-knowledge
+one_liner: Để AI "nghĩ ra giấy" từng bước trước khi kết luận, thường giúp bài khó đúng hơn.
+beginner_explanation: >-
+  Với bài toán hay việc nhiều bước, nhờ AI "giải thích từng bước" thường cho kết quả tốt hơn. Nhiều app hiện có chế độ
+  "suy nghĩ" (reasoning), AI tự nháp lâu hơn rồi mới trả lời. Chậm hơn, nhưng hợp với việc cần tính toán hay cân nhắc.
+analogy: Như làm toán có ghi lời giải ra nháp, thay vì nhẩm trong đầu rồi đọc đáp số.
+rigorous_explanation: >-
+  Chain-of-thought là việc mô hình sinh ra các bước lập luận trung gian trước đáp án. Vì mỗi token sinh ra trở thành
+  ngữ cảnh cho token sau, các bước nháp cho mô hình thêm "chỗ tính toán". Mô hình suy luận (reasoning models) được huấn
+  luyện bằng học tăng cường để tự làm điều này, đổi thêm thời gian và token lấy độ chính xác. Phần lập luận hiển thị
+  không phải lúc nào cũng phản ánh đúng quá trình thật bên trong.
+misconceptions:
+  - Lời giải từng bước trông hợp lý thì đáp án chắc chắn đúng. Các bước vẫn có thể sai, cần kiểm lại số liệu.
+  - Lúc nào cũng nên bật chế độ suy nghĩ. Với việc đơn giản, nó chỉ chậm hơn mà không tốt hơn.
+examples:
+  - Nhờ AI chia tiền ăn chung cho 7 người, trong đó 2 người không uống bia, kèm giải thích từng bước.
+  - Bật chế độ suy nghĩ khi nhờ AI so sánh hai gói bảo hiểm nhiều điều khoản.
+when_you_need_it: Khi việc có nhiều bước, có tính toán, hoặc cần cân nhắc nhiều điều kiện.
+when_you_dont: Viết lại tin nhắn, dịch một câu, hỏi kiến thức đơn giản.
+related: [prompt, model, next-token-prediction]
+prerequisites: [prompt]
+last_reviewed_at: "2026-10-26"
+confidence: high

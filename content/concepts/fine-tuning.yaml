@@ -1,0 +1,28 @@
+id: fine-tuning
+label_vi: Tinh chỉnh (fine-tuning)
+label_en: Fine-tuning
+emoji: "🎚️"
+layer: just-in-time
+group: software
+one_liner: Huấn luyện thêm một model có sẵn bằng dữ liệu riêng để nó quen một kiểu việc cụ thể.
+beginner_explanation: >-
+  Fine-tuning giống cho AI học thêm một khoá ngắn chuyên ngành. Ví dụ một công ty cho AI xem hàng nghìn câu trả lời mẫu
+  của nhân viên chăm sóc khách hàng để nó trả lời đúng giọng công ty. Việc này tốn công và tiền. Đa số nhu cầu cá nhân
+  chỉ cần câu lệnh tốt và ví dụ mẫu là đủ.
+analogy: >-
+  Như một đầu bếp đã giỏi sẵn, được đào tạo thêm vài tuần để nấu đúng món đặc trưng của một nhà hàng.
+rigorous_explanation: >-
+  Fine-tuning tiếp tục huấn luyện mô hình đã huấn luyện trước trên bộ dữ liệu nhỏ, có nhãn, để thay đổi trọng số (toàn
+  bộ hoặc một phần qua kỹ thuật như LoRA). Nó hiệu quả cho định dạng, giọng điệu và tác vụ hẹp, nhưng kém hơn RAG khi cần
+  kiến thức cập nhật thường xuyên. Dữ liệu kém có thể làm giảm năng lực chung hoặc lớp an toàn của model.
+misconceptions:
+  - Muốn AI biết tài liệu của mình thì phải fine-tune. Thường RAG hoặc tải file lên là đủ và rẻ hơn.
+  - Tải file lên ChatGPT là đang fine-tune. Đó chỉ là đưa tài liệu vào ngữ cảnh.
+examples:
+  - Một bệnh viện tinh chỉnh model để viết tóm tắt hồ sơ đúng mẫu nội bộ.
+when_you_need_it: Khi một tổ chức cần AI làm một việc hẹp, lặp lại rất nhiều, với định dạng cố định.
+when_you_dont: Người dùng ChatGPT trên điện thoại không cần fine-tune. Hãy dùng ví dụ mẫu trong câu lệnh.
+related: [training-vs-inference, rag, few-shot, open-vs-closed-models]
+prerequisites: [training-vs-inference]
+last_reviewed_at: "2026-10-26"
+confidence: high

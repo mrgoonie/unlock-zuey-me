@@ -1,0 +1,27 @@
+id: guardrails
+label_vi: Rào chắn an toàn (guardrails)
+label_en: Guardrails
+emoji: "🚧"
+layer: just-in-time
+group: advanced
+one_liner: Các lớp chặn và kiểm tra quanh AI để nó không làm hay nói điều nguy hiểm, sai phạm vi.
+beginner_explanation: >-
+  Khi AI từ chối một yêu cầu, hoặc nhắc "hãy hỏi ý kiến bác sĩ", đó là guardrails đang hoạt động. Với người dùng cá nhân,
+  bạn cũng có thể tự đặt rào chắn cho mình, ví dụ không bao giờ để AI tự chuyển tiền, luôn kiểm lại thông tin sức khoẻ,
+  tiền bạc, pháp lý với người có chuyên môn.
+analogy: Như lan can trên cầu thang và cầu dao điện trong nhà. Bình thường không để ý, nhưng khi trượt chân thì cứu bạn.
+rigorous_explanation: >-
+  Guardrails gồm huấn luyện an toàn trong model, system prompt, bộ lọc đầu vào và đầu ra, giới hạn quyền công cụ, xác
+  nhận của con người trước hành động quan trọng, và kiểm tra định dạng hoặc chính sách. Không lớp nào hoàn hảo, nên an
+  toàn đến từ nhiều lớp chồng nhau. Guardrails quá chặt có thể khiến AI từ chối cả yêu cầu hợp lý.
+misconceptions:
+  - AI đã có guardrails thì mọi câu trả lời đều an toàn và đúng. Guardrails chặn cái xấu rõ ràng, không đảm bảo tính chính xác.
+  - AI từ chối là vì nó "không biết". Thường là do chính sách an toàn.
+examples:
+  - AI giải thích tờ hướng dẫn thuốc nhưng nhắc bạn hỏi dược sĩ về liều cho trẻ em.
+  - Trợ lý AI phải hỏi bạn xác nhận trước khi gửi email thay bạn.
+when_you_need_it: Khi bạn giao cho AI việc có rủi ro về sức khoẻ, tiền bạc, pháp lý hoặc cho nó quyền hành động.
+related: [prompt-injection, system-prompt, agent, hallucination]
+prerequisites: []
+last_reviewed_at: "2026-10-26"
+confidence: high

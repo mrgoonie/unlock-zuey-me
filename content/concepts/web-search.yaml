@@ -1,0 +1,27 @@
+id: web-search
+label_vi: AI tìm kiếm web
+label_en: Web search / grounding
+emoji: "🌐"
+layer: foundation
+group: agents-integration
+one_liner: AI tra web để lấy thông tin mới và kèm nguồn. Tốt hơn đoán, nhưng bạn vẫn nên mở nguồn ra xem.
+beginner_explanation: >-
+  Khi bật tìm kiếm, AI sẽ tìm trên mạng, đọc vài trang rồi tóm tắt cho bạn, thường kèm đường link. Cách này giúp có giá,
+  tin tức, giờ mở cửa mới hơn. Nhưng AI có thể đọc trang kém tin cậy, hiểu sai, hoặc ghi link không nói điều đó. Hãy bấm
+  vào ít nhất một nguồn để tự xem.
+analogy: Như nhờ người quen đọc báo rồi kể lại. Tiện, nhưng điều quan trọng thì nên tự xem tờ báo gốc.
+rigorous_explanation: >-
+  Grounding bằng tìm kiếm là dạng RAG trên web: hệ thống tạo truy vấn, lấy kết quả, đưa nội dung trang vào ngữ cảnh rồi
+  sinh câu trả lời có trích dẫn. Lỗi có thể đến từ truy vấn kém, nguồn kém chất lượng, nội dung đã cũ, mô hình tóm tắt
+  sai, trích dẫn không khớp nội dung, hoặc prompt injection trong trang web.
+misconceptions:
+  - Có link nguồn tức là thông tin đã được kiểm chứng. Link có thể không chứa điều AI nói, hoặc là trang kém tin cậy.
+  - Bật tìm kiếm thì AI hết bịa.
+examples:
+  - Hỏi giá iPhone hiện tại, AI tìm và dẫn link ba cửa hàng, bạn mở một link thì thấy giá đã khác.
+  - Nhờ AI tìm lịch tiêm chủng cho bé, rồi đối chiếu với trang của Bộ Y tế hoặc bác sĩ.
+when_you_need_it: Khi câu hỏi liên quan đến thông tin mới, giá cả, lịch, sự kiện, sản phẩm.
+related: [knowledge-cutoff, hallucination, rag, tool-use]
+prerequisites: [hallucination]
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,180 @@
+schema_version: 1
+id: summarize-long-text
+version: 1
+locale: vi
+status: published
+title: Tóm tắt bài dài hay tin nhắn thoại
+tagline: Nhờ AI tóm tắt một bài báo, thông báo hay tin nhắn thoại dài, rồi soi xem bản tóm tắt có thêm bớt gì không.
+emoji: "📝"
+outcome: Bạn nắm nhanh ý chính và việc cần làm từ một nội dung dài, và biết dò lại bản gốc ở những chỗ quan trọng.
+why_it_matters: >-
+  Thông báo của trường, bài báo dài, tin nhắn thoại 5 phút trong nhóm gia đình... AI tóm tắt rất nhanh. Nhưng bản
+  tóm tắt có thể bỏ sót một hạn chót, đổi "dời lịch" thành "huỷ", hoặc thêm con số không có trong bài. Với việc
+  quan trọng, bạn cần biết dò lại đúng chỗ.
+persona_tags: [beginner, basic, everyday-life, work]
+estimated_minutes: 12
+risk_tier: low
+safety_notes:
+  - Không dán tin nhắn riêng tư của người khác khi chưa được phép. Có thể xoá tên và số điện thoại trước khi dán.
+  - Với hạn đóng tiền và số tài khoản, luôn xem bản gốc và xác nhận với bên gửi trước khi chuyển khoản.
+competency_targets:
+  - { id: delegate, weight: 1 }
+  - { id: verify, weight: 3 }
+  - { id: describe, weight: 1 }
+  - { id: reflect, weight: 1 }
+concept_refs: [context-window, hallucination, prompt, multimodal]
+steps:
+  - id: choose
+    type: guided-input
+    title: Bạn muốn tóm tắt gì?
+    prompt: >-
+      Chọn một nội dung dài thật mà bạn cần nắm ý (bài báo, thông báo, email công việc, tin nhắn thoại đã chuyển thành
+      chữ). Ghi nó là gì, và bạn cần biết điều gì từ nó.
+    fields:
+      - { id: source, label: Nội dung đó là gì?, placeholder: "Thông báo họp phụ huynh đầu năm của trường", kind: text, min: 5 }
+      - { id: need_to_know, label: Bạn cần biết điều gì? (mỗi dòng một ý), placeholder: "Có hạn chót nào không?\nMình phải chuẩn bị gì?\nCó phải đóng tiền không?", kind: list, min: 2 }
+    hints:
+      - Đọc xong nội dung này, bạn cần làm gì hoặc quyết định gì?
+      - Câu hỏi tốt giúp AI biết phải giữ lại chi tiết nào - ngày, tiền, việc phải làm, người liên quan.
+      - Ví dụ "Ngày giờ họp?", "Có cần mang gì?", "Bài báo này nói giá xăng tăng hay giảm, bao nhiêu?".
+      - Ghi tên nội dung và ít nhất 2 điều bạn cần biết. Tin nhắn thoại thì dùng tính năng chuyển giọng nói thành chữ trước.
+  - id: ask-ai
+    type: ai-task
+    title: Nhờ AI tóm tắt, kèm dẫn chứng
+    instruction: >-
+      Dán nội dung (hoặc gửi ảnh, file) cho AI. Xin tóm tắt ngắn, trả lời đúng các câu bạn cần, và trích nguyên văn câu
+      gốc cho mỗi ý quan trọng. Dán câu trả lời vào ô bên dưới.
+    prompt_suggestions:
+      - "Hãy tóm tắt nội dung dưới đây trong tối đa 5 gạch đầu dòng, bằng lời dễ hiểu. Sau đó trả lời các câu: [điều cần biết]. Với mỗi ngày, số tiền hoặc việc phải làm, hãy trích nguyên văn câu gốc. Nếu nội dung không nói, ghi 'không có trong bài'. Nội dung: [dán vào đây]"
+      - "Liệt kê riêng các việc mình phải làm và hạn chót, theo thứ tự thời gian."
+    allow_in_app_chat: true
+    capture: { id: summary, label: Bản tóm tắt của AI (dán vào đây), min: 80, allow_image: true }
+    hints:
+      - Làm sao để biết ý nào trong bản tóm tắt thật sự có trong bài?
+      - Yêu cầu AI trích nguyên văn câu gốc cho ngày, tiền và việc phải làm.
+      - Ví dụ "...Với mỗi hạn chót, trích nguyên câu gốc. Nếu không có, ghi 'không có trong bài'."
+      - Sao chép gợi ý đầu, dán nội dung của bạn vào cuối, sửa phần câu hỏi, gửi đi rồi dán bản tóm tắt vào đây.
+  - id: verify
+    type: verification
+    title: Soi bản tóm tắt
+    instruction: >-
+      Đọc thông báo mẫu sau - "Trường thông báo: học sinh nghỉ Tết Dương lịch từ 30/12 đến hết 1/1, đi học lại ngày 2/1.
+      Phụ huynh đóng tiền ăn tháng 1 trước ngày 5/1 qua số tài khoản ghi trong sổ liên lạc. Hội thao dời sang tháng 3."
+      Một AI đã tóm tắt thông báo đó thành các câu dưới đây. Chọn mức tin cậy cho từng câu. Sau đó dò bản tóm tắt của
+      BẠN với bản gốc ở ít nhất hai chỗ quan trọng.
+    claims:
+      - id: claim-days
+        text: "Học sinh được nghỉ 3 ngày (30/12, 31/12 và 1/1), đi học lại ngày 2/1."
+        answer: verified
+        explanation: Khớp với bản gốc - nghỉ từ 30/12 đến hết 1/1 là 3 ngày, đi học lại 2/1.
+      - id: claim-sports
+        text: "Hội thao năm nay bị huỷ."
+        answer: insufficient
+        explanation: Bản gốc ghi "dời sang tháng 3", không phải huỷ. Bản tóm tắt đã đổi nghĩa, không có căn cứ trong bài.
+      - id: claim-fee
+        text: "Tiền ăn tháng 1 là 650.000đ."
+        answer: insufficient
+        explanation: Thông báo không hề nhắc số tiền. AI tự thêm một con số nghe hợp lý.
+      - id: claim-account
+        text: "Phụ huynh chuyển khoản tiền ăn vào số tài khoản của trường."
+        answer: needs_lookup
+        explanation: Đúng ý bản gốc, nhưng số tài khoản phải xem trong sổ liên lạc và xác nhận với trường trước khi chuyển. Đừng chuyển theo số tài khoản do AI hay người lạ đưa ra.
+    notes: { id: check_notes, label: Bạn đã dò lại hai chỗ nào trong bản tóm tắt của mình? Có bị thêm bớt gì không?, min: 40 }
+    hints:
+      - Đặt từng câu tóm tắt cạnh bản gốc. Bản gốc có nói đúng như vậy không?
+      - Chú ý những chữ đổi nghĩa (dời và huỷ) và những con số bản gốc không có.
+      - Ví dụ ghi chú "AI ghi họp lúc 8h, bản gốc ghi 7h30. AI bỏ sót dòng 'mang theo sổ liên lạc'."
+      - Ngày nghỉ là tin có căn cứ; huỷ hội thao và số tiền 650k là không đủ dữ liệu; số tài khoản là cần tra cứu. Rồi dò bản của bạn.
+  - id: when-original
+    type: quiz
+    title: Khi nào đọc bản gốc?
+    questions:
+      - id: q-read-original
+        prompt: Với loại nội dung nào bạn nên đọc lại bản gốc, không chỉ đọc tóm tắt? (chọn tất cả ý đúng)
+        options:
+          - { id: deadline, text: "Có hạn chót, ngày giờ quan trọng" }
+          - { id: money, text: "Có chuyện tiền bạc, chuyển khoản" }
+          - { id: gossip, text: "Một bài báo giải trí đọc cho vui" }
+          - { id: contract, text: "Hợp đồng, cam kết, điều khoản" }
+        correct: [deadline, money, contract]
+        explanation: Nếu sai một chi tiết mà thiệt hại lớn (lỡ hạn, mất tiền, ký nhầm), hãy đọc lại bản gốc ở đúng đoạn đó. Bài đọc cho vui thì tóm tắt là đủ.
+    hints:
+      - Nếu bản tóm tắt sai một chữ, chuyện gì tệ nhất có thể xảy ra?
+      - Hạn chót, tiền và cam kết là những chỗ sai một chữ cũng thiệt.
+      - Ví dụ tóm tắt ghi "hạn 15/1" nhưng gốc là "5/1" - bạn lỡ hạn đóng tiền.
+      - Chọn hạn chót, tiền bạc và hợp đồng. Bài báo giải trí thì không cần.
+  - id: actions
+    type: guided-input
+    title: Việc bạn sẽ làm
+    prompt: Từ nội dung bạn vừa tóm tắt, ghi lại những việc bạn sẽ làm (đã dò lại với bản gốc).
+    fields:
+      - { id: todo, label: Việc cần làm và hạn (mỗi dòng một việc), placeholder: "Đóng tiền ăn trước 5/1\nNhắc bé mang sổ liên lạc", kind: list, min: 2 }
+    hints:
+      - Đọc xong, bạn phải làm gì, khi nào?
+      - Mỗi việc nên có một hành động và một mốc thời gian nếu có.
+      - Ví dụ "Thứ Bảy nhắn cô chủ nhiệm hỏi giờ họp", "Đọc lại đoạn 3 của hợp đồng trước khi ký".
+      - Ghi ít nhất 2 việc. Nếu nội dung không có việc gì phải làm, ghi điều bạn sẽ nhớ hoặc chia sẻ với người nhà.
+  - id: reflect
+    type: reflection
+    title: Đúc kết
+    prompt: Bạn sẽ dùng AI tóm tắt cho loại nội dung nào, và luôn tự đọc lại phần nào?
+    field_id: lesson
+    min: 30
+    hints:
+      - Lần này bản tóm tắt có làm bạn hiểu sai chỗ nào không?
+      - Nghĩ về tiện lợi và rủi ro của tóm tắt.
+      - Ví dụ "Mình sẽ nhờ AI tóm tắt tin nhắn thoại dài trong nhóm, nhưng ngày giờ và tiền thì luôn nghe lại đoạn gốc."
+      - Viết 1–2 câu - dùng AI tóm tắt khi nào, và chỗ nào luôn tự đọc lại.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: clear-need
+      label: Biết mình cần gì từ nội dung
+      weight: 10
+      competency: describe
+      method: deterministic
+      check: { kind: list_min, step: choose, field: need_to_know, min: 2 }
+    - id: grounded-summary
+      label: Bản tóm tắt có dẫn chứng
+      weight: 15
+      competency: delegate
+      method: ai
+      guidance: >-
+        The pasted AI summary should be short, answer the learner's stated questions, and quote or point to the
+        original text for dates, amounts and required actions (or say when the text does not mention something).
+        Score low for a long generic summary with no anchors to the source.
+      step_refs: [choose, ask-ai]
+    - id: verdicts
+      label: Nhận ra chỗ tóm tắt bị thêm bớt
+      weight: 20
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: verify }
+    - id: checked-original
+      label: Dò lại bản gốc ở chỗ quan trọng
+      weight: 20
+      competency: verify
+      method: ai
+      guidance: >-
+        Strong notes name two specific points of the learner's own summary (a date, an amount, an action, a name) that
+        they compared with the original, and say whether anything was added, dropped or changed. "Looks right" without
+        naming what was compared scores low.
+      step_refs: [ask-ai, verify]
+    - id: when-original
+      label: Biết khi nào phải đọc bản gốc
+      weight: 15
+      competency: verify
+      method: deterministic
+      check: { kind: quiz_score, step: when-original }
+    - id: actions
+      label: Rút ra việc cần làm
+      weight: 10
+      competency: operate
+      method: deterministic
+      check: { kind: list_min, step: actions, field: todo, min: 2 }
+    - id: lesson
+      label: Đúc kết cách dùng tóm tắt
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 30 }

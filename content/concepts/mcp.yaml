@@ -1,0 +1,29 @@
+id: mcp
+label_vi: MCP (giao thức kết nối công cụ)
+label_en: Model Context Protocol
+emoji: "🔌"
+layer: just-in-time
+group: agents-integration
+one_liner: Chuẩn chung để nối AI với ứng dụng và dữ liệu khác, giống ổ cắm chung cho mọi thiết bị.
+beginner_explanation: >-
+  Trước đây, mỗi app AI muốn đọc lịch, email hay Notion đều phải làm cách nối riêng. MCP là một "chuẩn ổ cắm" chung.
+  Một dịch vụ làm sẵn "phích MCP" thì nhiều app AI khác nhau cắm vào dùng được. Ví dụ, ứng dụng AI Unlocked này có
+  địa chỉ /mcp để bạn học ngay trong công cụ AI quen thuộc.
+analogy: Như cổng sạc USB-C. Một chuẩn chung, nhiều thiết bị và nhiều hãng cùng dùng được.
+rigorous_explanation: >-
+  Model Context Protocol là giao thức mở (do Anthropic khởi xướng năm 2024, nay được nhiều bên hỗ trợ) định nghĩa cách
+  một ứng dụng AI (client) kết nối với server cung cấp công cụ (tools), tài nguyên (resources) và mẫu prompt. Server có
+  thể chạy cục bộ hoặc qua HTTP với xác thực OAuth. MCP chuẩn hoá việc nối, nhưng không tự đảm bảo an toàn, nên vẫn cần
+  cấp quyền tối thiểu và cảnh giác với prompt injection từ dữ liệu trả về.
+misconceptions:
+  - MCP là một model AI. MCP là cách kết nối, không phải bộ não.
+  - Cắm thêm thật nhiều MCP thì AI giỏi hơn. Quá nhiều công cụ làm AI rối và tăng rủi ro bảo mật.
+examples:
+  - Nối Claude với Google Drive qua MCP để hỏi về tài liệu của mình.
+  - Nối công cụ AI với /mcp của AI Unlocked để xem và nộp mission.
+when_you_need_it: Khi bạn muốn AI quen dùng truy cập một ứng dụng hay dữ liệu cụ thể của bạn.
+when_you_dont: Người dùng ChatGPT trên điện thoại cho việc hằng ngày thường không cần biết MCP.
+related: [tool-use, agent, api, prompt-injection]
+prerequisites: [tool-use]
+last_reviewed_at: "2026-10-26"
+confidence: high

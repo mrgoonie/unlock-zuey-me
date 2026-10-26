@@ -1,0 +1,31 @@
+id: ai-vendors-and-models
+label_vi: Các hãng AI và model phổ biến
+label_en: AI vendors and models
+emoji: "🏢"
+layer: current-fact
+group: advanced
+one_liner: Vài hãng lớn đứng sau các app AI phổ biến. Tên model và thứ hạng đổi vài tháng một lần.
+beginner_explanation: >-
+  Các cái tên bạn hay nghe gồm OpenAI (ChatGPT), Google (Gemini), Anthropic (Claude), Meta (Llama, Meta AI), xAI (Grok),
+  cùng các hãng làm model mở như DeepSeek, Alibaba (Qwen) và Mistral. Hãng nào cũng ra model mới liên tục. Bạn không cần
+  chạy theo bản mới nhất. Hãy chọn một app bạn thấy dễ dùng, học cách hỏi và cách kiểm, kỹ năng đó dùng được với mọi app.
+analogy: >-
+  Như các hãng điện thoại. Năm nào cũng có máy mới, nhưng biết dùng điện thoại tốt thì đổi hãng nào cũng quen nhanh.
+rigorous_explanation: >-
+  Tính đến cuối năm 2026, nhóm phòng thí nghiệm dẫn đầu gồm OpenAI, Google DeepMind, Anthropic, Meta, xAI, cùng các
+  bên công bố model open-weight mạnh như DeepSeek, Qwen (Alibaba) và Mistral. Mỗi hãng có nhiều dòng model (nhanh, rẻ,
+  suy luận sâu, đa phương thức) và đổi tên phiên bản thường xuyên. Thứ hạng trên bảng xếp hạng thay đổi theo tháng và
+  phụ thuộc loại việc, nên thông tin ở đây cần được kiểm tra lại định kỳ.
+misconceptions:
+  - Có một model "tốt nhất" cho mọi việc. Mỗi model mạnh ở việc khác nhau, và thứ hạng đổi liên tục.
+  - Phải dùng bản mới nhất mới theo kịp. Kỹ năng hỏi và kiểm quan trọng hơn tên model.
+examples:
+  - Dùng ChatGPT để viết, rồi hỏi Gemini cùng câu để so hai câu trả lời.
+  - Đọc tin "model X vừa vượt model Y", rồi vài tháng sau thứ tự lại đảo ngược.
+when_you_need_it: Khi bạn chọn app hoặc gói trả phí, hoặc đọc tin tức và thấy rối vì quá nhiều tên.
+when_you_dont: Khi bạn đã có một app dùng ổn cho việc của mình.
+related: [model, open-vs-closed-models, benchmark, agi]
+prerequisites: [model]
+last_reviewed_at: "2026-10-26"
+review_due_at: "2027-01-26"
+confidence: medium

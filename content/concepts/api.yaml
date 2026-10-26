@@ -1,0 +1,27 @@
+id: api
+label_vi: API (cổng kết nối phần mềm)
+label_en: API
+emoji: "🔗"
+layer: just-in-time
+group: agents-integration
+one_liner: Cửa giao tiếp để phần mềm này nhờ phần mềm khác làm việc, không cần giao diện bấm nút.
+beginner_explanation: >-
+  Bạn dùng ChatGPT qua app, có nút bấm và ô chat. Phần mềm khác thì dùng AI qua API, tức là gửi yêu cầu bằng mã lệnh và
+  nhận lại kết quả. Nhiều app bạn dùng hằng ngày, như app ngân hàng hay app giao đồ ăn, đều gọi API của nhau phía sau.
+analogy: >-
+  Như quầy gọi món ở nhà hàng. Bạn không vào bếp, chỉ đưa phiếu gọi món đúng mẫu, bếp nấu xong đưa món ra quầy.
+rigorous_explanation: >-
+  API (Application Programming Interface) là hợp đồng mô tả các yêu cầu mà một hệ thống chấp nhận và phản hồi nó trả
+  về, thường qua HTTP với dữ liệu JSON. API của nhà cung cấp AI cho phép chọn model, chỉnh tham số (như temperature),
+  gửi system prompt, khai báo công cụ, và tính phí theo token. Truy cập thường cần API key.
+misconceptions:
+  - Dùng API thì được "AI xịn hơn" bản app. Thường là cùng loại model, chỉ khác cách truy cập, giá và các tính năng đi kèm.
+examples:
+  - Một app học tiếng Anh gọi API của nhà cung cấp AI để chấm bài viết.
+  - Ứng dụng AI Unlocked gọi API để AI chấm bằng chứng mission của bạn.
+when_you_need_it: Khi bạn muốn tự động hoá hoặc nhúng AI vào phần mềm, bảng tính, website của mình.
+when_you_dont: Người dùng ChatGPT trên điện thoại không cần dùng API.
+related: [api-key, tool-use, mcp, automation]
+prerequisites: []
+last_reviewed_at: "2026-10-26"
+confidence: high

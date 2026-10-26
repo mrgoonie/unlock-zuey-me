@@ -1,0 +1,184 @@
+schema_version: 1
+id: write-hard-message
+version: 1
+locale: vi
+status: published
+title: Soạn một tin nhắn khó nói
+tagline: Nhờ AI viết nháp lời từ chối, lời xin lỗi hay lời nhắc khéo, rồi sửa lại cho đúng giọng của bạn.
+emoji: "💌"
+outcome: Bạn gửi được một tin nhắn khó nói, đúng ý mình, đúng giọng mình, và không có câu nào AI tự thêm vào.
+why_it_matters: >-
+  Nhiều tin nhắn mình cứ để mãi không gửi vì không biết mở lời. AI giúp viết nháp rất nhanh, nhưng nó có thể thêm lý
+  do mình chưa từng nói, hứa điều mình không định hứa, hoặc viết giọng quá trang trọng. Người gửi vẫn là bạn.
+persona_tags: [beginner, basic, everyday-life, work]
+estimated_minutes: 12
+risk_tier: low
+safety_notes:
+  - Không cần ghi họ tên đầy đủ, số điện thoại hay chuyện riêng tư của người khác. Gọi họ là "chị A", "sếp" là đủ.
+  - Đọc lại toàn bộ trước khi gửi. Bạn chịu trách nhiệm cho từng chữ trong tin nhắn.
+competency_targets:
+  - { id: describe, weight: 2 }
+  - { id: verify, weight: 1 }
+  - { id: operate, weight: 1 }
+  - { id: reflect, weight: 1 }
+concept_refs: [prompt, role-prompting, clarifying-questions, hallucination]
+steps:
+  - id: situation
+    type: guided-input
+    title: Chuyện là thế này
+    prompt: >-
+      Nghĩ về một tin nhắn thật bạn đang ngại gửi (từ chối cho mượn tiền, xin nghỉ phép, nhắc người khác trả đồ, xin lỗi...).
+      Ghi ra người nhận, điều bạn muốn nói, và điều bạn KHÔNG muốn xảy ra.
+    fields:
+      - { id: recipient, label: Gửi cho ai? Quan hệ thế nào?, placeholder: "Chị họ, khá thân, lớn hơn mình 5 tuổi", kind: text, min: 5 }
+      - { id: message_goal, label: Bạn muốn nói điều gì?, placeholder: "Từ chối cho mượn 10 triệu nhưng vẫn giữ tình cảm", kind: text, min: 10 }
+      - { id: must_avoid, label: Những điều tin nhắn KHÔNG được có (mỗi dòng một ý), placeholder: "Không hứa cho mượn sau\nKhông kể chuyện tài chính nhà mình\nKhông giọng trách móc", kind: list, min: 2 }
+      - { id: tone, label: Giọng bạn muốn, placeholder: "Nhẹ nhàng, thân mật, xưng em - chị", kind: text, min: 4 }
+    hints:
+      - Nếu tin nhắn này gửi đi mà hỏng, nó hỏng vì điều gì?
+      - Viết ra cách xưng hô và một điều bạn tuyệt đối không muốn người nhận hiểu lầm.
+      - Ví dụ "Không được hứa hẹn tháng sau", "Không nhắc lại chuyện lần trước chị chưa trả".
+      - Điền người nhận, điều muốn nói, ít nhất 2 điều cần tránh, và giọng văn (xưng hô gì, thân hay trang trọng).
+  - id: ask-ai
+    type: ai-task
+    title: Nhờ AI viết hai bản nháp
+    instruction: >-
+      Gửi cho AI hoàn cảnh vừa ghi, xin HAI bản nháp với giọng khác nhau, mỗi bản không quá 5 câu. Dán cả hai bản vào
+      ô bên dưới.
+    prompt_suggestions:
+      - "Mình cần nhắn cho [người nhận]. Mình muốn [điều muốn nói]. Tin nhắn KHÔNG được [điều cần tránh]. Giọng [giọng]. Viết giúp mình 2 bản nháp ngắn (tối đa 5 câu), một bản mềm hơn, một bản thẳng hơn. Đừng thêm lý do mình chưa nói."
+      - "Trước khi viết, hãy hỏi mình 2 câu để hiểu rõ mối quan hệ và điều mình lo."
+    allow_in_app_chat: true
+    capture: { id: drafts, label: Hai bản nháp AI viết (dán vào đây), min: 80, allow_image: true }
+    hints:
+      - AI có biết bạn xưng hô với người này thế nào không?
+      - Dùng gợi ý đầu, thay các phần trong ngoặc vuông, và giữ nguyên câu "Đừng thêm lý do mình chưa nói".
+      - Ví dụ "...nhắn cho chị họ, từ chối cho mượn 10 triệu, không hứa tháng sau, giọng nhẹ nhàng xưng em - chị..."
+      - Sao chép gợi ý đầu, sửa phần ngoặc vuông, gửi cho AI rồi dán cả hai bản nháp vào đây.
+  - id: check-draft
+    type: verification
+    title: Soi bản nháp
+    instruction: >-
+      Dưới đây là các câu trích từ một bản nháp AI viết cho tình huống "từ chối cho chị họ mượn tiền". Người dùng chỉ nói
+      "mình không cho mượn được, vẫn muốn giữ tình cảm". Với mỗi câu, chọn - "Tin có căn cứ" nếu nó đúng với điều người dùng nói,
+      "Không đủ dữ liệu" nếu AI tự thêm vào, "Cần chuyên gia" nếu là chuyện pháp lý hay tiền bạc cần người có chuyên môn.
+      Sau đó soi bản nháp của chính BẠN và ghi lại câu nào AI tự thêm.
+    claims:
+      - id: claim-care
+        text: "Em vẫn luôn quý chị và mong chị hiểu cho em."
+        answer: verified
+        explanation: Câu này đúng ý "vẫn muốn giữ tình cảm" mà người dùng đã nói.
+      - id: claim-debt
+        text: "Dạo này em cũng đang phải trả nợ ngân hàng nên khó khăn lắm."
+        answer: insufficient
+        explanation: Người dùng chưa từng nói chuyện nợ ngân hàng. AI tự bịa lý do, gửi đi là thành nói dối.
+      - id: claim-promise
+        text: "Tháng sau nếu em dư dả, em sẽ gửi chị một ít."
+        answer: insufficient
+        explanation: Đây là lời hứa người dùng không định đưa ra. AI hay thêm câu "làm mềm" kiểu này, phải xoá đi.
+      - id: claim-law
+        text: "Mà cho vay không có giấy tờ thì sau này cũng không đòi lại được theo luật đâu chị."
+        answer: expert
+        explanation: Đây là nhận định pháp lý, AI có thể sai và không nên đưa vào tin nhắn gia đình. Nếu thật sự cần biết, hãy hỏi luật sư.
+    notes: { id: own_draft_notes, label: Trong bản nháp của bạn, câu nào AI tự thêm hoặc chưa đúng giọng? Bạn sửa thế nào?, min: 30 }
+    hints:
+      - Với mỗi câu, hỏi - người dùng có nói điều này không, hay AI tự nghĩ ra?
+      - Lý do mới và lời hứa mới là hai thứ AI hay tự thêm. Chuyện luật thì cần người có chuyên môn.
+      - Ví dụ ghi chú "AI viết 'em đang bận sửa nhà' - mình không có sửa nhà, nên xoá câu đó. AI xưng 'tôi', mình đổi thành 'em'."
+      - Câu quý chị là tin có căn cứ; câu nợ ngân hàng và câu hứa tháng sau là không đủ dữ liệu; câu về luật là cần chuyên gia. Rồi soi bản của bạn.
+  - id: tone-quiz
+    type: quiz
+    title: Chọn cách sửa
+    questions:
+      - id: q-too-formal
+        prompt: Bản nháp nghe như văn bản công ty ("Kính gửi chị, em xin phép được thông báo..."). Bạn nên làm gì?
+        options:
+          - { id: send-anyway, text: "Gửi luôn, lịch sự là được" }
+          - { id: ask-casual, text: "Nhắn AI \"viết lại giọng thân mật như em nhắn chị họ qua Zalo\"" }
+          - { id: start-over, text: "Bỏ AI, tự viết lại từ đầu" }
+        correct: [ask-casual]
+        explanation: Cứ nói thẳng với AI điều chưa ổn và đưa ví dụ giọng mình muốn. Sửa tiếp nhanh hơn làm lại từ đầu.
+      - id: q-who-decides
+        prompt: Ai chịu trách nhiệm cho nội dung tin nhắn cuối cùng?
+        options:
+          - { id: ai, text: "AI, vì AI viết" }
+          - { id: me, text: "Mình, vì mình là người gửi" }
+        correct: [me]
+        explanation: AI chỉ viết nháp. Người gửi là bạn, nên bạn đọc lại và quyết định từng câu.
+    hints:
+      - Nếu một người bạn viết nháp giúp bạn mà giọng chưa hợp, bạn sẽ làm gì?
+      - AI nhớ cuộc trò chuyện, nên bạn chỉ cần nói phần cần sửa.
+      - Ví dụ "Bản 1 ổn nhưng bỏ câu cuối, viết giọng như nhắn Zalo, xưng em - chị".
+      - Câu 1 chọn nhắn AI viết lại giọng thân mật. Câu 2 chọn "Mình, vì mình là người gửi".
+  - id: final
+    type: guided-input
+    title: Bản cuối của bạn
+    prompt: >-
+      Sửa bản nháp (tự sửa hoặc nhờ AI sửa tiếp) cho tới khi bạn sẵn sàng gửi. Dán bản cuối và ghi lại bạn đã đổi những gì.
+      Bạn không bắt buộc phải gửi thật, nhưng hãy viết như thể sẽ gửi.
+    fields:
+      - { id: final_message, label: Tin nhắn cuối cùng, kind: textarea, min: 40 }
+      - { id: changes, label: Bạn đã đổi gì so với bản AI? Vì sao?, placeholder: "Xoá câu hứa tháng sau, đổi 'tôi' thành 'em'", kind: textarea, min: 30 }
+    hints:
+      - Đọc to bản nháp lên. Câu nào nghe không giống bạn nói?
+      - So bản nháp với danh sách "điều cần tránh" bạn đã viết ở bước đầu.
+      - Ví dụ "Mình xoá lý do AI bịa, thêm câu hỏi thăm bé nhà chị cho tự nhiên."
+      - Dán tin nhắn cuối, rồi liệt kê ít nhất một chỗ bạn đã sửa và lý do.
+  - id: reflect
+    type: reflection
+    title: Đúc kết
+    prompt: Lần sau nhờ AI viết tin nhắn, bạn sẽ dặn AI điều gì ngay từ đầu?
+    field_id: lesson
+    min: 30
+    hints:
+      - Lần này bạn phải sửa nhiều nhất ở chỗ nào?
+      - Nếu dặn trước được, chỗ đó có đỡ phải sửa không?
+      - Ví dụ "Lần sau mình sẽ dặn ngay cách xưng hô và câu 'đừng thêm lý do mình không nói'."
+      - Viết 1–2 câu về điều bạn sẽ dặn AI trước khi nó viết.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: clear-brief
+      label: Nêu rõ người nhận, ý muốn nói và điều cần tránh
+      weight: 20
+      competency: describe
+      method: deterministic
+      check: { kind: fields_filled, step: situation, fields: [recipient, message_goal, must_avoid, tone] }
+    - id: spot-additions
+      label: Nhận ra câu AI tự thêm
+      weight: 20
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: check-draft }
+    - id: own-draft-check
+      label: Soi bản nháp của chính mình
+      weight: 15
+      competency: verify
+      method: ai
+      guidance: >-
+        The learner names at least one concrete sentence or phrase from their own AI draft that was invented, too
+        formal, or broke one of their "must avoid" rules, and says how they fixed it. Generic notes ("it was fine")
+        score low unless the pasted drafts genuinely contain nothing to fix and the learner explains why.
+      step_refs: [situation, ask-ai, check-draft]
+    - id: iterate
+      label: Biết cách sửa tiếp với AI
+      weight: 10
+      competency: operate
+      method: deterministic
+      check: { kind: quiz_score, step: tone-quiz }
+    - id: final-fits
+      label: Bản cuối đúng ý và đúng giọng
+      weight: 25
+      competency: describe
+      method: ai
+      guidance: >-
+        The final message should deliver the learner's stated goal, respect every item in their "must avoid" list,
+        use the requested tone and form of address, and contain no excuses or promises the learner never stated.
+        The "changes" field should show at least one deliberate edit compared to the AI drafts.
+      step_refs: [situation, ask-ai, final]
+    - id: lesson
+      label: Rút ra điều sẽ dặn AI
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 30 }

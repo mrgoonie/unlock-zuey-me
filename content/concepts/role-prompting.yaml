@@ -1,0 +1,25 @@
+id: role-prompting
+label_vi: Giao vai cho AI
+label_en: Role prompting
+emoji: "🎭"
+layer: foundation
+group: prompt-knowledge
+one_liner: Bảo AI đóng một vai cụ thể để nó chọn giọng điệu và góc nhìn phù hợp.
+beginner_explanation: >-
+  Bạn có thể mở đầu bằng "Hãy đóng vai một giáo viên tiểu học kiên nhẫn" hoặc "Hãy là người phản biện khó tính". AI sẽ
+  đổi cách nói và cách nghĩ theo vai đó. Nhưng giao vai "bác sĩ" không biến AI thành bác sĩ thật.
+analogy: Như nhờ bạn thân "đóng vai sếp" để mình tập nói chuyện tăng lương trước khi gặp sếp thật.
+rigorous_explanation: >-
+  Role prompting điều kiện hoá mô hình vào một phân phối văn phong và kiến thức gắn với vai trò mô tả. Nó thường cải
+  thiện giọng điệu, mức độ chi tiết và góc nhìn, nhưng tác dụng lên độ chính xác về dữ kiện là nhỏ và không ổn định.
+  Mô tả cụ thể nhiệm vụ, người đọc và tiêu chí thường quan trọng hơn chỉ đặt tên vai.
+misconceptions:
+  - Bảo AI là chuyên gia thì câu trả lời đáng tin như chuyên gia. Kiến thức của nó không đổi, chỉ cách nói thay đổi.
+examples:
+  - '"Đóng vai cô giáo lớp 2, giải thích phép chia cho bé 7 tuổi bằng ví dụ chia kẹo."'
+  - '"Đóng vai người mua khó tính, chỉ ra 3 điểm yếu trong bài đăng bán hàng của tôi."'
+when_you_need_it: Khi bạn cần AI đổi giọng điệu, đổi góc nhìn, hoặc tập luyện một cuộc nói chuyện.
+related: [prompt, system-prompt, few-shot]
+prerequisites: [prompt]
+last_reviewed_at: "2026-10-26"
+confidence: high

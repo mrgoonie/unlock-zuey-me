@@ -1,0 +1,25 @@
+id: structured-output
+label_vi: Kết quả có cấu trúc
+label_en: Structured output
+emoji: "📋"
+layer: foundation
+group: prompt-knowledge
+one_liner: Yêu cầu AI trả lời theo khuôn cố định, như bảng, danh sách hay mẫu điền sẵn, để dễ đọc và dễ kiểm.
+beginner_explanation: >-
+  Thay vì để AI viết một tràng văn, bạn nói rõ "trả lời bằng bảng có 3 cột: món, giá, ghi chú". Kết quả gọn hơn, dễ so
+  sánh hơn, và dễ phát hiện chỗ sai hơn. Bạn cũng có thể xin "cột mức độ chắc chắn" để biết chỗ nào cần tra lại.
+analogy: Như đưa cho người khác tờ phiếu có sẵn ô để điền, thay vì bảo họ "viết gì cũng được".
+rigorous_explanation: >-
+  Structured output là việc ràng buộc định dạng đầu ra (bảng markdown, danh sách, JSON theo schema). Trong ứng dụng chat,
+  đây là chỉ dẫn trong prompt. Qua API, nhiều nhà cung cấp hỗ trợ ràng buộc giải mã theo JSON schema để đảm bảo đúng cú
+  pháp. Đúng định dạng không có nghĩa là đúng nội dung.
+misconceptions:
+  - Bảng trông gọn gàng thì số liệu trong đó đúng. Định dạng đẹp không thay thế việc kiểm chứng.
+examples:
+  - '"So sánh 2 máy lọc không khí theo bảng: giá, diện tích phòng, tiếng ồn, chi phí lõi lọc mỗi năm, nguồn."'
+  - '"Liệt kê thực đơn 7 ngày, mỗi ngày một dòng: sáng, trưa, tối, chi phí ước tính."'
+when_you_need_it: Khi bạn cần so sánh, tổng hợp, hoặc muốn kiểm từng mục một cách nhanh chóng.
+related: [prompt, few-shot, api]
+prerequisites: [prompt]
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,29 @@
+id: automation
+label_vi: Tự động hoá (workflow)
+label_en: Automation / workflow
+emoji: "⚙️"
+layer: just-in-time
+group: agents-integration
+one_liner: Chuỗi bước chạy tự động theo kịch bản cố định, có thể có AI ở một vài bước.
+beginner_explanation: >-
+  Tự động hoá là khi bạn dặn trước "mỗi khi có việc A thì làm B, rồi C". Ví dụ mỗi sáng thứ Hai, AI tóm tắt email tuần
+  trước và gửi vào Zalo. Khác với agent tự quyết định bước tiếp theo, workflow đi theo các bước bạn đã vạch sẵn, nên dễ
+  đoán và dễ kiểm soát hơn.
+analogy: >-
+  Như hẹn giờ nồi cơm điện và máy giặt. Đúng giờ thì chạy, đúng các bước đã cài, không cần bạn đứng canh.
+rigorous_explanation: >-
+  Workflow là chuỗi bước xác định trước (trigger, các hành động, điều kiện rẽ nhánh), có thể chèn lời gọi LLM ở một số
+  bước. So với agent, workflow có tính quyết định cao hơn (deterministic), dễ kiểm thử và chi phí dễ đoán, nhưng kém
+  linh hoạt trước tình huống lạ. Các công cụ phổ biến gồm Zapier, Make, n8n, Shortcuts trên iPhone.
+misconceptions:
+  - Tự động hoá thì không cần theo dõi. Bước AI trong đó vẫn có thể sai, nên cần kiểm định kỳ.
+  - Việc gì cũng nên tự động. Việc ít lặp lại hoặc rủi ro cao thì làm tay vẫn tốt hơn.
+examples:
+  - Mỗi tối Chủ Nhật, tự động gửi danh sách việc nhà tuần tới cho cả nhà.
+  - Ảnh hoá đơn chụp vào một thư mục, AI tự đọc và ghi số tiền vào bảng chi tiêu.
+when_you_need_it: Khi bạn làm đi làm lại một việc giống nhau mỗi ngày hoặc mỗi tuần.
+when_you_dont: Việc làm một lần, hoặc việc mỗi lần mỗi khác.
+related: [agent, api, tool-use]
+prerequisites: []
+last_reviewed_at: "2026-10-26"
+confidence: high

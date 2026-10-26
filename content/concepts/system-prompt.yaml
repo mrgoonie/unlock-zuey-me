@@ -1,0 +1,27 @@
+id: system-prompt
+label_vi: Chỉ dẫn hệ thống (system prompt)
+label_en: System prompt
+emoji: "📜"
+layer: just-in-time
+group: prompt-knowledge
+one_liner: Lời dặn "ẩn" đặt trước mọi cuộc trò chuyện, quy định AI nên cư xử và trả lời thế nào.
+beginner_explanation: >-
+  Trước khi bạn gõ chữ nào, app AI đã gửi kèm một đoạn dặn dò cho model, ví dụ "trả lời lịch sự, không giúp việc nguy
+  hiểm". Đó là system prompt. Trong ChatGPT, phần "Tuỳ chỉnh" (custom instructions) là cách bạn tự thêm lời dặn của
+  mình, như "luôn trả lời bằng tiếng Việt, ngắn gọn".
+analogy: Như bảng nội quy dán trong bếp nhà hàng. Khách không thấy, nhưng đầu bếp nào cũng phải làm theo.
+rigorous_explanation: >-
+  System prompt là phần chỉ dẫn đặt ở đầu ngữ cảnh với vai trò "system", thường được mô hình huấn luyện để ưu tiên hơn
+  tin nhắn người dùng. Nó định hình giọng điệu, phạm vi, công cụ được phép dùng và quy tắc an toàn. Nó không phải cơ chế
+  bảo mật tuyệt đối, vì mô hình vẫn có thể bị dẫn dụ làm trái.
+misconceptions:
+  - System prompt là bí mật tuyệt đối và không thể bị vượt qua. Nó chỉ là chữ trong ngữ cảnh, có thể bị lộ hoặc bị lách.
+  - Muốn AI cư xử khác thì phải biết lập trình. Phần "Tuỳ chỉnh" trong app là đủ.
+examples:
+  - Thêm vào phần tuỳ chỉnh của ChatGPT "Tôi là người mới, hãy giải thích không dùng thuật ngữ".
+when_you_need_it: Khi bạn lặp lại cùng một lời dặn ở mọi cuộc trò chuyện và muốn AI nhớ sẵn.
+when_you_dont: Với câu hỏi lẻ tẻ thỉnh thoảng, chỉ cần dặn ngay trong tin nhắn.
+related: [prompt, role-prompting, guardrails, prompt-injection]
+prerequisites: [prompt]
+last_reviewed_at: "2026-10-26"
+confidence: high

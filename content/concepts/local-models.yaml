@@ -1,0 +1,27 @@
+id: local-models
+label_vi: Model chạy trên máy (local)
+label_en: Local models
+emoji: "💻"
+layer: just-in-time
+group: software
+one_liner: Chạy AI ngay trên máy tính hoặc điện thoại của bạn, không gửi dữ liệu lên mạng.
+beginner_explanation: >-
+  Thay vì gửi câu hỏi lên máy chủ của hãng AI, bạn có thể cài một model nhỏ chạy ngay trên máy mình. Ưu điểm là riêng tư
+  và dùng được khi không có mạng. Nhược điểm là model nhỏ thường kém thông minh hơn, và máy cần đủ mạnh.
+analogy: Như tự pha cà phê ở nhà thay vì ra quán. Riêng tư, tiện, nhưng ngon cỡ quán xịn thì cần máy pha tốt.
+rigorous_explanation: >-
+  Local inference chạy model open-weight trên phần cứng cá nhân, thường qua các công cụ như Ollama, LM Studio hoặc
+  llama.cpp. Model thường được lượng tử hoá (quantization) để giảm bộ nhớ, đổi lại giảm chút chất lượng. Khả năng chạy
+  phụ thuộc RAM hoặc VRAM của GPU. Điện thoại mới cũng có model nhỏ tích hợp sẵn cho một số tác vụ.
+misconceptions:
+  - Chạy local thì an toàn tuyệt đối. Bạn vẫn cần tải model từ nguồn tin cậy, và model vẫn có thể bịa.
+  - Máy nào cũng chạy được model mạnh. Model lớn cần rất nhiều bộ nhớ.
+examples:
+  - Chạy một model nhỏ trên laptop để tóm tắt tài liệu nội bộ mà không gửi lên mạng.
+  - Tính năng AI trên điện thoại mới xử lý một số việc ngay trên máy.
+when_you_need_it: Khi dữ liệu rất nhạy cảm, hoặc cần dùng AI không có mạng.
+when_you_dont: Người dùng ChatGPT trên điện thoại cho việc hằng ngày không cần cài model riêng.
+related: [open-vs-closed-models, slm, gpu]
+prerequisites: [open-vs-closed-models]
+last_reviewed_at: "2026-10-26"
+confidence: high
