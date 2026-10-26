@@ -206,6 +206,27 @@ describe('sendDueReminders', () => {
     });
   });
 
+  it('finishes the run when both result writes of a chunk fail, without sending anything twice', async () => {
+    const count = SEND_CONCURRENCY + 1;
+    for (let i = 0; i < count; i++) await addSub(`psh_${i}`, 'lrn_a');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const realBatch = db.batch.bind(db);
+    let calls = 0;
+    // The first chunk's result batch and its state-only retry both fail; the second chunk writes normally.
+    db.batch = (async (stmts: D1PreparedStatement[]) => {
+      if (calls++ < 2) throw new Error('D1 unavailable');
+      return realBatch(stmts);
+    }) as typeof db.batch;
+    const fetchFn = okFetch();
+    expect(await sendDueReminders(env, { now: NOW, fetchFn })).toMatchObject({ sent: count, deferred: false });
+    expect(fetchFn).toHaveBeenCalledTimes(count);
+    const sentEvents = await db.prepare(`SELECT COUNT(*) AS n FROM events WHERE name = 'push.sent'`).first<{ n: number }>();
+    expect(sentEvents?.n).toBe(count - SEND_CONCURRENCY);
+    db.batch = realBatch;
+    expect(await sendDueReminders(env, { now: NOW, fetchFn })).toMatchObject({ sent: 0 });
+    expect(fetchFn).toHaveBeenCalledTimes(count);
+  });
+
   it('does not send reminders older than the look-back window', async () => {
     await addSub('psh_a', 'lrn_a', '18:30');
     const fetchFn = okFetch();

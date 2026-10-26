@@ -36,6 +36,14 @@ function looksRandomBase64(s) {
 }
 
 /**
+ * A word stated as a password in prose counts as one when it has a digit, a symbol, or mixed case, so plain
+ * words ("Mật khẩu là gì?", "the password is secret") stay readable.
+ */
+function looksLikePassword(s) {
+  return /[0-9]/.test(s) || /[^\p{L}\p{N}]/u.test(s);
+}
+
+/**
  * Ordered rules. Specific credential formats run before the generic ones so the reported kind is precise;
  * `replace` returns the replacement text, or null to keep the match (e.g. a digit run failing Luhn).
  * @type {Array<{ kind: string, re: RegExp, replace?: (m: string, ...groups: string[]) => string | null }>}
@@ -44,6 +52,8 @@ const RULES = [
   // PEM blocks (keys, certificates). An unterminated block is redacted to the end of the input.
   { kind: 'private_key', re: /-----BEGIN ([A-Z0-9 ]{1,40})-----[\s\S]{0,16384}?(?:-----END \1-----|$)/g },
   { kind: 'ingest_token', re: /\baiu_ing_[A-Za-z0-9_-]{20,128}/g },
+  // Stripe secret, restricted and publishable keys (live and test).
+  { kind: 'stripe_key', re: /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,256}/g },
   // OpenAI (sk-, sk-proj-), Anthropic (sk-ant-), OpenRouter (sk-or-).
   { kind: 'api_key', re: /\bsk-(?:ant-|or-|proj-)?[A-Za-z0-9_-]{16,256}/g },
   { kind: 'github_token', re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255})/g },
@@ -52,6 +62,19 @@ const RULES = [
     kind: 'aws_secret',
     re: /(aws_?secret_?(?:access_?)?key["']?\s*[:=]\s*["']?)([A-Za-z0-9/+]{40})(?![A-Za-z0-9/+])/gi,
     replace: (_m, label) => `${label}${MARK('aws_secret')}`,
+  },
+  // Azure storage / Service Bus connection strings: AccountKey=…, SharedAccessKey=… (the label is kept).
+  {
+    kind: 'azure_key',
+    re: /((?<![A-Za-z0-9])(?:AccountKey|SharedAccessKey)[ \t]{0,4}=[ \t]{0,4})(?!\[REDACTED:)([A-Za-z0-9+/]{20,1024}={0,2})/gi,
+    replace: (_m, label) => `${label}${MARK('azure_key')}`,
+  },
+  // Credentials inside a URL: scheme://user:password@host (postgres://, redis://:pass@, https://…). The
+  // scheme and host are kept; user and password both go, since the user name can identify the learner.
+  {
+    kind: 'url_credentials',
+    re: /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/)(?!\[REDACTED:)[^\s/@:]{0,256}:[^\s/@]{1,256}@/g,
+    replace: (_m, scheme) => `${scheme}${MARK('url_credentials')}@`,
   },
   { kind: 'slack_token', re: /\bxox[abposr]-[A-Za-z0-9-]{10,255}/g },
   { kind: 'google_key', re: /\bAIza[0-9A-Za-z_-]{35}/g },
@@ -74,6 +97,16 @@ const RULES = [
     // A bare number after a "token" key is a count (max_tokens: 900), not a credential.
     replace: (m, label, value) => (/token/i.test(label) && /^\d{1,9}$/.test(value) ? null : `${label}${MARK('secret')}`),
   },
+  // A password stated in prose: "my password is hunter2", "mật khẩu (của tôi) là Abc@12345". Trailing
+  // sentence punctuation stays outside the mask.
+  {
+    kind: 'secret',
+    re: /((?<![\p{L}\p{N}])(?:password|passwd|passcode|passphrase|mật khẩu|mat khau)(?:[ \t]{1,4}(?:của|cua)[ \t]{1,4}\p{L}{1,12})?[ \t]{1,8}(?:is|was|là|la)[ \t]{1,8}["'“]?)(?!\[REDACTED:)([^\s"'”`,;<>]{3,256})/giu,
+    replace: (_m, label, value) => {
+      const [, core, trail] = /^(.*?)([.!?:)]*)$/su.exec(value);
+      return core.length >= 3 && looksLikePassword(core) ? `${label}${MARK('secret')}${trail}` : null;
+    },
+  },
   { kind: 'email', re: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}\b/g },
   // Home directories reveal the OS user name: /Users/<name>, /home/<name>, C:\Users\<name> → ~.
   { kind: 'home_path', re: /(?:\/Users|\/home)\/[^/\s"'`]{1,64}|\b[A-Za-z]:\\{1,2}Users\\{1,2}[^\\\s"'`]{1,64}/g, replace: () => '~' },
@@ -82,6 +115,13 @@ const RULES = [
     kind: 'national_id',
     re: /((?:CCCD|CMND|CMT|căn cước|can cuoc|chứng minh(?: nhân dân| thư)?|chung minh)[^0-9\n]{0,20})(\d{12}|\d{9})(?!\d)/gi,
     replace: (_m, label) => `${label}${MARK('national_id')}`,
+  },
+  // Vietnamese bank account numbers next to their label (STK, số tài khoản, tài khoản ngân hàng, account
+  // number): 8–19 digits, optional single space/dot/dash separators. Runs before cards, ids and phones.
+  {
+    kind: 'bank_account',
+    re: /((?<![\p{L}\p{N}])(?:STK|số tài khoản|so tai khoan|tài khoản ngân hàng|tai khoan ngan hang|account (?:no\.?|number))(?![ \t]+of\b)[^0-9\n]{0,32})(\d(?:[ .-]?\d){7,18})(?!\d)/giu,
+    replace: (_m, label) => `${label}${MARK('bank_account')}`,
   },
   // Payment cards: 13–19 digits (optional single space or dash separators) passing Luhn.
   {

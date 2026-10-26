@@ -20,7 +20,8 @@ The committed `.claude/settings.json` is never written, so teammates never recei
 ## Install, upgrade, uninstall
 
 - `hook install` is idempotent: run it twice and there is still exactly one entry. An older marker (`v0`) is replaced in place, duplicates collapse to one.
-- Before writing, the CLI keeps `settings.json.ai-unlocked.bak`, writes a temp file, renames it, re-reads it, and restores the backup on any failure. A file with invalid JSON (comments, trailing commas) is never rewritten: fix it first.
+- Before writing, the CLI keeps `settings.json.ai-unlocked.bak`, writes a temp file, renames it, re-reads it, and restores the backup on any failure. The backup is deleted once the write is verified (or the rollback succeeded); it stays only when the rollback itself failed, so you can restore by hand. A file with invalid JSON (comments, trailing commas) is never rewritten: fix it first.
+- `hook uninstall --scope project|all` also deletes any `*.ai-unlocked.bak` / `*.ai-unlocked.tmp` left next to `.claude/settings.local.json` or `.claude/settings.json` by an older CLI, so a copy of personal settings is never committed.
 - `--dry-run` prints the diff and writes nothing.
 - `upgrade` re-downloads the skill (sha256-verified) and refreshes the hook command.
 - `uninstall` removes the hook from every scope, the spool and local state; `--purge` also revokes the device token and deletes the credentials.

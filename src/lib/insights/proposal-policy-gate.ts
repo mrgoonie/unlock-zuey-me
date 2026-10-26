@@ -12,10 +12,11 @@
 import type { GateDecision, GateReason, GithubIssuesMode, ProposalCategory, RiskLevel } from './insight-types';
 import { foldVietnamese } from './signal-fingerprint';
 
-/** Distinct learners needed before a signal becomes a proposal: bug/content 2, ux/feature 3. */
-export const PROPOSAL_MIN_COHORT: Record<Exclude<ProposalCategory, 'personal_preference'>, number> = {
-  bug: 2, content: 2, ux: 3, feature: 3,
-};
+/**
+ * Distinct consenting learners needed before a signal becomes a proposal, for every category. The consent
+ * copy promises "từ 3 người học trở lên"; keep the two in step.
+ */
+export const PROPOSAL_MIN_COHORT = 3;
 /** Distinct learners needed before anything is filed on GitHub. */
 export const ISSUE_MIN_COHORT = 3;
 export const PROPOSAL_MIN_CONFIDENCE = 0.6;
@@ -101,7 +102,7 @@ export function evaluateGate(input: GateInput, ctx: GateContext): GateDecision {
 
   const blocking: GateReason[] = [];
   if (input.category === 'personal_preference') blocking.push('personal_preference');
-  else if (cohort < PROPOSAL_MIN_COHORT[input.category]) blocking.push('cohort_too_small');
+  else if (cohort < PROPOSAL_MIN_COHORT) blocking.push('cohort_too_small');
   if (confidence < PROPOSAL_MIN_CONFIDENCE) blocking.push('low_confidence');
   if (!input.privacyClean) blocking.push('privacy');
   if (blocking.length) return { decision: 'none', risk, reasons: blocking };

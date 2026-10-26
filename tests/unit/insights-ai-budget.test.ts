@@ -1,10 +1,11 @@
 /**
- * ai-tutor budget isolation: the 'insights' purpose reserves in the coaching pool, a spent coaching share
- * refuses insights (deferred without spending an attempt, stage stops) while grading still runs, and a
- * learner at the daily analysis cap is deferred to the next UTC day.
+ * ai-tutor budget isolation: the 'insights' purpose reserves in the coaching pool of the global caps on its
+ * own system row (never the learner's own coaching share), a spent global coaching share refuses insights
+ * (deferred without spending an attempt, stage stops) while grading still runs, and a learner at the daily
+ * analysis cap is deferred to the next UTC day.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { budgetPool, runAi } from '../../src/lib/coach/ai-gateway';
+import { budgetPool, INSIGHTS_USAGE_ID, runAi } from '../../src/lib/coach/ai-gateway';
 import { WORKERS_AI_MODEL } from '../../src/lib/coach/ai-models';
 import { budgetLimits, GLOBAL_USAGE_ID, readUsage } from '../../src/lib/coach/ai-usage';
 import { createCronBudget } from '../../src/lib/jobs/cron-budget';
@@ -47,22 +48,47 @@ describe('insights budget pool', () => {
     expect(budgetPool('grade')).toBe('grading');
   });
 
-  it('reserves in the coaching columns during the call and settles there afterwards', async () => {
+  it('reserves in the coaching columns of the insights system row during the call and settles there afterwards', async () => {
     const { fetchImpl } = openRouterFetch(() => validReport());
-    const before = await readUsage(env.DB, DAY, 'lrn_a');
     // Read the reservation while the OpenRouter call is in flight.
     const spy = vi.fn();
     const wrapped = (async (url: string, init?: RequestInit) => {
-      spy((await readUsage(env.DB, DAY, 'lrn_a')).learner.coachReservedUsd);
+      spy((await readUsage(env.DB, DAY, INSIGHTS_USAGE_ID)).learner.coachReservedUsd);
       return fetchImpl(url, init);
     }) as unknown as typeof fetch;
     const result = await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl: wrapped });
     expect(result.analysed).toBe(1);
-    expect(spy.mock.calls[0][0]).toBeGreaterThan(before.learner.coachReservedUsd);
-    const after = await readUsage(env.DB, DAY, 'lrn_a');
+    expect(spy.mock.calls[0][0]).toBeGreaterThan(0);
+    const after = await readUsage(env.DB, DAY, INSIGHTS_USAGE_ID);
     expect(after.learner.coachCostUsd).toBeGreaterThan(0);
     expect(after.learner.coachCostUsd).toBeCloseTo(after.learner.costUsd, 9);
+    expect(after.global.coachCostUsd).toBeCloseTo(after.learner.coachCostUsd, 9);
     expect(after.global.coachReservedUsd).toBeCloseTo(0, 9);
+  });
+
+  it('never draws from the learner\'s own coaching share: a learner with it spent is still analysed, and their hints are untouched', async () => {
+    const limits = budgetLimits(env);
+    // lrn_a spent their whole per-learner coaching share on hints and chat today.
+    await env.DB.prepare(`INSERT INTO ai_usage (day, learner_id, requests, cost_usd, coach_cost_usd, workers_ai_requests, coach_workers_ai_requests)
+      VALUES (?, 'lrn_a', 1, ?, ?, ?, ?)`).bind(DAY, limits.coachPerLearnerUsd, limits.coachPerLearnerUsd, limits.coachWorkersAiPerLearner, limits.coachWorkersAiPerLearner).run();
+    const before = await readUsage(env.DB, DAY, 'lrn_a');
+    const { fetchImpl } = openRouterFetch(() => validReport());
+    expect(await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl })).toMatchObject({ analysed: 1, deferred: 0 });
+    expect((await readUsage(env.DB, DAY, 'lrn_a')).learner).toEqual(before.learner);
+
+    // Many analyses on the system row never reduce a fresh learner's hint budget.
+    for (let i = 0; i < 20; i++) {
+      await runAi({ env, fetchImpl, now: () => NOW }, {
+        purpose: 'insights', learnerId: 'lrn_b', messages: [{ role: 'user', content: 'phân tích' }], maxTokens: 100, temperature: 0,
+        openRouterModels: ['google/gemini-3.1-flash-lite'], workersAiModel: WORKERS_AI_MODEL, parse: (t) => t, timeoutMs: 1000,
+      });
+    }
+    expect((await readUsage(env.DB, DAY, 'lrn_b')).learner.coachCostUsd).toBe(0);
+    const hint = await runAi({ env, fetchImpl, now: () => NOW }, {
+      purpose: 'hint', learnerId: 'lrn_b', messages: [{ role: 'user', content: 'gợi ý' }], maxTokens: 100, temperature: 0,
+      openRouterModels: ['google/gemini-3.1-flash-lite'], workersAiModel: WORKERS_AI_MODEL, parse: (t) => t, timeoutMs: 1000,
+    });
+    expect(hint.provider).toBe('openrouter');
   });
 
   it('with the coaching share spent: insights is deferred (attempt kept) and the stage stops, while grading still passes', async () => {

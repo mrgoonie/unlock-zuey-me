@@ -140,18 +140,20 @@ async function forget(kv: KVNamespace, deviceHash: string, record: PairingRecord
 }
 
 /**
- * One poll by the CLI. Polls closer than PAIR_MIN_POLL_INTERVAL_MS apart get `slow_down`. An unknown or
- * expired device code is `expired`. On approval both keys are deleted first, then the token is minted;
- * when the learner can no longer hold a token (deleted, not a member) the pairing is `expired`.
+ * One poll by the CLI. An unknown device code is `expired` without any KV write (random codes from an
+ * unauthenticated client must not burn the KV write quota). Polls of a known code closer than
+ * PAIR_MIN_POLL_INTERVAL_MS apart get `slow_down`; an expired code is `expired`. On approval both keys are
+ * deleted first, then the token is minted; when the learner can no longer hold a token (deleted, not a
+ * member) the pairing is `expired`.
  */
 export async function pollPairing(kv: KVNamespace, db: D1Database, deviceCode: string, now: Date = new Date()): Promise<PollOutcome> {
   const deviceHash = await sha256Hex(deviceCode);
+  const record = await readRecord(kv, deviceHash);
+  if (!record) return { kind: 'expired' };
+
   const last = Number(await kv.get(pollKey(deviceHash)));
   if (Number.isFinite(last) && last > 0 && now.getTime() - last < PAIR_MIN_POLL_INTERVAL_MS) return { kind: 'slow_down' };
   await kv.put(pollKey(deviceHash), String(now.getTime()), { expirationTtl: KV_MIN_TTL_SECONDS });
-
-  const record = await readRecord(kv, deviceHash);
-  if (!record) return { kind: 'expired' };
   if (!isLive(record, now)) {
     await forget(kv, deviceHash, record);
     return { kind: 'expired' };

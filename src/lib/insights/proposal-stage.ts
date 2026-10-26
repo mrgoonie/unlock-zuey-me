@@ -3,11 +3,13 @@
  * policy gate and the GitHub mode allow it) GitHub issues. Bounded per tick and charged to the shared cron
  * budget; every step resumes from durable state (cursors, statuses, leases) on the next tick.
  *
- *   1. link   ≤ 50 new reports with a product observation from learners who had `proposals` consent when the
- *             report was written → signal (fingerprint) + evidence
- *   2. eval   ≤ 10 signals with new evidence → cohort stats → draft → privacy check → risk → gate → proposal
- *   3. file   ≤ 3 proposals (auto-approved by the gate or accepted by an operator), only with GitHub on
- *   4. watch  ≤ 5 filed issues → shipped / rejected; shipped + 14 days → monitored
+ *   1. link    ≤ 50 new reports with a product observation from learners who had `proposals` consent when the
+ *              report was written → signal (fingerprint) + evidence
+ *   2. eval    ≤ 10 signals with new evidence → cohort stats → draft → privacy check → risk → gate → proposal
+ *   3. refresh ≤ 10 proposals whose draft lost its evidence (consent revoked, reports or account deleted)
+ *              → evidence-free template, or withdrawn (draft erased, back to a non-fileable `proposed`)
+ *   4. file    ≤ 3 proposals (auto-approved by the gate or accepted by an operator), only with GitHub on
+ *   5. watch   ≤ 5 filed issues → shipped / rejected; shipped + 14 days → monitored
  *
  * Learning feedback never reaches this stage (it stays in learner reports) and `personal_preference`
  * observations never become signals. A signal whose proposal is past triage (filed, shipped, rejected…)
@@ -18,35 +20,39 @@ import type { CronBudget, CronCost } from '../jobs/cron-budget';
 import { newId, parseJson } from '../db/ids';
 import { CONSENT_SQL } from './consent-store';
 import { DAILY_ISSUE_CAP, githubIssuesMode } from './feature-flags';
-import { createGithubIssuePublisher, githubTokenConfigured, GithubIssueError, type GithubFetch, type GithubIssuePublisher } from './github-issue-publisher';
+import { createGithubIssuePublisher, githubTokenConfigured, type GithubFetch, type GithubIssuePublisher } from './github-issue-publisher';
 import type { GateDecision, GithubIssuesMode, ProposalStatus, SignalCategory, StoredAiTutorReport } from './insight-types';
 import {
-  buildDraft, defaultDraftModel, draftRiskHint, draftRiskText, prepareIssue, templateDraft, type DraftModel, type IssueDraft,
+  buildDraft, defaultDraftModel, DRAFT_EVIDENCE_MAX, parseStoredDraft, templateDraft, type DraftModel, type IssueDraft,
 } from './issue-draft';
 import { getSafeAutoImplement, SYSTEM_ACTOR } from './operator-settings';
-import { classifyRisk, evaluateGate, PROPOSAL_MIN_COHORT, PROPOSAL_MIN_CONFIDENCE } from './proposal-policy-gate';
+import { assessSignal, currentDraft, persistAssessment, readGateEnv } from './proposal-assessment';
+import { fileProposal } from './proposal-filing';
+import { PROPOSAL_MIN_COHORT, PROPOSAL_MIN_CONFIDENCE } from './proposal-policy-gate';
 import {
-  applyIssueState, cohortStats, consentedEvidence, contributorNames, createProposal, daysBefore, filedProposalsToCheck, getProposal,
-  getSignal, issuesFiledToday, leaseForFiling, linkEvidenceStatements, promoteMonitored, pruneIssueCounters, readCursor, recordDuplicateOfIssue,
-  recordFiled, releaseFiling, releaseIssueSlot, REPORT_CURSOR_KEY, reserveIssueSlot, SIGNAL_CURSOR_KEY, SIGNAL_WINDOW_DAYS,
-  updateProposalDraft, updateProposalGate, writeCursorStatement, getProposalWithSignal, toProposalSummary, MONITOR_WINDOW_DAYS,
+  applyIssueState, cohortStats, consentedEvidence, createProposal, daysBefore, filedProposalsToCheck, getProposalWithSignal, getSignal,
+  issuesFiledToday, linkEvidenceStatements, MONITOR_WINDOW_DAYS, promoteMonitored, proposalsWithStaleDrafts, pruneIssueCounters, readCursor,
+  REPORT_CURSOR_KEY, SIGNAL_CURSOR_KEY, SIGNAL_WINDOW_DAYS, toProposalSummary, writeCursorStatement,
   type CohortStats, type ProposalRow, type ProposalSummary, type SignalRow,
 } from './proposal-store';
+
+export { assessSignal, type Assessment } from './proposal-assessment';
+export { fileProposal, ISSUE_COOLDOWN_DAYS, type FileOptions, type FilingOutcome } from './proposal-filing';
 import { fingerprint, normalizeArea, signalTitle } from './signal-fingerprint';
 
-export const STAGE_LIMITS = { reports: 50, signals: 10, filings: 3, issueChecks: 5 } as const;
-/** A closed issue with the same fingerprint blocks a new one for this many days. */
-export const ISSUE_COOLDOWN_DAYS = 30;
+export const STAGE_LIMITS = { reports: 50, signals: 10, draftRefreshes: 10, filings: 3, issueChecks: 5 } as const;
 /** Reports younger than this are left for the next tick, so a report committed late never slips behind the cursor. */
 const REPORT_SETTLE_MS = 60_000;
 const ABSTRACT_EVIDENCE_MAX = 240;
 const SIGNAL_CATEGORIES = new Set<SignalCategory>(['bug', 'content', 'ux', 'feature']);
+const DAY_MS = 86_400_000;
 
 /** Conservative cost estimates of the composite steps. */
 const COST = {
   query: { d1: 1 } satisfies CronCost,
   draft: { d1: 6, net: 1 } satisfies CronCost, // runAi: reservation, settle and events rows + one model call
-  evaluate: { d1: 12, net: 1 } satisfies CronCost,
+  evaluate: { d1: 16, net: 1 } satisfies CronCost,
+  refresh: { d1: 12 } satisfies CronCost,
   filing: { d1: 14, net: 2 } satisfies CronCost,
   issueCheck: { d1: 2, net: 1 } satisfies CronCost,
 };
@@ -62,6 +68,8 @@ export interface ProposalStageResult {
   ignored: number;
   evaluated: number;
   proposalsCreated: number;
+  /** Drafts replaced by the template or withdrawn because their evidence was withdrawn. */
+  draftsRefreshed: number;
   filed: number;
   linkedIssues: number;
   duplicates: number;
@@ -145,56 +153,6 @@ async function linkReports(env: Env, budget: CronBudget, now: Date, result: Prop
   }
 }
 
-interface GateEnv {
-  githubMode: GithubIssuesMode;
-  tokenConfigured: boolean;
-  safeAutoImplement: boolean;
-  issuesFiledToday: number;
-}
-
-/** Mode, token presence, operator toggle and today's issue count (two D1 queries). */
-async function readGateEnv(env: Env, now: Date): Promise<GateEnv> {
-  return {
-    githubMode: githubIssuesMode(env),
-    tokenConfigured: githubTokenConfigured(env),
-    safeAutoImplement: await getSafeAutoImplement(env.DB),
-    issuesFiledToday: await issuesFiledToday(env.DB, now),
-  };
-}
-
-export interface Assessment {
-  draft: IssueDraft;
-  /** Rendered, privacy-checked issue body; null when blocked by the privacy check. */
-  markdown: string | null;
-  privacyHits: string[];
-  stats: CohortStats;
-  gate: GateDecision;
-}
-
-/**
- * Current cohort, privacy check, deterministic risk and gate for a signal and its draft. Risk is computed
- * from controlled fields plus a denylist scan of every draft text; the model's hint and text only raise it.
- */
-export async function assessSignal(
-  db: D1Database, signal: SignalRow, draft: IssueDraft, gateEnv: GateEnv, now: Date, known?: { stats: CohortStats; evidence: string[] },
-): Promise<Assessment> {
-  const since = daysBefore(now, SIGNAL_WINDOW_DAYS);
-  const stats = known?.stats ?? await cohortStats(db, signal.id, since);
-  const evidence = known?.evidence ?? await consentedEvidence(db, signal.id, since);
-  const prepared = prepareIssue(draft, signal, stats, evidence, await contributorNames(db, signal.id));
-  const { risk, denylistHit } = classifyRisk({
-    category: signal.category,
-    area: signal.area,
-    draftText: [signal.title, draftRiskText(draft), draftRiskText(prepared.draft), ...evidence].join('\n'),
-    modelRiskHint: draftRiskHint(draft),
-  });
-  const gate = evaluateGate(
-    { category: signal.category, risk, denylistHit, cohort: stats.learners, confidence: stats.avgConfidence, privacyClean: prepared.privacy.ok },
-    { ...gateEnv, dailyCap: DAILY_ISSUE_CAP },
-  );
-  return { draft: prepared.draft, markdown: prepared.markdown, privacyHits: prepared.privacy.hits, stats, gate };
-}
-
 /** Only a privacy failure keeps a `none` signal visible (as blocked); every other `none` waits for evidence. */
 const blockedOnlyByPrivacy = (g: GateDecision) => g.decision === 'none' && g.reasons.length > 0 && g.reasons.every((r) => r === 'privacy');
 
@@ -228,12 +186,12 @@ async function evaluateSignals(env: Env, budget: CronBudget, now: Date, model: D
     if (!s.proposal_id) {
       const stats = await q(COST.query, () => cohortStats(db, s.id, since));
       // Cheap pre-gate: no model call for a signal that cannot become a proposal yet.
-      if (stats.learners >= PROPOSAL_MIN_COHORT[s.category] && stats.avgConfidence >= PROPOSAL_MIN_CONFIDENCE) {
-        const evidence = await q(COST.query, () => consentedEvidence(db, s.id, since));
+      if (stats.learners >= PROPOSAL_MIN_COHORT && stats.avgConfidence >= PROPOSAL_MIN_CONFIDENCE) {
+        const items = await q(COST.query, () => consentedEvidence(db, s.id, since));
         budget.charge(COST.draft);
-        const draft = await buildDraft(model, s, stats, evidence);
-        const a = await q({ d1: 1 }, () => assessSignal(db, s, draft, gateEnv, now, { stats, evidence }));
-        if (a.gate.decision !== 'none' || blockedOnlyByPrivacy(a.gate)) {
+        const draft = await buildDraft(model, s, stats, items.slice(0, DRAFT_EVIDENCE_MAX));
+        const a = await q({ d1: 1 }, () => assessSignal(db, s, draft, gateEnv, now, { stats, evidence: items.map((e) => e.text) }));
+        if (a.draft && (a.gate.decision !== 'none' || blockedOnlyByPrivacy(a.gate))) {
           const created = await q(COST.query, () => createProposal(db, {
             id: newId('prp'), signalId: s.id, gate: a.gate, draftJson: JSON.stringify(a.draft), aiHandle: false,
           }, now));
@@ -242,115 +200,48 @@ async function evaluateSignals(env: Env, budget: CronBudget, now: Date, model: D
       }
       result.evaluated++;
     } else if (open) {
-      const stored = parseJson<IssueDraft | null>(s.draft_json, null) ?? templateDraft(s, await cohortStats(db, s.id, since), []);
-      const a = await q({ d1: 3 }, () => assessSignal(db, s, stored, gateEnv, now));
-      await q(COST.query, () => updateProposalGate(db, s.proposal_id as string, a.gate, now));
-      if (a.draft !== stored) await q(COST.query, () => updateProposalDraft(db, s.proposal_id as string, JSON.stringify(a.draft), now));
+      const stats = await q(COST.query, () => cohortStats(db, s.id, since));
+      const state = await q({ d1: 3 }, () => currentDraft(db, s, s.draft_json, stats));
+      const a = await q({ d1: 3 }, () => assessSignal(db, s, state.draft, gateEnv, now, { stats }));
+      await q({ d1: 2 }, () => persistAssessment(db, s.proposal_id as string, state, a, now));
+      if (state.action !== 'keep') result.draftsRefreshed++;
       result.evaluated++;
     }
     await q(COST.query, () => writeCursorStatement(db, SIGNAL_CURSOR_KEY, { at: s.last_seen_at, id: s.id }, now).run());
   }
 }
 
-// ---------------------------------------------------------------------------------------------------------
-// Filing (shared by the cron stage and the admin `file_issue` action)
-
-export type FilingOutcome =
-  | { kind: 'filed'; number: number; url: string; aiHandle: boolean }
-  | { kind: 'linked'; number: number; url: string }
-  | { kind: 'duplicate'; url: string }
-  | { kind: 'github_off' }
-  | { kind: 'not_found' }
-  | { kind: 'invalid_status' }
-  | { kind: 'busy' }
-  | { kind: 'privacy_blocked' }
-  | { kind: 'not_allowed'; gate: GateDecision }
-  | { kind: 'daily_cap' }
-  | { kind: 'github_error'; status: number };
-
-export interface FileOptions {
-  /** True for the admin action: the operator's decision replaces the gate's issue tier (never privacy or the cap). */
-  operator: boolean;
-  actor: string;
-  publisher?: GithubIssuePublisher | null;
-  fetchImpl?: GithubFetch;
-}
-
-const DAY_MS = 86_400_000;
-
 /**
- * Files one proposal: lease → (privacy, gate, cap) → marker search → link, cooldown duplicate, or create.
- * Exactly one concurrent caller holds the lease, so concurrent filings make at most one POST.
- * `ai-handle` is labelled only under mode `issues_ai_handle` and only when the deterministic gate says
- * `issue_ai_handle` or an operator approval is recorded.
+ * Replaces or withdraws drafts whose evidence was withdrawn after they were written (consent revoked,
+ * reports or account deleted, retention), so operators never see text built from it. Self-draining: a
+ * refreshed draft no longer matches the stale query.
  */
-export async function fileProposal(env: Env, proposalId: string, now: Date, opts: FileOptions): Promise<FilingOutcome> {
+async function refreshStaleDrafts(env: Env, budget: CronBudget, now: Date, result: ProposalStageResult): Promise<void> {
   const db = env.DB;
-  const mode = githubIssuesMode(env);
-  const publisher = opts.publisher === undefined ? createGithubIssuePublisher(env, opts.fetchImpl) : opts.publisher;
-  if (mode === 'off' || !publisher) return { kind: 'github_off' };
-
-  const p = await getProposal(db, proposalId);
-  if (!p) return { kind: 'not_found' };
-  if (p.github_issue_number !== null || !['proposed', 'accepted', 'filing'].includes(p.status)) return { kind: 'invalid_status' };
-  const signal = await getSignal(db, p.signal_id);
-  if (!signal) return { kind: 'not_found' };
-
-  const gateEnv = await readGateEnv(env, now);
-  const stored = parseJson<IssueDraft | null>(p.draft_json, null) ?? templateDraft(signal, await cohortStats(db, signal.id, daysBefore(now, SIGNAL_WINDOW_DAYS)), []);
-  const a = await assessSignal(db, signal, stored, gateEnv, now);
-  if (!a.markdown) {
-    await updateProposalGate(db, p.id, a.gate, now);
-    return { kind: 'privacy_blocked' };
+  const q = charged(budget);
+  if (!budget.canAfford({ d1: 4 })) {
+    result.deferred = true;
+    return;
   }
-  const operatorApproved = opts.operator || p.status === 'accepted' || (p.status === 'filing' && p.decided_by !== null);
-  const autoTier = a.gate.decision === 'issue' || a.gate.decision === 'issue_ai_handle';
-  if (a.gate.reasons.includes('daily_cap')) {
-    await updateProposalGate(db, p.id, a.gate, now);
-    return { kind: 'daily_cap' };
-  }
-  if (!autoTier && !operatorApproved) {
-    await updateProposalGate(db, p.id, a.gate, now);
-    return { kind: 'not_allowed', gate: a.gate };
-  }
-  const aiHandle = mode === 'issues_ai_handle' && (a.gate.decision === 'issue_ai_handle' || p.ai_handle_approved_by !== null);
-
-  if (!(await leaseForFiling(db, p.id, now))) return { kind: 'busy' };
-  const prior: ProposalStatus = p.status;
-  let slotReserved = false;
-  try {
-    const existing = await publisher.searchByFingerprint(signal.fingerprint);
-    const open = existing.find((i) => i.state === 'open');
-    if (open) {
-      await recordFiled(db, p.id, { number: open.number, url: open.url, aiHandle: false }, opts.actor, now);
-      return { kind: 'linked', number: open.number, url: open.url };
+  const ids = await q(COST.query, () => proposalsWithStaleDrafts(db, PROPOSAL_MIN_COHORT, STAGE_LIMITS.draftRefreshes));
+  if (!ids.length) return;
+  const gateEnv = await q({ d1: 2 }, () => readGateEnv(env, now));
+  const since = daysBefore(now, SIGNAL_WINDOW_DAYS);
+  for (const id of ids) {
+    if (!budget.canAfford(COST.refresh)) {
+      result.deferred = true;
+      return;
     }
-    const recentClosed = existing
-      .filter((i) => i.closedAt && now.getTime() - Date.parse(i.closedAt) < ISSUE_COOLDOWN_DAYS * DAY_MS)
-      .sort((x, y) => Date.parse(y.closedAt as string) - Date.parse(x.closedAt as string))[0];
-    if (recentClosed) {
-      await recordDuplicateOfIssue(db, p.id, recentClosed.url, now);
-      return { kind: 'duplicate', url: recentClosed.url };
-    }
-    if (!(await reserveIssueSlot(db, now, DAILY_ISSUE_CAP))) {
-      await releaseFiling(db, p.id, prior, now);
-      return { kind: 'daily_cap' };
-    }
-    slotReserved = true;
-    const issue = await publisher.createIssue({ title: a.draft.title, body: a.markdown, category: signal.category, aiHandle });
-    await recordFiled(db, p.id, { number: issue.number, url: issue.url, aiHandle }, opts.actor, now);
-    return { kind: 'filed', number: issue.number, url: issue.url, aiHandle };
-  } catch (err) {
-    const status = err instanceof GithubIssueError ? err.status : 500;
-    const ambiguousCreate = slotReserved && err instanceof GithubIssueError && err.endpoint === 'POST /repos/:repo/issues' && (status === 0 || status >= 500);
-    if (ambiguousCreate) {
-      // The issue may exist: keep the lease and the slot so the retry (after the lease expires) finds it by marker.
-      return { kind: 'github_error', status };
-    }
-    if (slotReserved) await releaseIssueSlot(db, now).catch(() => undefined);
-    await releaseFiling(db, p.id, prior, now);
-    if (!(err instanceof GithubIssueError)) console.error('insights filing failed', err instanceof Error ? err.name : 'error');
-    return { kind: 'github_error', status };
+    budget.charge(COST.refresh);
+    const row = await getProposalWithSignal(db, id);
+    const signal = row && await getSignal(db, row.signal_id);
+    if (!row || !signal) continue;
+    const stats = await cohortStats(db, signal.id, since);
+    const state = await currentDraft(db, signal, row.draft_json, stats);
+    if (state.action === 'keep') continue;
+    const a = await assessSignal(db, signal, state.draft, gateEnv, now, { stats });
+    await persistAssessment(db, id, state, a, now);
+    result.draftsRefreshed++;
   }
 }
 
@@ -362,10 +253,15 @@ async function fileApproved(env: Env, budget: CronBudget, now: Date, publisher: 
     return;
   }
   await q(COST.query, () => pruneIssueCounters(db, now));
+  // Only rows that can file now take a slot: accepted ones whose last gate has no evidence block, proposed
+  // ones at the issue tier or held back by nothing but the daily cap, and filings whose lease expired.
+  // Every attempt touches updated_at, so a row that keeps failing rotates behind the others.
   const rows = await q(COST.query, () => db.prepare(`SELECT id FROM insight_proposals WHERE github_issue_number IS NULL AND (
-      status = 'accepted'
+      (status = 'accepted' AND json_extract(gate_json, '$.decision') <> 'none' AND NOT EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons')
+        WHERE value IN ('personal_preference', 'cohort_too_small', 'low_confidence', 'privacy')))
       OR (status = 'proposed' AND (json_extract(gate_json, '$.decision') IN ('issue', 'issue_ai_handle')
-        OR EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons') WHERE value = 'daily_cap')))
+        OR (EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons') WHERE value = 'daily_cap')
+          AND NOT EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons') WHERE value <> 'daily_cap'))))
       OR (status = 'filing' AND filing_lease_until < ?)
     ) ORDER BY updated_at, id LIMIT ?`).bind(now.toISOString(), STAGE_LIMITS.filings).all<Pick<ProposalRow, 'id'>>());
   for (const { id } of rows.results) {
@@ -425,8 +321,9 @@ export async function automationSettings(env: Env, now: Date): Promise<Automatio
 export interface ProposalDetail {
   proposal: ProposalSummary;
   fingerprint: string;
-  draft: IssueDraft;
-  /** Null while the privacy check blocks the body ("copy issue markdown" is then unavailable). */
+  /** Null when the draft was withdrawn because its consented evidence fell below the minimum. */
+  draft: IssueDraft | null;
+  /** Null while the privacy check blocks the body or the draft is withdrawn ("copy issue markdown" is then unavailable). */
   issueMarkdown: string | null;
   issueTitle: string;
   privacyHits: string[];
@@ -440,9 +337,14 @@ export async function proposalDetail(env: Env, id: string, now: Date): Promise<P
   if (!row) return null;
   const signal = await getSignal(db, row.signal_id);
   if (!signal) return null;
-  const stored = parseJson<IssueDraft | null>(row.draft_json, null);
   const gateEnv = await readGateEnv(env, now);
-  const a = await assessSignal(db, signal, stored ?? templateDraft(signal, await cohortStats(db, signal.id, daysBefore(now, SIGNAL_WINDOW_DAYS)), []), gateEnv, now);
+  const stats = await cohortStats(db, signal.id, daysBefore(now, SIGNAL_WINDOW_DAYS));
+  // A filed issue keeps the text it was filed with; any other proposal shows only what its CURRENT
+  // consented evidence still supports (read-only here: the cron stage and the filing path persist it).
+  const draft = row.github_issue_number === null
+    ? (await currentDraft(db, signal, row.draft_json, stats)).draft
+    : parseStoredDraft(row.draft_json) ?? templateDraft(signal, stats);
+  const a = await assessSignal(db, signal, draft, gateEnv, now, { stats });
   let monitoring: ProposalDetail['monitoring'] = null;
   if (row.shipped_at) {
     const shipped = Date.parse(row.shipped_at);
@@ -454,14 +356,14 @@ export async function proposalDetail(env: Env, id: string, now: Date): Promise<P
     monitoring = { before, after };
   }
   // Statuses past triage keep their recorded gate; open ones show the fresh evaluation.
-  const live = row.status === 'proposed' || row.status === 'accepted';
+  const live = row.status === 'proposed' || row.status === 'accepted' || row.status === 'filing';
   const summary = toProposalSummary(row, a.stats);
   return {
     proposal: live ? { ...summary, gate: a.gate, risk: a.gate.risk } : summary,
     fingerprint: row.fingerprint,
     draft: a.draft,
     issueMarkdown: a.markdown,
-    issueTitle: a.draft.title,
+    issueTitle: a.draft?.title ?? signal.title,
     privacyHits: a.privacyHits,
     monitoring,
   };
@@ -471,12 +373,13 @@ export async function proposalDetail(env: Env, id: string, now: Date): Promise<P
 export async function runProposalStage(env: Env, budget: CronBudget, now: Date, deps: ProposalStageDeps = {}): Promise<ProposalStageResult> {
   const githubMode = githubIssuesMode(env);
   const result: ProposalStageResult = {
-    linked: 0, ignored: 0, evaluated: 0, proposalsCreated: 0, filed: 0, linkedIssues: 0, duplicates: 0, shipped: 0, monitored: 0,
+    linked: 0, ignored: 0, evaluated: 0, proposalsCreated: 0, draftsRefreshed: 0, filed: 0, linkedIssues: 0, duplicates: 0, shipped: 0, monitored: 0,
     githubMode, deferred: false,
   };
   const model = deps.draftModel ?? defaultDraftModel({ env, now: () => now });
   await linkReports(env, budget, now, result);
   await evaluateSignals(env, budget, now, model, result);
+  await refreshStaleDrafts(env, budget, now, result);
   // Zero GitHub traffic unless the effective mode is on (which already requires the token).
   const publisher = githubMode === 'off' ? null : createGithubIssuePublisher(env, deps.fetchImpl);
   if (publisher) await fileApproved(env, budget, now, publisher, result);

@@ -201,12 +201,20 @@ const defaultIo = {
   chmodSync: fs.chmodSync,
 };
 
+/** Deletes a file, ignoring a missing one or a failure (a leftover backup is not worth failing a good write). */
+function removeQuietly(io, file) {
+  try { io.unlinkSync(file); } catch { /* already gone or not removable */ }
+}
+
 /**
  * Reads, plans and (unless `dryRun`) writes one settings file.
  * - Missing file → planned from `{}`; invalid JSON or shape → SettingsError, nothing written.
  * - Before writing, the original is copied to `<file>.ai-unlocked.bak`; the new text goes to `<file>.ai-unlocked.tmp`,
  *   is fsync'ed, renamed over the file, re-read and re-parsed. Any failure restores the backup (or removes a file
  *   that did not exist before) and throws SettingsError('write_failed').
+ * - The backup is removed once the write is verified or the rollback succeeded, so no copy of the settings
+ *   (which may hold keys or permissions) is left next to a project file where it could be committed. It is
+ *   kept only when the rollback itself failed, for a manual restore.
  * - The file mode and indentation are preserved.
  * @param {string} file
  * @param {(json: any) => { changed: boolean, json: any }} plan
@@ -256,12 +264,20 @@ export function applyToFile(file, plan, options = {}) {
     if (!deepEqual(reread, result.json)) throw new Error('nội dung ghi ra không khớp');
   } catch (err) {
     try { io.unlinkSync(tmp); } catch { /* tmp may not exist */ }
+    let restored = true;
     try {
       if (backedUp) io.copyFileSync(backup, file);
       else if (original === null) io.unlinkSync(file);
-    } catch { /* best effort: the backup file stays on disk for manual restore */ }
+    } catch {
+      restored = false;
+    }
+    if (!restored) {
+      throw new SettingsError('write_failed', `Ghi ${file} thất bại và không khôi phục được; bản gốc còn ở ${backup} (${err.message}).`);
+    }
+    if (backedUp) removeQuietly(io, backup);
     throw new SettingsError('write_failed', `Ghi ${file} thất bại, đã khôi phục bản cũ (${err.message}).`);
   }
+  if (backedUp) removeQuietly(io, backup);
   return { file, changed: true, existed: original !== null, diff };
 }
 

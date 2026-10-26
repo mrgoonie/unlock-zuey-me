@@ -90,7 +90,7 @@ describe('applyToFile and scopes on disk', () => {
     const installed = JSON.parse(fs.readFileSync(userFile(), 'utf8'));
     expect(findMarkerHandlers(installed)).toHaveLength(1);
     expect(installed.hooks.PreToolUse).toEqual(parse('settings/user-with-foreign-hooks.json').hooks.PreToolUse);
-    expect(fs.existsSync(`${userFile()}.ai-unlocked.bak`)).toBe(true);
+    expect(fs.existsSync(`${userFile()}.ai-unlocked.bak`)).toBe(false);
     uninstallHook({ ctx: t.ctx, scope: 'user' });
     expect(fs.readFileSync(userFile(), 'utf8')).toBe(original);
   });
@@ -152,6 +152,46 @@ describe('applyToFile and scopes on disk', () => {
     expect(() => applyToFile(userFile(), (j) => planInstall(j, CMD), { io })).toThrow(/khôi phục/);
     expect(fs.readFileSync(userFile(), 'utf8')).toBe(text);
     expect(fs.existsSync(`${userFile()}.ai-unlocked.tmp`)).toBe(false);
+    expect(fs.existsSync(`${userFile()}.ai-unlocked.bak`)).toBe(false);
+  });
+
+  it('a verified project-scope write leaves no backup or temp file next to settings.local.json', () => {
+    put(localFile(), '{\n  "env": { "SECRET_TOKEN": "keep-local" }\n}\n');
+    const r = installHook({ ctx: t.ctx, scope: 'project', command: CMD });
+    expect(r.changed).toBe(true);
+    expect(fs.readdirSync(path.dirname(localFile())).sort()).toEqual(['settings.local.json']);
+  });
+
+  it('keeps the backup only when the rollback itself fails', () => {
+    const text = readFixture('settings/user-with-foreign-hooks.json');
+    put(userFile(), text);
+    let copies = 0;
+    const io = {
+      renameSync: () => { throw new Error('simulated rename failure'); },
+      // The first copy makes the backup; the restore copy fails.
+      copyFileSync: (from: fs.PathLike, to: fs.PathLike) => {
+        copies += 1;
+        if (copies > 1) throw new Error('simulated restore failure');
+        fs.copyFileSync(from, to);
+      },
+    };
+    expect(() => applyToFile(userFile(), (j) => planInstall(j, CMD), { io })).toThrow(/không khôi phục được/);
+    expect(fs.readFileSync(`${userFile()}.ai-unlocked.bak`, 'utf8')).toBe(text);
+  });
+
+  it('project uninstall removes backup and temp files left by an older CLI, but not for user scope', () => {
+    installHook({ ctx: t.ctx, scope: 'project', command: CMD });
+    put(userFile(), '{}\n');
+    const leftovers = [`${localFile()}.ai-unlocked.bak`, `${localFile()}.ai-unlocked.tmp`, `${sharedFile()}.ai-unlocked.bak`];
+    for (const f of [...leftovers, `${userFile()}.ai-unlocked.bak`]) put(f, '{"env":{"K":"v"}}');
+    const dry = uninstallHook({ ctx: t.ctx, scope: 'project', dryRun: true });
+    expect(dry.removedLeftovers).toEqual([]);
+    for (const f of leftovers) expect(fs.existsSync(f)).toBe(true);
+    const r = uninstallHook({ ctx: t.ctx, scope: 'project' });
+    expect(r.errors).toEqual([]);
+    expect([...r.removedLeftovers].sort()).toEqual([...leftovers].sort());
+    for (const f of leftovers) expect(fs.existsSync(f)).toBe(false);
+    expect(fs.existsSync(`${userFile()}.ai-unlocked.bak`)).toBe(true);
   });
 
   it('a corrupted write (re-read mismatch) is rolled back to the original', () => {

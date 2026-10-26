@@ -5,7 +5,8 @@
 // - project → <project>/.claude/settings.local.json (personal, kept out of git). The committed
 //             .claude/settings.json is never written, so teammates never get this hook from the repo.
 // Uninstall removes marker handlers only, and for `project` also cleans the shared file in case a marker was
-// copied there by hand. Hook edits are picked up live: "Claude Code watches your settings files and reloads
+// copied there by hand, plus any `*.ai-unlocked.bak` / `*.ai-unlocked.tmp` left next to the project files by an
+// older CLI (a copy of personal settings that could otherwise be committed). Hook edits are picked up live: "Claude Code watches your settings files and reloads
 // them when they change ... including edits to ... hooks".
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,6 +44,9 @@ export function uninstallFiles(ctx, scope) {
   return [p.user, p.project, p['project-shared']];
 }
 
+/** Leftover files the settings writer may have left next to a settings file (older CLIs kept the backup). */
+export const SETTINGS_LEFTOVER_SUFFIXES = ['.ai-unlocked.bak', '.ai-unlocked.tmp'];
+
 /**
  * Removes marker handlers from every file of `scope`. A file with invalid JSON is reported and left untouched;
  * the others are still processed.
@@ -53,7 +57,22 @@ export function uninstallHook({ ctx, scope, dryRun = false }) {
   const results = [];
   /** @type {Array<{ file: string, message: string }>} */
   const errors = [];
+  /** @type {string[]} */
+  const removedLeftovers = [];
+  const p = settingsPaths(ctx);
+  const projectFiles = new Set([p.project, p['project-shared']]);
   for (const file of uninstallFiles(ctx, scope)) {
+    if (!dryRun && projectFiles.has(file)) {
+      for (const suffix of SETTINGS_LEFTOVER_SUFFIXES) {
+        const leftover = `${file}${suffix}`;
+        try {
+          fs.rmSync(leftover);
+          removedLeftovers.push(leftover);
+        } catch (err) {
+          if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'ENOENT') errors.push({ file: leftover, message: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
     if (!fs.existsSync(file)) continue;
     try {
       const r = applyToFile(file, planUninstall, { dryRun });
@@ -62,7 +81,7 @@ export function uninstallHook({ ctx, scope, dryRun = false }) {
       errors.push({ file, message: err instanceof Error ? err.message : String(err) });
     }
   }
-  return { results, errors };
+  return { results, errors, removedLeftovers };
 }
 
 /** Marker handlers per settings file (for status/doctor). */

@@ -205,8 +205,13 @@ export type CompleteOutcome = 'written' | 'revoked' | 'lease_lost';
  * Atomically writes the report and closes the leased events `ids` as `done` (payload NULLed). In one batch:
  * 1. INSERT … SELECT … WHERE consent still granted AND the lease is still ours;
  * 2. events → done, only if that report row exists;
- * 3. if consent is gone (no report written), the window's events are deleted.
- * A stale worker (lease reclaimed) writes nothing at all.
+ * 3. if consent is gone (no report written), the window's events are deleted;
+ * then, only when nothing was written or deleted, one read of whether consent is gone or the window's events
+ * no longer exist at all.
+ * `revoked` covers every way the learner withdrew during the model call: consent turned off (the consent
+ * write usually purges the events itself, so step 3 may find nothing left), queued turns deleted, or the
+ * account deleted. `lease_lost` is only a stale worker whose events were re-leased by another one; it writes
+ * nothing at all.
  */
 export async function completeWindow(
   db: D1Database, leaseId: string, ids: readonly string[], row: ReportRow, now: Date,
@@ -236,5 +241,10 @@ export async function completeWindow(
       .bind(leaseId, row.id, row.learnerId),
   ]);
   if ((insert.meta.changes ?? 0) > 0) return 'written';
-  return (deleted.meta.changes ?? 0) > 0 ? 'revoked' : 'lease_lost';
+  if ((deleted.meta.changes ?? 0) > 0) return 'revoked';
+  const idList = ids.map((_, i) => `?${i + 2}`).join(',');
+  const check = await db.prepare(
+    `SELECT (NOT ${consentFor('?1')}) OR NOT EXISTS (SELECT 1 FROM insight_events WHERE id IN (${idList})) AS withdrawn`,
+  ).bind(row.learnerId, ...ids).first<{ withdrawn: number }>();
+  return check?.withdrawn ? 'revoked' : 'lease_lost';
 }

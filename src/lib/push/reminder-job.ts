@@ -202,7 +202,13 @@ async function deliverChunk(
     // Analytics must not cost the subscription state: retry the state writes alone (budget headroom covers it).
     console.error('push reminders: result batch failed, retrying without events', err);
     budget.charge({ d1: 1 });
-    await db.batch(writes);
+    try {
+      await db.batch(writes);
+    } catch (retryErr) {
+      // The pushes already went out and the rows stay claimed for today (no double send), so the run goes on
+      // with the other chunks; only this chunk's failure counters and cleanup are lost until the next send.
+      console.error('push reminders: state writes failed after sending, continuing', retryErr);
+    }
   }
   return rows.map((r) => outcomes.get(r.id) ?? 'skipped');
 }

@@ -116,11 +116,26 @@ export async function cohortStatsBySignal(db: D1Database, since: string): Promis
   return new Map(r.results.map((row) => [String((row as { signal_id: string }).signal_id), toStats(row as never)]));
 }
 
-/** Up to `limit` abstract evidence texts (newest first) from consenting learners, for the draft. */
-export async function consentedEvidence(db: D1Database, signalId: string, since: string, limit = 5): Promise<string[]> {
-  const r = await db.prepare(`SELECT e.abstract_evidence AS text ${CONSENTED_EVIDENCE}
-    WHERE e.signal_id = ? AND e.created_at >= ? ORDER BY e.created_at DESC LIMIT ?`).bind(signalId, since, limit).all<{ text: string }>();
-  return r.results.map((x) => x.text);
+/**
+ * Up to `limit` abstract evidence items (newest first) from consenting learners: the draft input and the
+ * copy-check corpus of the privacy re-scan.
+ */
+export async function consentedEvidence(
+  db: D1Database, signalId: string, since: string, limit = 50,
+): Promise<Array<{ reportId: string; text: string }>> {
+  const r = await db.prepare(`SELECT e.report_id AS reportId, e.abstract_evidence AS text ${CONSENTED_EVIDENCE}
+    WHERE e.signal_id = ? AND e.created_at >= ? ORDER BY e.created_at DESC LIMIT ?`)
+    .bind(signalId, since, limit).all<{ reportId: string; text: string }>();
+  return r.results;
+}
+
+/** True when every report id is still consented evidence of the signal (none revoked or deleted). */
+export async function evidenceStillConsented(db: D1Database, signalId: string, reportIds: readonly string[]): Promise<boolean> {
+  const unique = [...new Set(reportIds)];
+  if (unique.length === 0) return true;
+  const n = await db.prepare(`SELECT COUNT(*) AS n ${CONSENTED_EVIDENCE} WHERE e.signal_id = ? AND e.report_id IN (SELECT value FROM json_each(?))`)
+    .bind(signalId, JSON.stringify(unique)).first<number>('n');
+  return Number(n ?? 0) === unique.length;
 }
 
 /**
@@ -159,10 +174,46 @@ export async function createProposal(db: D1Database, p: NewProposal, now: Date):
   return (r.meta.changes ?? 0) === 1;
 }
 
-/** Re-evaluated gate of a proposal still awaiting triage. */
+/** Re-evaluated gate of a proposal still awaiting triage or filing. */
 export async function updateProposalGate(db: D1Database, id: string, gate: GateDecision, now: Date): Promise<void> {
-  await db.prepare(`UPDATE insight_proposals SET risk = ?, gate_json = ?, updated_at = ? WHERE id = ? AND status IN ('proposed', 'accepted')`)
+  await db.prepare(`UPDATE insight_proposals SET risk = ?, gate_json = ?, updated_at = ? WHERE id = ? AND status IN ('proposed', 'accepted', 'filing')`)
     .bind(gate.risk, JSON.stringify(gate), now.toISOString(), id).run();
+}
+
+/** `draft_json` of a proposal whose draft was withdrawn with its evidence. */
+export const WITHDRAWN_DRAFT_JSON = '{}';
+
+/**
+ * The evidence behind a proposal fell below the minimum: its draft is erased, a proposal awaiting triage or
+ * filing returns to `proposed` with the blocking gate (so neither the cron nor an operator can file it), and
+ * any acceptance or ai-handle approval of the erased text is void. Never touches a proposal with an issue.
+ */
+export async function withdrawProposalDraft(db: D1Database, id: string, gate: GateDecision, now: Date): Promise<void> {
+  await db.prepare(`UPDATE insight_proposals SET draft_json = ?, risk = ?, gate_json = ?, filing_lease_until = NULL, ai_handle_approved_by = NULL,
+      status = CASE WHEN status IN ('proposed', 'accepted', 'filing') THEN 'proposed' ELSE status END,
+      decided_by = CASE WHEN status IN ('accepted', 'filing') THEN NULL ELSE decided_by END,
+      decided_at = CASE WHEN status IN ('accepted', 'filing') THEN NULL ELSE decided_at END,
+      updated_at = ?
+    WHERE id = ? AND github_issue_number IS NULL`)
+    .bind(WITHDRAWN_DRAFT_JSON, gate.risk, JSON.stringify(gate), now.toISOString(), id).run();
+}
+
+/**
+ * Proposals without an issue whose stored draft no longer stands on consented evidence: the signal's
+ * consented cohort (any age) is below `minCohort`, or a report the draft was written from is no longer
+ * consented evidence (or the draft predates `basis`). Already withdrawn drafts and in-flight filings are
+ * skipped; expired filings are handled by the filing path. Oldest first.
+ */
+export async function proposalsWithStaleDrafts(db: D1Database, minCohort: number, limit: number): Promise<string[]> {
+  const r = await db.prepare(`SELECT p.id FROM insight_proposals p
+    WHERE p.github_issue_number IS NULL AND p.status IN ('proposed', 'accepted', 'rejected', 'duplicate') AND p.draft_json <> ?
+      AND ((SELECT COUNT(DISTINCT r.learner_id) ${CONSENTED_EVIDENCE} WHERE e.signal_id = p.signal_id) < ?
+        OR CASE WHEN json_valid(p.draft_json) AND json_type(p.draft_json, '$.basis') = 'array'
+          THEN EXISTS (SELECT 1 FROM json_each(p.draft_json, '$.basis') b WHERE NOT EXISTS (
+            SELECT 1 ${CONSENTED_EVIDENCE} WHERE e.signal_id = p.signal_id AND e.report_id = b.value))
+          ELSE 1 END)
+    ORDER BY p.updated_at, p.id LIMIT ?`).bind(WITHDRAWN_DRAFT_JSON, minCohort, limit).all<{ id: string }>();
+  return r.results.map((x) => x.id);
 }
 
 export async function updateProposalDraft(db: D1Database, id: string, draftJson: string, now: Date): Promise<void> {
@@ -236,11 +287,16 @@ export async function leaseForFiling(db: D1Database, id: string, now: Date, leas
   return (r.meta.changes ?? 0) === 1;
 }
 
-/** Gives the lease back after a failed attempt; the proposal returns to its prior status. */
+/**
+ * Gives the lease back after an attempt that filed nothing. The proposal returns to its prior status; a
+ * proposal taken over from an expired lease returns to `accepted` when an operator decided on it, else to
+ * `proposed` (where only the gate's issue tier can file it again).
+ */
 export async function releaseFiling(db: D1Database, id: string, prior: ProposalStatus, now: Date): Promise<void> {
-  const back = prior === 'filing' ? 'accepted' : prior;
-  await db.prepare(`UPDATE insight_proposals SET status = ?, filing_lease_until = NULL, updated_at = ? WHERE id = ? AND status = 'filing'`)
-    .bind(back, now.toISOString(), id).run();
+  await db.prepare(`UPDATE insight_proposals SET filing_lease_until = NULL, updated_at = ?,
+      status = CASE WHEN ? = 'filing' THEN (CASE WHEN decided_by IS NULL THEN 'proposed' ELSE 'accepted' END) ELSE ? END
+    WHERE id = ? AND status = 'filing'`)
+    .bind(now.toISOString(), prior, prior, id).run();
 }
 
 export async function recordFiled(

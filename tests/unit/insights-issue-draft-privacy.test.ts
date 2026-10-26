@@ -26,7 +26,7 @@ const PROMPT = 'Hãy lên kế hoạch cuối tuần cho gia đình tôi ở Đ�
 
 describe('renderIssueMarkdown', () => {
   it('has every required section, the aggregate header, the ai-handle notice and the fingerprint marker', () => {
-    const md = renderIssueMarkdown({ ...goodSections(), source: 'ai', model: 'm' }, SIGNAL, STATS);
+    const md = renderIssueMarkdown({ ...goodSections(), source: 'ai', model: 'm', basis: [] }, SIGNAL, STATS);
     for (const h of ['Problem', 'Affected context', 'Aggregated evidence (3 learners, 4 occurrences, 14 days)', 'Proposed minimal change',
       'Existing config/content solution check', 'Alternatives', 'Trade-offs', 'Acceptance criteria', 'Blast radius', 'Confidence', 'Privacy checks']) {
       expect(md).toContain(`## ${h}`);
@@ -36,10 +36,12 @@ describe('renderIssueMarkdown', () => {
     expect(privacyCheck(md)).toEqual({ ok: true, hits: [] });
   });
 
-  it('the template passes the privacy check on its own', () => {
-    const t = templateDraft(SIGNAL, STATS, ['Người học thấy gợi ý bước 2 khó hiểu.']);
-    expect(t.source).toBe('template');
-    expect(privacyCheck(renderIssueMarkdown(t, SIGNAL, STATS)).ok).toBe(true);
+  it('the template passes the privacy check on its own and carries no evidence', () => {
+    const t = templateDraft(SIGNAL, STATS);
+    expect(t).toMatchObject({ source: 'template', basis: [] });
+    const evidence = ['Người học thấy gợi ý bước 2 khó hiểu khi lần đầu làm nhiệm vụ cuối tuần.'];
+    expect(privacyCheck(renderIssueMarkdown(t, SIGNAL, STATS), { evidence }).ok).toBe(true);
+    expect(JSON.stringify(t)).not.toContain('gợi ý bước 2');
   });
 });
 
@@ -65,17 +67,37 @@ describe('privacyCheck', () => {
     expect(privacyCheck(`Open https://unlock.zuey.me/missions <!-- ai-unlocked-fp:${'f'.repeat(64)} -->`).ok).toBe(true);
   });
 
-  it('flags verbatim evidence runs of 200+ characters and contributor names', () => {
-    const long = 'x'.repeat(30) + ' '.concat('đây là một đoạn bằng chứng rất dài '.repeat(8));
-    expect(privacyCheck(`quote: ${long}`, { evidence: [long] }).hits).toEqual(['verbatim_evidence']);
-    expect(privacyCheck(`quote: ${long.slice(0, 150)}`, { evidence: [long] }).ok).toBe(true);
+  it('flags contributor names', () => {
     expect(privacyCheck('Reported by Nguyễn Thị Hoa', { forbiddenTerms: ['Nguyễn Thị Hoa'] }).hits).toEqual(['forbidden_term']);
+  });
+
+  describe('copied evidence', () => {
+    const evidence = 'Người học không hiểu gợi ý bước 2 vì nó dùng thuật ngữ “context window” mà chưa giải thích.';
+
+    it('flags a short quote of 40+ normalised characters, whatever its casing, accents or punctuation', () => {
+      expect(privacyCheck(`Learners said: "${evidence.slice(0, 45)}"`, { evidence: [evidence] }).hits).toEqual(['verbatim_evidence']);
+      const reshaped = 'NGUOI HOC khong hieu goi y -- buoc 2, vi no dung thuat ngu';
+      expect(privacyCheck(`Quote: ${reshaped}`, { evidence: [evidence] }).hits).toEqual(['verbatim_evidence']);
+    });
+
+    it('flags 8 consecutive shared words even when the run is shorter than 40 characters', () => {
+      const ev = 'it is a b c d e f g h ok';
+      const body = 'Summary: is a b c d e f g h.';
+      expect('is a b c d e f g h'.length).toBeLessThan(40);
+      expect(privacyCheck(body, { evidence: [ev] }).hits).toEqual(['verbatim_evidence']);
+      expect(privacyCheck('Summary: a b c d e f g.', { evidence: [ev] }).ok).toBe(true); // 7 shared words
+    });
+
+    it('allows a paraphrase that shares only short phrases', () => {
+      const body = 'Learners new to the mission find the step 2 hint unclear because a technical term is not explained.';
+      expect(privacyCheck(body, { evidence: [evidence] }).ok).toBe(true);
+    });
   });
 });
 
 describe('prepareIssue and buildDraft', () => {
   it('replaces a leaking model draft with the template', () => {
-    const leaking = { ...goodSections({ evidence: `One learner (${EMAIL}) wrote: ${PROMPT}` }), source: 'ai' as const, model: 'm' };
+    const leaking = { ...goodSections({ evidence: `One learner (${EMAIL}) wrote: ${PROMPT}` }), source: 'ai' as const, model: 'm', basis: [] };
     const r = prepareIssue(leaking, SIGNAL, STATS, [], ['Nguyễn Thị Hoa']);
     expect(r.draft.source).toBe('template');
     expect(r.markdown).not.toBeNull();
@@ -84,10 +106,33 @@ describe('prepareIssue and buildDraft', () => {
   });
 
   it('blocks when the template leaks too (privacy reason, no markdown)', () => {
-    const leaking = { ...goodSections({ problem: `Ask ${EMAIL}` }), source: 'ai' as const, model: 'm' };
-    const r = prepareIssue(leaking, SIGNAL, STATS, ['Học viên Nguyễn Thị Hoa bị kẹt ở bước 2.'], ['Nguyễn Thị Hoa']);
+    const leaking = { ...goodSections({ problem: `Ask ${EMAIL}` }), source: 'ai' as const, model: 'm', basis: [] };
+    const signal = { ...SIGNAL, title: '[content] mission:plan-weekend: hoa' };
+    const r = prepareIssue(leaking, signal, STATS, [], ['hoa']);
     expect(r.markdown).toBeNull();
     expect(r.privacy.hits).toContain('forbidden_term');
+  });
+
+  it('never files a model draft that quotes evidence: it is replaced by the evidence-free template', () => {
+    const evidence = 'Người học bị kẹt ở bước 2 vì ví dụ trong gợi ý nói về ngân sách du lịch Đà Lạt.';
+    const quoting = { ...goodSections({ evidence: `One learner wrote "${evidence.slice(0, 50)}".` }), source: 'ai' as const, model: 'm', basis: ['irp_1'] };
+    const r = prepareIssue(quoting, SIGNAL, STATS, [evidence]);
+    expect(r.draft).toMatchObject({ source: 'template', basis: [] });
+    expect(r.markdown).not.toBeNull();
+    expect(r.markdown).not.toContain(evidence.slice(0, 50));
+    expect(privacyCheck(r.markdown as string, { evidence: [evidence] }).ok).toBe(true);
+  });
+
+  it('the drafting prompt forbids quoting or copying the evidence', () => {
+    const [system] = buildDraftMessages(SIGNAL, STATS, ['x']);
+    expect(system.content).toMatch(/Never quote or copy the evidence/);
+  });
+
+  it('records the report ids a model draft was written from', async () => {
+    const d = await buildDraft(async () => ({ value: goodSections(), model: 'm' }), SIGNAL, STATS, [
+      { reportId: 'irp_1', text: 'a' }, { reportId: 'irp_2', text: 'b' },
+    ]);
+    expect(d).toMatchObject({ source: 'ai', basis: ['irp_1', 'irp_2'] });
   });
 
   it('fences evidence as untrusted data and falls back to the template on invalid model output', async () => {

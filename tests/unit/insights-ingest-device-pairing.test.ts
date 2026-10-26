@@ -98,6 +98,17 @@ describe('device pairing', () => {
     expect(await res.json()).toEqual({ status: 'expired' });
   });
 
+  it('an unknown device code answers 410 expired without writing to KV', async () => {
+    const put = vi.spyOn(t.env.CACHE, 'put');
+    for (let i = 0; i < 3; i++) {
+      const res = await poll(`${i}${'A'.repeat(42)}`);
+      expect(res.status).toBe(410);
+      expect(await res.json()).toEqual({ status: 'expired' });
+    }
+    expect(put).not.toHaveBeenCalled();
+    expect(t.store.size).toBe(0);
+  });
+
   it('answers 429 slow_down when polled faster than every 4 s', async () => {
     const s = await started();
     expect((await poll(s.deviceCode)).status).toBe(428);
