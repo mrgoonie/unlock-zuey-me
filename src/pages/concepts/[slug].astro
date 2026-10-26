@@ -4,13 +4,14 @@ import AppLayout from '../../layouts/AppLayout.astro';
 import ConceptBadges from '../../components/concepts/ConceptBadges.astro';
 import NotFound from '../../components/ui/NotFound.astro';
 import { getConcept } from '../../lib/content/loader';
-import { CONCEPT_GROUP_LABEL, LAB_LABEL, formatDateVi } from '../../lib/ui/labels';
+import { getLab } from '../../lib/labs/registry';
+import { CONCEPT_GROUP_LABEL, formatDateVi } from '../../lib/ui/labels';
 
 const concept = getConcept(Astro.params.slug ?? '');
 if (!concept) Astro.response.status = 404;
 const related = concept ? concept.related.map(getConcept).filter((c) => c !== undefined) : [];
 const prerequisites = concept ? concept.prerequisites.map(getConcept).filter((c) => c !== undefined) : [];
-const lab = concept?.lab ? { id: concept.lab, ...LAB_LABEL[concept.lab] } : null;
+const lab = concept?.lab ? getLab(concept.lab) ?? null : null;
 ---
 <AppLayout title={concept ? concept.label_vi : 'Không tìm thấy'} description={concept?.one_liner}>
   {!concept ? (
@@ -68,7 +69,7 @@ const lab = concept?.lab ? { id: concept.lab, ...LAB_LABEL[concept.lab] } : null
       {lab && (
         <a href={`/labs/${lab.id}`} class="card flex items-center gap-3 hover:border-accent">
           <span aria-hidden="true" class="text-3xl">{lab.emoji}</span>
-          <span class="flex flex-col"><span class="font-semibold">🧪 Thử ngay: {lab.name}</span><span class="text-sm text-ink-muted">{lab.tagline}</span></span>
+          <span class="flex flex-col"><span class="font-semibold">🧪 Thử ngay: {lab.title}</span><span class="text-sm text-ink-muted">{lab.summary}</span></span>
         </a>
       )}
 
