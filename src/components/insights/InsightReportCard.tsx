@@ -104,11 +104,11 @@ export default function InsightReportCard({ report: r, missionTitles, onRate, on
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
           {onRate && (
             <div role="group" aria-label="Báo cáo này có hữu ích không?" className="flex gap-2">
-              <button type="button" className="btn-ghost text-sm" aria-pressed={r.useful === true} disabled={busy}
+              <button type="button" className="btn-ghost text-sm aria-pressed:border-calm aria-pressed:bg-calm/15 aria-pressed:text-calm" aria-pressed={r.useful === true} disabled={busy}
                 onClick={() => run(() => onRate(r.id, true))}>
                 👍 Hữu ích
               </button>
-              <button type="button" className="btn-ghost text-sm" aria-pressed={r.useful === false} disabled={busy}
+              <button type="button" className="btn-ghost text-sm aria-pressed:border-calm aria-pressed:bg-calm/15 aria-pressed:text-calm" aria-pressed={r.useful === false} disabled={busy}
                 onClick={() => run(() => onRate(r.id, false))}>
                 👎 Không hữu ích
               </button>
