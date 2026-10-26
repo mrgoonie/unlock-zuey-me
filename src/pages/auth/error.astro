@@ -1,0 +1,31 @@
+---
+/** Friendly Vietnamese page for sign-in failures. Only a fixed error code travels in the URL. */
+import AppLayout from '../../layouts/AppLayout.astro';
+
+const MESSAGES: Record<string, { title: string; body: string }> = {
+  cancelled: { title: 'Bạn đã huỷ đăng nhập', body: 'Không sao cả. Tiến độ của bạn vẫn được giữ trên thiết bị này.' },
+  expired: { title: 'Phiên đăng nhập đã hết hạn', body: 'Yêu cầu đăng nhập chỉ có hiệu lực 10 phút. Bạn thử lại nhé.' },
+  invalid_state: { title: 'Liên kết đăng nhập không hợp lệ', body: 'Liên kết này đã được dùng hoặc không đúng. Bạn bắt đầu đăng nhập lại nhé.' },
+  wrong_browser: {
+    title: 'Hãy đăng nhập trên cùng một trình duyệt',
+    body: 'Đăng nhập phải được bắt đầu và hoàn tất trên cùng một trình duyệt. Bạn thử lại từ trang này nhé.',
+  },
+  issuer_mismatch: { title: 'Không xác minh được zuey.me', body: 'Phản hồi đăng nhập không đến từ zuey.me nên đã bị từ chối để bảo vệ bạn.' },
+  upstream: { title: 'zuey.me chưa phản hồi', body: 'Có trục trặc khi kết nối với zuey.me. Bạn đợi một chút rồi thử lại nhé.' },
+  no_learner: { title: 'Chưa mở được phiên học', body: 'Bạn mở lại AI Unlocked trên trình duyệt rồi đăng nhập lại nhé.' },
+};
+const code = Astro.url.searchParams.get('code') ?? '';
+const message = (Object.hasOwn(MESSAGES, code) ? MESSAGES[code] : undefined) ?? { title: 'Đăng nhập chưa thành công', body: 'Có lỗi không mong muốn. Bạn thử lại nhé.' };
+Astro.response.status = code === 'cancelled' ? 200 : 400;
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<AppLayout title="Đăng nhập" bare>
+  <section class="card mx-auto mt-10 flex max-w-md flex-col gap-4" aria-labelledby="auth-error-title">
+    <h1 id="auth-error-title" class="text-xl font-bold">{message.title}</h1>
+    <p class="text-ink-muted">{message.body}</p>
+    <div class="flex flex-col gap-3 sm:flex-row">
+      <a href="/auth/zuey/login" class="btn-primary">Thử đăng nhập lại</a>
+      <a href="/home" class="btn-ghost">Tiếp tục học với tư cách khách</a>
+    </div>
+  </section>
+</AppLayout>
