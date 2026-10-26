@@ -5,10 +5,18 @@
  * requested while a drain is still queued (not started) share that drain, and a drain always reads the
  * newest draft and the newest run `rev` (from the previous response) before each PATCH, so rapid edits are
  * coalesced into sequential saves with increasing rev instead of parallel saves with the same rev.
+ *
+ * Rejections the queue resolves itself:
+ * - 409 conflict: adopt the server run, re-apply local edits on top, save again with the new rev.
+ * - 403 forbidden (an edit touches an answer whose key was already revealed, so the server locked it):
+ *   adopt the server run (from the body, else refetched), restore the server value of the locked fields,
+ *   tell the learner calmly and keep saving the other edits. Without this the step stays dirty forever and
+ *   blocks every later save and the submit.
  */
 import type { Answers, MissionRun } from '../learning/types';
+import { lockedFieldIds } from '../learning/reveal-keys';
 import { ApiError } from './api-client';
-import { hasDirty, markSaved, mergeServerRun, type RunDraft } from './run-draft';
+import { clearDirtyFields, hasDirty, markSaved, mergeServerRun, type RunDraft } from './run-draft';
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'offline';
 
@@ -20,7 +28,13 @@ export interface SaveQueueDeps {
   currentStepId: () => string | undefined;
   save: (runId: string, input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number }) => Promise<{ run: MissionRun }>;
   onState: (s: SaveState) => void;
+  /** Current server run, used when a 403 body carries none. */
+  refetchRun?: (runId: string) => Promise<MissionRun>;
+  /** Calm, learner-facing notice (e.g. a locked answer was restored). */
+  onNotice?: (message: string) => void;
 }
+
+export const LOCKED_ANSWER_NOTICE = 'Câu này đã xem đáp án nên được giữ nguyên.';
 
 const MAX_CONFLICT_RETRIES = 3;
 /** Safety valve against a pathological loop; real drains need one PATCH per dirty step. */
@@ -39,6 +53,11 @@ export function createSaveQueue(deps: SaveQueueDeps) {
 
   async function drain(): Promise<boolean> {
     let conflicts = 0;
+    /**
+     * 403s per step in this drain: the first restores the locked fields, a second resets the whole step to
+     * the server copy, a third gives up (reported like any failed save).
+     */
+    const lockedHits = new Map<string, number>();
     for (let i = 0; i < MAX_SAVES_PER_DRAIN; i++) {
       const draft = deps.getDraft();
       const run = deps.getRun();
@@ -65,12 +84,39 @@ export function createSaveQueue(deps: SaveQueueDeps) {
           deps.setDraft(mergeServerRun(deps.getDraft() ?? draft, server));
           continue;
         }
+        const hits = lockedHits.get(stepId) ?? 0;
+        if (e instanceof ApiError && e.code === 'forbidden' && hits < 2) {
+          const locked = await lockedServerRun(e, run.id);
+          if (locked) {
+            lockedHits.set(stepId, hits + 1);
+            const current = deps.getDraft() ?? draft;
+            const fields = hits === 0 ? lockedFieldIds(locked.revealed, stepId) : (current.dirty[stepId] ?? []);
+            if (hits > 0) forced.delete(stepId);
+            deps.setRun(locked);
+            deps.setDraft(mergeServerRun(clearDirtyFields(current, stepId, fields), locked));
+            deps.onNotice?.(LOCKED_ANSWER_NOTICE);
+            continue;
+          }
+        }
         deps.onState('offline');
         return false;
       }
     }
     deps.onState('offline');
     return false;
+  }
+
+  /** The server run for a 403: from the response body, else refetched. Null when neither is available. */
+  async function lockedServerRun(e: ApiError, runId: string): Promise<MissionRun | null> {
+    const fromBody = (e.body as { run?: unknown } | null)?.run;
+    if (isRun(fromBody)) return fromBody;
+    if (!deps.refetchRun) return null;
+    try {
+      const fetched = await deps.refetchRun(runId);
+      return isRun(fetched) ? fetched : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Queue a save of everything dirty (plus `forceStepId`). Resolves true when that drain saved it all. */

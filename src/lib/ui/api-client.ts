@@ -65,6 +65,8 @@ type Fetcher = (input: string, init: RequestInit) => Promise<Response>;
 
 /** Every call has a deadline so no screen can hang on a spinner; slow AI calls pass a longer one. */
 export const DEFAULT_TIMEOUT_MS = 20_000;
+/** Hint deadline: above the server's worst case for one hint (OpenRouter 15 s + Workers AI 30 s fallback). */
+export const HINT_TIMEOUT_MS = 55_000;
 
 /**
  * Low-level request. `body` is JSON unless it is FormData. `timeoutMs` aborts slow calls (reported as
@@ -138,8 +140,12 @@ export const api = {
   getRun: (runId: string) => request<RunDetail>('GET', `/api/v1/runs/${enc(runId)}`),
   saveAnswers: (runId: string, input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number }) =>
     request<{ run: MissionRun }>('PATCH', `/api/v1/runs/${enc(runId)}/answers`, input),
+  /**
+   * The coach can take ~45 s in the worst case (OpenRouter 15 s, then Workers AI 30 s), so the deadline sits
+   * above it. A retry of an unlocked level returns the stored hint and is not charged again.
+   */
   hint: (runId: string, stepId: string, level: 1 | 2 | 3 | 4) =>
-    request<HintResult>('POST', `/api/v1/runs/${enc(runId)}/hints`, { stepId, level }),
+    request<HintResult>('POST', `/api/v1/runs/${enc(runId)}/hints`, { stepId, level }, { timeoutMs: HINT_TIMEOUT_MS }),
   /** Reveals one quiz question / prediction answer; the server locks that answer from then on. */
   reveal: (runId: string, stepId: string, itemId: string) =>
     request<{ run: MissionRun; key: AnswerKeyEntry }>('POST', `/api/v1/runs/${enc(runId)}/reveal`, { stepId, itemId }),

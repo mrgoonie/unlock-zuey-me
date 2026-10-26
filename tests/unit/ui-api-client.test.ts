@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, DEFAULT_TIMEOUT_MS, friendlyMessage, request, toApiError } from '../../src/lib/ui/api-client';
+import { WORKERS_AI_TIMEOUT_MS } from '../../src/lib/coach/ai-models';
+import { api, ApiError, DEFAULT_TIMEOUT_MS, friendlyMessage, HINT_TIMEOUT_MS, request, toApiError } from '../../src/lib/ui/api-client';
 
 /** Resolves with the ApiError a request rejected with (fails the test if it resolved). */
 const fail = (p: Promise<unknown>): Promise<ApiError> =>
@@ -59,6 +60,25 @@ describe('api client error mapping', () => {
       expect(err.code).toBe('network');
       expect(err.message).toMatch(/thử lại/);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for a slow hint longer than the server worst case (OpenRouter 15 s + Workers AI fallback)', async () => {
+    expect(HINT_TIMEOUT_MS).toBeGreaterThan(15_000 + WORKERS_AI_TIMEOUT_MS);
+    vi.useFakeTimers();
+    let aborted = false;
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_, reject) => {
+      init.signal?.addEventListener('abort', () => { aborted = true; reject(new DOMException('aborted', 'AbortError')); });
+    })));
+    try {
+      const pending = fail(api.hint('run_1', 'constraints', 1));
+      await vi.advanceTimersByTimeAsync(15_000 + WORKERS_AI_TIMEOUT_MS);
+      expect(aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(HINT_TIMEOUT_MS);
+      expect((await pending).code).toBe('network');
+    } finally {
+      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });

@@ -55,7 +55,7 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
   const answering = s.phase === 'steps' || s.phase === 'review';
   const header = (
     <RunnerHeader mission={mission} stepIndex={s.phase === 'review' ? mission.steps.length : s.stepIndex}
-      completed={completed} saveState={s.saveState} onJump={answering ? s.goToStep : undefined} />
+      completed={completed} saveState={s.saveState} notice={s.saveNotice} onJump={answering ? s.goToStep : undefined} />
   );
 
   if (s.phase === 'evaluating') return <div className="flex flex-col gap-6">{header}<EvaluatingView ref={heading} /></div>;

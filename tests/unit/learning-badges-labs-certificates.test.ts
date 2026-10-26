@@ -3,7 +3,7 @@ import type { Badge } from '../../src/lib/content/parse-content';
 import { listPublishedMissions } from '../../src/lib/content/loader';
 import { badgeRuleMet, eligibleBadges, type BadgeContext } from '../../src/lib/learning/badges';
 import { GUEST_CERTIFICATE_PROMPT } from '../../src/lib/learning/certificate-messages';
-import { newCertificateCode } from '../../src/lib/learning/certificates';
+import { hasStrongVerify, newCertificateCode } from '../../src/lib/learning/certificates';
 import { buildMissionList } from '../../src/lib/learning/progress';
 import {
   getRecap, issueCertificate, listMissions, recordClientEvent, recordConceptView, recordLabResult, startMission, updateLearnerProfile,
@@ -129,6 +129,25 @@ describe('labs, concepts, events, profile, recap, certificates', () => {
     expect(JSON.parse(snap!.snapshot_json)).toMatchObject({ level: 'L0', missions: expect.any(Array), competencies: expect.any(Array) });
     await expect(issueCertificate(deps(), bob, 'Bob')).rejects.toMatchObject({ code: 'forbidden' });
     await expect(issueCertificate(deps(), alice, '   ')).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  it('counts only the first passing evaluation of each mission toward the strong-verify condition', async () => {
+    const seedPass = async (n: number, missionId: string, verify: number, at: string) => {
+      await env.DB.prepare(`INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, started_at, updated_at, completed_at) VALUES (?, ?, ?, 1, 'completed', ?, ?, ?)`)
+        .bind(`run_${n}`, alice.id, missionId, at, at, at).run();
+      await env.DB.prepare(`INSERT INTO evidence_submissions (id, run_id, learner_id, idempotency_key, answers_json, created_at) VALUES (?, ?, ?, ?, '{}', ?)`)
+        .bind(`sub_${n}`, `run_${n}`, alice.id, `k${n}`, at).run();
+      const criteria = JSON.stringify([{ id: 'c', label: 'c', weight: 1, score: verify, method: 'ai', competency: 'verify', feedback: '' }]);
+      await env.DB.prepare(`INSERT INTO evaluations (id, run_id, submission_id, learner_id, status, score, criteria_json, feedback, mode, created_at) VALUES (?, ?, ?, ?, 'passed', ?, ?, 'ok', 'mixed', ?)`)
+        .bind(`evl_${n}`, `run_${n}`, `sub_${n}`, alice.id, verify, criteria, at).run();
+    };
+    await seedPass(1, 'm-one', 0.6, '2026-10-01T00:00:00.000Z');
+    // A later repeat pass of the same mission scoring high does not count.
+    await seedPass(2, 'm-one', 0.95, '2026-10-02T00:00:00.000Z');
+    expect(await hasStrongVerify(env.DB, alice.id)).toBe(false);
+    // The first pass of another mission does.
+    await seedPass(3, 'm-two', 0.85, '2026-10-03T00:00:00.000Z');
+    expect(await hasStrongVerify(env.DB, alice.id)).toBe(true);
   });
 
   it('certificate codes use the unambiguous alphabet', () => {

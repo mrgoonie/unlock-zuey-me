@@ -11,6 +11,7 @@ import type { LearnerContext } from '../../src/lib/learning/types';
 import { GET as getRunRoute } from '../../src/pages/api/v1/runs/[id]/index';
 import { POST as revealRoute } from '../../src/pages/api/v1/runs/[id]/reveal';
 import { POST as submitRoute } from '../../src/pages/api/v1/runs/[id]/submit';
+import { errorResponse } from '../../src/pages/api/v1/_route-helpers';
 import { fakeEnv, gradeAll, openRouterFetch, planWeekendAnswers, seedLearner, type FakeEnv } from './learning-fake-env';
 
 const NOW = new Date('2026-10-26T03:00:00Z');
@@ -107,7 +108,10 @@ describe('server-recorded reveals (spot-the-ai-mistake)', () => {
 
     // Changing the revealed answer is refused; another question of the step stays editable.
     const rev = body.run.rev;
-    await expect(saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: { 'q-link': 'open-read' }, rev })).rejects.toMatchObject({ code: 'forbidden' });
+    // The refusal carries the current run so the client can restore the locked value (API: 403 with `run`).
+    await expect(saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: { 'q-link': 'open-read' }, rev })).rejects.toMatchObject({
+      code: 'forbidden', run: { id: run.id, rev, revealed: ['source-quiz:q-link'], answers: { 'source-quiz': { 'q-link': 'trust' } } },
+    });
     await expect(saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: {}, rev })).rejects.toMatchObject({ code: 'forbidden' });
     const ok = await saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: { 'q-link': 'trust', 'q-best-source': 'official' }, rev });
     expect(ok.answers['source-quiz']).toEqual({ 'q-link': 'trust', 'q-best-source': 'official' });
@@ -115,6 +119,18 @@ describe('server-recorded reveals (spot-the-ai-mistake)', () => {
     await expect(submitEvidence(deps, alice, run.id, {
       idempotencyKey: 'key-00000001', answers: { 'source-quiz': { 'q-link': 'open-read', 'q-best-source': 'official' } }, source: 'mcp',
     })).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('maps a locked-answer refusal to 403 with the current run', async () => {
+    const run = await startMission(deps, alice, 'spot-the-ai-mistake', 'web');
+    const saved = await saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: { 'q-link': 'trust' }, rev: 0 });
+    const { run: after } = await revealAnswer(deps, alice, run.id, { stepId: 'source-quiz', itemId: 'q-link' });
+    const err = await saveAnswers(deps, alice, run.id, { stepId: 'source-quiz', answers: { 'q-link': 'open-read' }, rev: after.rev }).catch((e: unknown) => e);
+    const res = errorResponse(err);
+    expect(res.status).toBe(403);
+    const body = await res.json() as { error: { code: string }; run: { id: string; rev: number } };
+    expect(body.error.code).toBe('forbidden');
+    expect(body.run).toMatchObject({ id: run.id, rev: saved.rev + 1 });
   });
 
   it('locks the prediction choice and its confidence after the reveal', async () => {

@@ -129,6 +129,27 @@ describe('repeat runs', () => {
     expect(await count(`SELECT COUNT(*) AS n FROM evaluations WHERE learner_id = ? AND status = 'passed'`, guest.id)).toBe(2);
   });
 
+  it('only the first pass of a mission moves competency scores', async () => {
+    const grading = (score: number): LearningDeps => ({ env, now: () => NOW, fetchImpl: openRouterFetch((b) => gradeAll(b, score)).fetchImpl });
+    const competencies = () => env.DB.prepare('SELECT competency, score, evidence_count FROM competency_scores WHERE learner_id = ? ORDER BY competency')
+      .bind(guest.id).all().then((r) => r.results);
+
+    const first = await startMission(grading(0.7), guest, 'plan-weekend', 'web');
+    await fillAll(grading(0.7), guest, first.id);
+    const pass1 = await submitEvidence(grading(0.7), guest, first.id, { idempotencyKey: 'key-00000001', source: 'web' });
+    expect(pass1.evaluation.status).toBe('passed');
+    const afterFirst = await competencies();
+    expect(afterFirst.length).toBeGreaterThan(0);
+
+    // A repeat run graded higher is still graded and shown, but does not change competency scores.
+    const again = await startMission(grading(1), guest, 'plan-weekend', 'web');
+    await fillAll(grading(1), guest, again.id);
+    const pass2 = await submitEvidence(grading(1), guest, again.id, { idempotencyKey: 'key-00000002', source: 'web' });
+    expect(pass2.evaluation.status).toBe('passed');
+    expect(pass2.evaluation.score).toBeGreaterThan(pass1.evaluation.score);
+    expect(await competencies()).toEqual(afterFirst);
+  });
+
   it('allows one open run per mission, even under concurrent starts', async () => {
     const deps = { env, now: () => NOW };
     const [a, b] = await Promise.all([startMission(deps, guest, 'plan-weekend', 'web'), startMission(deps, guest, 'plan-weekend', 'mcp')]);

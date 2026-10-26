@@ -52,6 +52,47 @@ describe('hint ladder', () => {
     expect((await requestHint(deps, alice, run.id, 'constraints', 1)).origin).toBe('static');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it('a retry of an unlocked level returns the stored text without a new AI call or a second charge', async () => {
+    let n = 0;
+    const { fetchImpl, calls } = openRouterFetch(() => `Gợi ý số ${++n}`);
+    const deps = { env, fetchImpl, now: () => NOW };
+    const run = await startMission(deps, alice, 'plan-weekend', 'web');
+    const first = await requestHint(deps, alice, run.id, 'constraints', 1);
+    const retry = await requestHint(deps, alice, run.id, 'constraints', 1);
+    expect(retry).toEqual(first);
+    expect(first.text).toBe('Gợi ý số 1');
+    expect(calls).toHaveLength(1);
+    expect(await getRun(deps, alice, run.id)).toMatchObject({ hintMaxLevel: 1, hintsUsed: 1 });
+    const msgs = await env.DB.prepare(`SELECT COUNT(*) AS n FROM coach_messages WHERE channel = 'hint'`).first<{ n: number }>();
+    expect(msgs?.n).toBe(1);
+    // Another step's level 1 is its own unlock (charged once).
+    await requestHint(deps, alice, run.id, 'ask-ai', 1);
+    expect(await getRun(deps, alice, run.id)).toMatchObject({ hintsUsed: 2 });
+  });
+
+  it('a retry while the first request is still generating gets the static hint, uncharged', async () => {
+    const { fetchImpl } = openRouterFetch(() => 'AI hint');
+    const deps = { env, fetchImpl, now: () => NOW };
+    const run = await startMission(deps, alice, 'plan-weekend', 'web');
+    // Simulate the in-flight first request: reserved and charged, text not stored yet.
+    await env.DB.prepare(`INSERT INTO run_hints (id, run_id, step_id, level, created_at) VALUES ('rh_1', ?, 'constraints', 1, ?)`)
+      .bind(run.id, NOW.toISOString()).run();
+    await env.DB.prepare('UPDATE mission_runs SET hint_max_level = 1, hints_used = 1 WHERE id = ?').bind(run.id).run();
+    expect(await requestHint(deps, alice, run.id, 'constraints', 1)).toEqual({ level: 1, text: constraintsStep.hints[0], origin: 'static' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await getRun(deps, alice, run.id)).toMatchObject({ hintsUsed: 1 });
+  });
+
+  it('stores the static fallback so a retry after an AI failure is stable and free', async () => {
+    const deps = { env, fetchImpl: failingFetch(), now: () => NOW };
+    const run = await startMission(deps, alice, 'plan-weekend', 'web');
+    await requestHint(deps, alice, run.id, 'constraints', 1);
+    expect(await requestHint(deps, alice, run.id, 'constraints', 1)).toEqual({ level: 1, text: constraintsStep.hints[0], origin: 'static' });
+    expect(await getRun(deps, alice, run.id)).toMatchObject({ hintsUsed: 1 });
+    const row = await env.DB.prepare('SELECT text, origin FROM run_hints WHERE run_id = ?').bind(run.id).first<{ text: string; origin: string }>();
+    expect(row).toEqual({ text: constraintsStep.hints[0], origin: 'static' });
+  });
 });
 
 describe('practice chat', () => {

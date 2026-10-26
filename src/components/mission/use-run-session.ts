@@ -248,7 +248,7 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
 
   return {
     phase, setPhase, mission, run, draft, stepIndex, result, evaluation, answerKey, error,
-    saveState: autosave.saveState, submitting, load, startAgain, goToStep, openReview, updateField, patchDraft, reveal, submit,
+    saveState: autosave.saveState, saveNotice: autosave.notice, submitting, load, startAgain, goToStep, openReview, updateField, patchDraft, reveal, submit,
   };
 }
 
