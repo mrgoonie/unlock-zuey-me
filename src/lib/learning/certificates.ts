@@ -1,6 +1,6 @@
 /**
  * Shareable certificates. Eligible after ≥3 passed missions with at least one verify criterion scored
- * ≥ 0.8 in a passed evaluation. One certificate per level (re-issuing returns the existing code).
+ * ≥ 0.8 in the first passing evaluation of a mission. One certificate per level (re-issuing returns the existing code).
  * Only signed-in members can issue one: the public page shows a self-chosen display name on unlock.zuey.me,
  * so guests (anonymous, unverifiable) could impersonate anyone.
  * The snapshot freezes level, badges and competencies at issue time.
@@ -33,9 +33,18 @@ export function cleanDisplayName(raw: unknown): string {
   return name;
 }
 
-async function hasStrongVerify(db: D1Database, learnerId: string): Promise<boolean> {
-  const { results } = await db.prepare(`SELECT criteria_json FROM evaluations WHERE learner_id = ? AND status = 'passed'`)
-    .bind(learnerId).all<{ criteria_json: string }>();
+/**
+ * A verify criterion ≥ 0.8 in the learner's FIRST passing evaluation of some mission. Later passes of the
+ * same mission (repeat runs) do not count, so redoing a mission cannot unlock the certificate.
+ */
+export async function hasStrongVerify(db: D1Database, learnerId: string): Promise<boolean> {
+  const { results } = await db.prepare(
+    `SELECT criteria_json FROM (
+       SELECT e.criteria_json, ROW_NUMBER() OVER (PARTITION BY r.mission_id ORDER BY e.created_at, e.id) AS n
+         FROM evaluations e JOIN mission_runs r ON r.id = e.run_id
+        WHERE e.learner_id = ? AND e.status = 'passed')
+      WHERE n = 1`,
+  ).bind(learnerId).all<{ criteria_json: string }>();
   return results.some((r) => parseJson<CriterionResult[]>(r.criteria_json, [])
     .some((c) => c.competency === 'verify' && c.score >= CERTIFICATE_MIN_VERIFY_SCORE - 1e-9));
 }

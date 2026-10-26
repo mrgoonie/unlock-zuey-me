@@ -3,42 +3,54 @@
  * explanation. The reveal is recorded on the server (POST /api/v1/runs/:id/reveal), which returns the key
  * for that item only and locks the answer: the server rejects any later change to it.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AnswerKeyEntry } from '../../../lib/learning/types';
 import ConfidenceSlider from '../../ui/ConfidenceSlider';
 import { str, strList, type StepOf, type StepProps } from './step-props';
 
-function Reveal({ correct, children }: { correct: boolean; children: string }) {
+/**
+ * The revealed result. After the learner's own tap the button that had focus disappears, so focus moves
+ * here (`focusOnMount`) instead of dropping to <body>; a result already shown on load never steals focus.
+ */
+function Reveal({ correct, focusOnMount, children }: { correct: boolean; focusOnMount: boolean; children: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusOnMount) ref.current?.focus();
+  }, [focusOnMount]);
   return (
-    <div role="status" className={`rounded-xl border p-3 text-sm ${correct ? 'border-calm/50 bg-calm/10' : 'border-warn/50 bg-warn/10'}`}>
+    <div ref={ref} tabIndex={-1} role="status" aria-live="polite"
+      className={`rounded-xl border p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent ${correct ? 'border-calm/50 bg-calm/10' : 'border-warn/50 bg-warn/10'}`}>
       <p className="font-semibold">{correct ? '🎯 Chính xác!' : '🌱 Chưa đúng, không sao cả.'}</p>
       <p className="mt-1">{children}</p>
     </div>
   );
 }
 
-/** Runs one reveal request with a busy flag and an inline error. */
+/** Runs one reveal request with a busy flag and an inline error; remembers which item was just revealed. */
 function useReveal(onReveal: StepProps['onReveal']) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [justRevealed, setJustRevealed] = useState<string | null>(null);
   const reveal = async (stepId: string, itemId: string) => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      setError(await onReveal(stepId, itemId));
+      const failed = await onReveal(stepId, itemId);
+      setError(failed);
+      if (!failed) setJustRevealed(`${stepId}:${itemId}`);
     } finally {
       setBusy(false);
     }
   };
-  return { busy, error, reveal };
+  return { busy, error, reveal, justRevealed };
 }
 
 const isPicked = (picked: string[], key: AnswerKeyEntry): boolean =>
   picked.length === key.correct.length && key.correct.every((c) => picked.includes(c));
 
 export function QuizStep({ step, values, onField, revealed, answerKey, onReveal }: StepProps<StepOf<'quiz'>>) {
-  const { busy, error, reveal } = useReveal(onReveal);
+  const { busy, error, reveal, justRevealed } = useReveal(onReveal);
   return (
     <div className="flex flex-col gap-5">
       {step.questions.map((q) => {
@@ -64,11 +76,11 @@ export function QuizStep({ step, values, onField, revealed, answerKey, onReveal 
                   className="h-5 w-5 accent-[rgb(var(--accent))]"
                 />
                 <span>{o.text}</span>
-                {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" aria-label="đáp án đúng">✓</span>}
+                {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" role="img" aria-label="đáp án đúng">✓</span>}
               </label>
             ))}
             {entry ? (
-              <Reveal correct={isPicked(picked, entry)}>{entry.explanation}</Reveal>
+              <Reveal correct={isPicked(picked, entry)} focusOnMount={justRevealed === key}>{entry.explanation}</Reveal>
             ) : (
               <button type="button" className="btn-ghost self-start text-sm" disabled={!picked.length || busy}
                 aria-busy={busy} onClick={() => void reveal(step.id, q.id)}>
@@ -84,7 +96,7 @@ export function QuizStep({ step, values, onField, revealed, answerKey, onReveal 
 }
 
 export function PredictionStep({ step, values, onField, revealed, answerKey, onReveal }: StepProps<StepOf<'prediction'>>) {
-  const { busy, error, reveal } = useReveal(onReveal);
+  const { busy, error, reveal, justRevealed } = useReveal(onReveal);
   const key = `${step.id}:prediction`;
   const entry = answerKey[key];
   const locked = revealed.includes(key);
@@ -99,7 +111,7 @@ export function PredictionStep({ step, values, onField, revealed, answerKey, onR
             <input type="radio" name={key} checked={choice === o.id} disabled={locked}
               onChange={() => onField('choice', o.id)} className="h-5 w-5 accent-[rgb(var(--accent))]" />
             <span>{o.text}</span>
-            {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" aria-label="đáp án đúng">✓</span>}
+            {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" role="img" aria-label="đáp án đúng">✓</span>}
           </label>
         ))}
       </fieldset>
@@ -107,7 +119,7 @@ export function PredictionStep({ step, values, onField, revealed, answerKey, onR
         <ConfidenceSlider label="Bạn chắc chắn bao nhiêu?" value={confidence} onChange={(v) => onField('confidence', v)} testId="prediction-confidence" />
       )}
       {entry ? (
-        <Reveal correct={entry.correct.includes(choice)}>{`${entry.explanation}${confidence !== null ? ` (Bạn đã chắc ${confidence}%.)` : ''}`}</Reveal>
+        <Reveal correct={entry.correct.includes(choice)} focusOnMount={justRevealed === key}>{`${entry.explanation}${confidence !== null ? ` (Bạn đã chắc ${confidence}%.)` : ''}`}</Reveal>
       ) : (
         <button type="button" className="btn-ghost self-start" disabled={!choice || busy} aria-busy={busy}
           onClick={() => {

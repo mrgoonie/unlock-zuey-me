@@ -3,6 +3,7 @@
  * - Every edit is mirrored to localStorage immediately (nothing is lost offline or on AI errors).
  * - Saves are serialized by src/lib/ui/autosave-queue.ts: one PATCH in flight, newest rev, edits coalesced.
  * - On 409 the server run is adopted and unsaved local edits are re-applied on top, then saved again.
+ * - On 403 (an answer whose key was revealed is locked) the server value is restored and `notice` explains it.
  * - Network failures keep the dirty flags; the next edit, step change or `online` event retries.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
@@ -24,6 +25,7 @@ export function useRunAutosave(opts: {
 }) {
   const { draftRef, runRef, setDraft, setRun, currentStepId } = opts;
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const commitDraft = useCallback((d: RunDraft) => {
@@ -43,7 +45,9 @@ export function useRunAutosave(opts: {
     setRun: (r) => { runRef.current = r; depsRef.current.setRun(r); },
     currentStepId: () => depsRef.current.currentStepId(),
     save: (runId, input) => api.saveAnswers(runId, input),
+    refetchRun: async (runId) => (await api.getRun(runId)).run,
     onState: setSaveState,
+    onNotice: setNotice,
   });
   const queue = queueRef.current;
 
@@ -66,6 +70,7 @@ export function useRunAutosave(opts: {
 
   /** Call after each local edit: persists locally now, saves to the server after a short pause. */
   const schedule = useCallback((d: RunDraft) => {
+    setNotice(null);
     commitDraft(d);
     cancelTimer();
     timer.current = setTimeout(() => void queue.flush(), DEBOUNCE_MS);
@@ -83,5 +88,5 @@ export function useRunAutosave(opts: {
     };
   }, [flush]);
 
-  return { saveState, flush, settle, schedule, commitDraft };
+  return { saveState, notice, flush, settle, schedule, commitDraft };
 }

@@ -11,22 +11,13 @@ import type { Mission, MissionStep } from '../content/schema';
 import { nowIso } from '../db/ids';
 import { findRun } from '../db/run-repository';
 import { findStep } from './answers-validation';
-import { RunConflictError, runNotFound } from './errors';
+import { RevealedAnswerLockedError, RunConflictError, runNotFound } from './errors';
 import { canEdit, effectiveStatus } from './mission-state-machine';
 import { loadRun, type RunDeps } from './mission-runs';
+import { PREDICTION_ITEM, PREDICTION_LOCKED_FIELDS, revealKey, splitRevealKey } from './reveal-keys';
 import {
   LearningError, type AnswerKey, type AnswerKeyEntry, type Answers, type LearnerContext, type MissionRun,
 } from './types';
-
-/** Item id of a prediction step (it has a single answer). */
-export const PREDICTION_ITEM = 'prediction';
-
-export const revealKey = (stepId: string, itemId: string): string => `${stepId}:${itemId}`;
-
-function splitKey(key: string): { stepId: string; itemId: string } | null {
-  const i = key.indexOf(':');
-  return i > 0 ? { stepId: key.slice(0, i), itemId: key.slice(i + 1) } : null;
-}
 
 /** The key of one revealable item, or null when the step/item has none (verification claims included). */
 function revealableEntry(step: MissionStep, itemId: string): AnswerKeyEntry | null {
@@ -41,7 +32,7 @@ function revealableEntry(step: MissionStep, itemId: string): AnswerKeyEntry | nu
 /** Answer fields a reveal locks: the question's field (quiz) or the choice and its confidence (prediction). */
 function lockedFields(step: MissionStep, itemId: string): string[] {
   if (step.type === 'quiz') return [itemId];
-  if (step.type === 'prediction') return ['choice', 'confidence'];
+  if (step.type === 'prediction') return [...PREDICTION_LOCKED_FIELDS];
   return [];
 }
 
@@ -65,7 +56,7 @@ export function answerKeyForRun(mission: Mission, run: Pick<MissionRun, 'status'
   if (run.status === 'completed') return fullAnswerKey(mission);
   const key: AnswerKey = {};
   for (const k of run.revealed) {
-    const parts = splitKey(k);
+    const parts = splitRevealKey(k);
     const step = parts && mission.steps.find((s) => s.id === parts.stepId);
     const entry = step && parts ? revealableEntry(step, parts.itemId) : null;
     if (entry) key[k] = entry;
@@ -75,15 +66,16 @@ export function answerKeyForRun(mission: Mission, run: Pick<MissionRun, 'status'
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** Throws forbidden when `next` changes an answer that was revealed (and therefore locked) in `before`. */
-export function assertRevealedUnchanged(mission: Mission, revealed: string[], before: Answers, next: Answers): void {
-  for (const k of revealed) {
-    const parts = splitKey(k);
+/** Throws RevealedAnswerLockedError (forbidden) when `next` changes an answer revealed (so locked) in `run`. */
+export function assertRevealedUnchanged(mission: Mission, run: MissionRun, next: Answers): void {
+  const before = run.answers;
+  for (const k of run.revealed) {
+    const parts = splitRevealKey(k);
     const step = parts && mission.steps.find((s) => s.id === parts.stepId);
     if (!step || !parts) continue;
     for (const field of lockedFields(step, parts.itemId)) {
       if (!same(before[step.id]?.[field], next[step.id]?.[field])) {
-        throw new LearningError('forbidden', 'Bạn đã xem đáp án câu này nên không đổi câu trả lời được nữa.');
+        throw new RevealedAnswerLockedError(run);
       }
     }
   }

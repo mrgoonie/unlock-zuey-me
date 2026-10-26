@@ -71,6 +71,15 @@ export function mergeServerRun(draft: RunDraft, server: Pick<MissionRun, 'answer
   return { ...draft, answers };
 }
 
+/** Drops the dirty flags of `fields` in `stepId` (their local values are then replaced by the next merge). */
+export function clearDirtyFields(draft: RunDraft, stepId: string, fields: readonly string[]): RunDraft {
+  const remaining = (draft.dirty[stepId] ?? []).filter((f) => !fields.includes(f));
+  const dirty = { ...draft.dirty };
+  if (remaining.length) dirty[stepId] = remaining;
+  else delete dirty[stepId];
+  return { ...draft, dirty };
+}
+
 export const hasDirty = (draft: RunDraft): boolean => Object.values(draft.dirty).some((f) => f.length > 0);
 
 /** Deterministic fingerprint of what a submit would send (answers, confidence, images). */
