@@ -10,7 +10,7 @@ The feature ships **off** (`INSIGHTS_MODE=off` in `wrangler.jsonc`). Every flag 
 2. **`internal` (admins) for one week.** Watch on `/admin/insights`:
    - pipeline health: dead-letter count (target 0), failed and budget-deferred windows;
    - useful-rate of reports marked by admins ("Hữu ích" / "Không hữu ích"), target ≥ 60 %;
-   - AI spend: the coaching share of `ai_usage` (insights use the coaching pool, so grading is never starved).
+   - AI spend: the `system:insights` row of `ai_usage`. The background analyzer reserves in the global coaching pool (so grading is never starved) but is charged to this system row, never to the learner's own per-learner coaching share: an analysis cannot use up a learner's hints and chat for the day. It stays bounded by the global daily caps (USD and Workers AI) and the insights quotas (per-learner and global daily analyses).
 3. **`pilot`** with `INSIGHTS_PILOT_EMAILS` (comma-separated). Pilot learners still opt in themselves: install, pair and consent are separate steps.
 4. **GitHub issues**, only after the evaluation gate below passes: create a fine-grained PAT (Issues: write on `INSIGHTS_GITHUB_REPO` only, 90-day rotation), `wrangler secret put GITHUB_ISSUES_TOKEN`, set `INSIGHTS_GITHUB_ISSUES=issues`. Later, and only deliberately, `issues_ai_handle` plus the operator toggle `safe_auto_implement` (typed confirm `BAT` on `/admin/insights/proposals`).
 5. **`on`** (all members).
@@ -23,7 +23,7 @@ Keep `INSIGHTS_GITHUB_ISSUES=off` until at least **20 proposals** have been revi
 
 - `INSIGHTS_MODE=off`: every route 404s, the UI hides, the cron stage stops. Tables stay, inert.
 - `INSIGHTS_GITHUB_ISSUES=off` or `wrangler secret delete GITHUB_ISSUES_TOKEN`: issue filing stops at once.
-- On learner machines, `ai-unlocked uninstall [--purge]` removes only its own hook entries. While the flag is off the hook gets 404, drops its spool and backs off for 24 h.
+- On learner machines, `ai-unlocked uninstall [--purge]` removes only its own hook entries, plus any `*.ai-unlocked.bak` / `*.ai-unlocked.tmp` an older CLI left next to the project settings files. The current CLI deletes its settings backup as soon as a write is verified and keeps it only when a rollback failed. While the flag is off the hook gets 404, drops its spool and backs off for 24 h.
 - No down-migration; `0008` is additive and unreferenced by older code.
 
 ## Manual QA (local preview)
