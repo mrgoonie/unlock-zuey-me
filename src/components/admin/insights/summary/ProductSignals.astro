@@ -1,0 +1,53 @@
+---
+/**
+ * Product signals backed by evidence from at least COHORT_MIN learners with proposals consent. Only the
+ * de-identified signal title is shown; triage happens on /admin/insights/proposals.
+ */
+import { formatDateTime } from '../../admin-format';
+import { COHORT_MIN, type ProductSignalRow } from '../../../../lib/insights/operator-insight-queries';
+
+interface Props { signals: ProductSignalRow[] }
+const { signals } = Astro.props;
+
+const CATEGORY_LABELS: Record<string, string> = { bug: 'Lỗi', content: 'Nội dung', ux: 'Trải nghiệm', feature: 'Tính năng' };
+const STATUS_LABELS: Record<string, string> = {
+  proposed: 'Đề xuất', duplicate: 'Trùng', accepted: 'Đã nhận', rejected: 'Từ chối', filing: 'Đang tạo issue',
+  issue_filed: 'Đã có issue', shipped: 'Đã phát hành', monitored: 'Đang theo dõi',
+};
+const safeIssueUrl = (u: string | null) => (u && /^https:\/\/github\.com\//.test(u) ? u : null);
+---
+{signals.length === 0 ? (
+  <p class="text-sm text-ink-muted">Chưa có tín hiệu nào đủ {COHORT_MIN} người học (chỉ tính người học cho phép dùng gợi ý ẩn danh).</p>
+) : (
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[560px] text-sm">
+      <caption class="sr-only">Tín hiệu sản phẩm</caption>
+      <thead class="text-left text-ink-muted">
+        <tr>
+          <th scope="col" class="p-2">Tín hiệu</th><th scope="col" class="p-2">Loại · khu vực</th>
+          <th scope="col" class="p-2 text-right">Lần gặp</th><th scope="col" class="p-2 text-right">Người học</th>
+          <th scope="col" class="p-2">Gần nhất</th><th scope="col" class="p-2">Trạng thái</th>
+        </tr>
+      </thead>
+      <tbody>
+        {signals.map((s) => {
+          const issue = safeIssueUrl(s.issueUrl);
+          return (
+            <tr class="border-t border-line">
+              <th scope="row" class="p-2 text-left font-medium">{s.title}</th>
+              <td class="p-2">{CATEGORY_LABELS[s.category] ?? s.category} · {s.area}</td>
+              <td class="p-2 text-right">{s.occurrences}</td>
+              <td class="p-2 text-right">{s.affectedLearners}</td>
+              <td class="p-2">{formatDateTime(s.lastSeenAt)}</td>
+              <td class="p-2">
+                {s.proposalStatus ? (STATUS_LABELS[s.proposalStatus] ?? s.proposalStatus) : 'Chưa có đề xuất'}
+                {issue && <> · <a href={issue} class="text-accent underline-offset-2 hover:underline" rel="noopener noreferrer" target="_blank">#{s.issueNumber}</a></>}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+)}
+<a href="/admin/insights/proposals" class="btn-ghost mt-2 self-start text-sm">Xem và duyệt đề xuất →</a>

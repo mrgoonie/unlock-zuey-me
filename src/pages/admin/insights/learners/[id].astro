@@ -1,0 +1,49 @@
+---
+/**
+ * /admin/insights/learners/:id: one learner's ai-tutor reports for the operator. Admin with insights enabled,
+ * and the learner must have observer_consent, share_operator and analysis on; unknown, non-consenting and
+ * revoked learners are the same 404. Each successful view writes an insight_access_audit row. Never cached.
+ */
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import AdminNotFound from '../../../../components/admin/AdminNotFound.astro';
+import OperatorReportList from '../../../../components/admin/insights/drilldown/OperatorReportList.astro';
+import { formatDateTime } from '../../../../components/admin/admin-format';
+import { OBSERVABLE_ONLY_DISCLAIMER } from '../../../../components/insights/insights-api';
+import { insightsEnabledFor } from '../../../../lib/insights/feature-flags';
+import { viewLearnerReportsAsOperator } from '../../../../lib/insights/operator-access-audit';
+import type { OperatorLearnerReports } from '../../../../lib/insights/operator-insight-queries';
+
+const learner = Astro.locals.learner;
+const allowed = learner?.isAdmin === true && insightsEnabledFor(Astro.locals.runtime.env, learner);
+let detail: OperatorLearnerReports | null = null;
+let failed = false;
+if (allowed && learner && Astro.params.id) {
+  Astro.response.headers.set('cache-control', 'no-store');
+  try {
+    detail = await viewLearnerReportsAsOperator(Astro.locals.runtime.env.DB, Astro.params.id, learner.id);
+  } catch (err) {
+    console.error('admin insights: drill-down failed', err);
+    failed = true;
+  }
+}
+if (!detail && !failed) Astro.response.status = 404;
+if (failed) Astro.response.status = 500;
+const name = detail ? (detail.learner.displayName ?? `Thành viên ${detail.learner.id.slice(-4)}`) : '';
+---
+{detail ? (
+  <AppLayout title={`Insights · ${name}`}>
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <a href="/admin/insights" class="btn-ghost mt-2 text-sm">← Insights</a>
+    <h1 class="mt-3 text-2xl font-bold">{name}</h1>
+    <p class="mt-1 text-sm text-ink-muted">Chia sẻ báo cáo từ {formatDateTime(detail.learner.sharedSince)} · lần xem này đã được ghi vào nhật ký truy cập.</p>
+    <p class="mt-3 rounded-xl bg-line/40 p-3 text-sm">{OBSERVABLE_ONLY_DISCLAIMER}</p>
+    <section class="mt-4 flex flex-col gap-3" aria-labelledby="h-reports">
+      <h2 id="h-reports" class="text-lg font-semibold">Báo cáo ai-tutor ({detail.reports.length})</h2>
+      <OperatorReportList reports={detail.reports} />
+    </section>
+  </AppLayout>
+) : failed ? (
+  <AppLayout title="Insights"><p role="alert" class="card mt-4 text-danger">Không tải được dữ liệu. Thử tải lại trang.</p></AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy"><AdminNotFound /></AppLayout>
+)}

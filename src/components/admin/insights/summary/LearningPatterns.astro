@@ -1,0 +1,53 @@
+---
+/**
+ * Learning patterns: counts only, over learners with analysis consent, each bucket shown only when it covers
+ * at least COHORT_MIN distinct learners (suppressed buckets are simply absent).
+ */
+import { COMPETENCY_LABELS, missionTitle } from '../../admin-format';
+import { RISK_KIND_LABELS } from '../../../insights/insights-api';
+import { COHORT_MIN, type CohortBucket, type LearningPatterns } from '../../../../lib/insights/operator-insight-queries';
+import type { CompetencyId } from '../../../../lib/content/schema';
+
+interface Props { patterns: LearningPatterns }
+const { patterns } = Astro.props;
+
+const RUN_STATUS_LABELS: Record<string, string> = {
+  started: 'Đang làm', paused: 'Tạm dừng', awaiting_evidence: 'Chờ nộp bằng chứng', evaluating: 'Đang chấm',
+  needs_revision: 'Cần sửa', evaluation_failed: 'Chấm lỗi', completed: 'Hoàn thành', abandoned: 'Bỏ dở',
+};
+const groups: Array<{ id: string; title: string; buckets: CohortBucket[]; label: (k: string) => string }> = [
+  { id: 'lp-skills', title: 'Năng lực được nêu cần củng cố', buckets: patterns.skills, label: (k) => COMPETENCY_LABELS[k as CompetencyId] ?? k },
+  { id: 'lp-risks', title: 'Loại dấu hiệu rủi ro', buckets: patterns.riskKinds, label: (k) => RISK_KIND_LABELS[k] ?? k },
+  { id: 'lp-next', title: 'Mission được gợi ý tiếp', buckets: patterns.nextMissions, label: (k) => missionTitle(k) },
+  { id: 'lp-outcomes', title: 'Kết quả lượt làm mission có liên kết', buckets: patterns.taskOutcomes, label: (k) => RUN_STATUS_LABELS[k] ?? k },
+];
+const gap = patterns.verificationGap;
+---
+<div class="flex flex-col gap-4">
+  <p class="text-sm text-ink-muted">
+    {patterns.windowDays} ngày gần nhất · chỉ người học bật quyền phân tích · chỉ là con số, mỗi nhóm cần ít nhất {COHORT_MIN} người học (nhóm nhỏ hơn bị ẩn).
+  </p>
+  <p class="text-sm">
+    <span class="font-medium">Tỉ lệ báo cáo có chỗ chưa kiểm chứng:</span>{' '}
+    {gap ? `${Math.round((gap.withGaps / Math.max(gap.reports, 1)) * 100)}% (${gap.withGaps}/${gap.reports} báo cáo, ${gap.learners} người học)` : `Ẩn (chưa đủ ${COHORT_MIN} người học)`}
+  </p>
+  <div class="grid gap-4 sm:grid-cols-2">
+    {groups.map((g) => (
+      <div aria-labelledby={g.id}>
+        <h3 id={g.id} class="text-sm font-semibold">{g.title}</h3>
+        {g.buckets.length === 0 ? (
+          <p class="mt-1 text-sm text-ink-muted">Chưa có nhóm nào đủ {COHORT_MIN} người học.</p>
+        ) : (
+          <ul class="mt-1 flex flex-col gap-1 text-sm">
+            {g.buckets.map((b) => (
+              <li class="flex justify-between gap-2 border-b border-line py-1">
+                <span>{g.label(b.key)}</span>
+                <span class="text-ink-muted">{b.reports} báo cáo · {b.learners} người</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
