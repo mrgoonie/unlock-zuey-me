@@ -1,0 +1,40 @@
+---
+/** Pipeline health, counts only: today (Asia/Saigon) and the last 7 days, plus the current queue. */
+import type { HealthWindow, PipelineHealth } from '../../../../lib/insights/operator-insight-queries';
+
+interface Props { health: PipelineHealth }
+const { health } = Astro.props;
+
+const SKIP_LABELS: Record<string, string> = {
+  trivial: 'quá ngắn', duplicate: 'trùng lặp', no_value: 'không còn gì sau lọc', not_learning: 'không liên quan việc học',
+  quota_session: 'hết lượt của phiên', stale: 'quá hạn 48 giờ', unknown: 'khác',
+};
+const pct = (r: number | null) => (r === null ? '—' : `${Math.round(r * 100)}%`);
+const windows: Array<[string, HealthWindow]> = [['Hôm nay', health.today], ['7 ngày', health.week]];
+const skippedTotal = (w: HealthWindow) => Object.values(w.skipped).reduce((a, b) => a + b, 0);
+const skippedDetail = (w: HealthWindow) =>
+  Object.entries(w.skipped).map(([k, n]) => `${SKIP_LABELS[k] ?? k}: ${n}`).join(' · ') || '—';
+---
+<div class="flex flex-col gap-3">
+  <dl class="grid grid-cols-3 gap-2 text-center text-sm">
+    <div class="rounded-xl bg-bg p-3"><dt class="text-ink-muted">Đang chờ</dt><dd class="text-xl font-bold">{health.pending}</dd></div>
+    <div class="rounded-xl bg-bg p-3"><dt class="text-ink-muted">Đang phân tích</dt><dd class="text-xl font-bold">{health.processing}</dd></div>
+    <div class="rounded-xl bg-bg p-3"><dt class="text-ink-muted">Hoãn do hạn mức AI</dt><dd class="text-xl font-bold">{health.budgetDeferred}</dd></div>
+  </dl>
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[420px] text-sm">
+      <caption class="sr-only">Số lượt theo khoảng thời gian</caption>
+      <thead class="text-left text-ink-muted">
+        <tr><th scope="col" class="p-2">Chỉ số</th>{windows.map(([label]) => <th scope="col" class="p-2 text-right">{label}</th>)}</tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-line"><th scope="row" class="p-2 text-left font-medium">Lượt nhận được</th>{windows.map(([, w]) => <td class="p-2 text-right">{w.received}</td>)}</tr>
+        <tr class="border-t border-line"><th scope="row" class="p-2 text-left font-medium">Báo cáo đã tạo</th>{windows.map(([, w]) => <td class="p-2 text-right">{w.analysed}</td>)}</tr>
+        <tr class="border-t border-line"><th scope="row" class="p-2 text-left font-medium">Bỏ qua</th>{windows.map(([, w]) => <td class="p-2 text-right">{skippedTotal(w)}</td>)}</tr>
+        <tr class="border-t border-line"><th scope="row" class="p-2 text-left font-medium">Lỗi hẳn (dead)</th>{windows.map(([, w]) => <td class="p-2 text-right">{w.dead}</td>)}</tr>
+        <tr class="border-t border-line"><th scope="row" class="p-2 text-left font-medium">Tỉ lệ “Hữu ích”</th>{windows.map(([, w]) => <td class="p-2 text-right">{pct(w.usefulRate)} <span class="text-ink-muted">({w.rated} đánh giá)</span></td>)}</tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-ink-muted">Lý do bỏ qua (7 ngày): {skippedDetail(health.week)}</p>
+</div>

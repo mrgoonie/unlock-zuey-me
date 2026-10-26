@@ -1,0 +1,37 @@
+---
+/** Learners who allow detail (observer_consent, share_operator and analysis all on). Rows open the drill-down. */
+import { formatDateTime } from '../../admin-format';
+import type { SharingLearner } from '../../../../lib/insights/operator-insight-queries';
+
+interface Props { learners: SharingLearner[] }
+const { learners } = Astro.props;
+---
+{learners.length === 0 ? (
+  <p class="text-sm text-ink-muted">
+    Chưa có người học nào chia sẻ báo cáo chi tiết. Cần bật cả “quyền quan sát” và “cho phép người vận hành xem báo cáo chi tiết” trong Cài đặt.
+  </p>
+) : (
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[480px] text-sm">
+      <caption class="sr-only">Người học chia sẻ báo cáo chi tiết</caption>
+      <thead class="text-left text-ink-muted">
+        <tr><th scope="col" class="p-2">Người học</th><th scope="col" class="p-2">Chia sẻ từ</th><th scope="col" class="p-2 text-right">Báo cáo</th><th scope="col" class="p-2">Báo cáo gần nhất</th></tr>
+      </thead>
+      <tbody>
+        {learners.map((l) => (
+          <tr class="border-t border-line">
+            <th scope="row" class="p-2 text-left font-medium">
+              <a href={`/admin/insights/learners/${encodeURIComponent(l.id)}`} class="inline-flex min-h-[44px] items-center text-accent underline-offset-2 hover:underline">
+                {l.displayName ?? `Thành viên ${l.id.slice(-4)}`}
+              </a>
+            </th>
+            <td class="p-2">{formatDateTime(l.sharedSince)}</td>
+            <td class="p-2 text-right">{l.reports}</td>
+            <td class="p-2">{formatDateTime(l.lastReportAt)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+<p class="mt-2 text-xs text-ink-muted">Mỗi lần mở báo cáo chi tiết của một người học đều được ghi vào nhật ký truy cập mà họ có thể tải về.</p>

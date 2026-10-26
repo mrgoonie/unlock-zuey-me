@@ -8,16 +8,25 @@ import WeeklyRecap from '../components/progress/WeeklyRecap';
 import ProgressUnavailable from '../components/ui/ProgressUnavailable.astro';
 import { getMission } from '../lib/content/loader';
 import { loadProgress } from '../lib/ui/server-data';
+import { insightsEnabledFor } from '../lib/insights/feature-flags';
 
 const progress = await loadProgress(Astro.locals);
 const completed = (progress?.completedMissions ?? []).map(getMission).filter((m) => m !== undefined);
 const timezone = Astro.locals.learner?.profile.timezone;
+const insightsEnabled = insightsEnabledFor(Astro.locals.runtime.env, Astro.locals.learner);
 ---
 <AppLayout title="Tiến độ">
   <div class="flex flex-col gap-5 pt-2">
     <header class="flex items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Tiến độ của bạn</h1>
-      <a href="/achievements" class="btn-ghost text-sm">🏅 Thành tích</a>
+      {insightsEnabled ? (
+        <div class="flex flex-wrap justify-end gap-2">
+          <a href="/insights" class="btn-ghost text-sm">🧭 Báo cáo ai-tutor</a>
+          <a href="/achievements" class="btn-ghost text-sm">🏅 Thành tích</a>
+        </div>
+      ) : (
+        <a href="/achievements" class="btn-ghost text-sm">🏅 Thành tích</a>
+      )}
     </header>
 
     {!progress ? <ProgressUnavailable /> : (
