@@ -17,6 +17,6 @@ misconceptions:
 examples:
   - "Thay vì \"lên kế hoạch cuối tuần\", hãy viết \"lên lịch theo giờ cho thứ Bảy, ngân sách 500k, đi cùng bé 5 tuổi\"."
 when_you_need_it: Mỗi lần bạn nhờ AI làm một việc cụ thể.
-related: [context]
+related: [context, clarifying-questions, few-shot, structured-output]
 last_reviewed_at: "2026-10-26"
 confidence: high

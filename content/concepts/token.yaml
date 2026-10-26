@@ -1,0 +1,29 @@
+id: token
+label_vi: Token (mẩu chữ)
+label_en: Token
+emoji: "🧩"
+layer: foundation
+group: fundamentals
+one_liner: Mẩu chữ nhỏ mà AI đọc và viết. Một từ có thể là một hoặc vài token.
+beginner_explanation: >-
+  AI không đọc từng chữ cái hay từng từ như mình. Nó cắt câu thành các mẩu nhỏ gọi là token. Tiếng Việt có dấu thường
+  tốn nhiều token hơn tiếng Anh. Token quan trọng vì giới hạn độ dài và giá tiền khi dùng AI đều tính bằng token.
+analogy: >-
+  Như cắt ổ bánh mì thành từng lát. AI không ăn cả ổ một lúc mà ăn từng lát, và mỗi lần chỉ ăn được số lát có hạn.
+rigorous_explanation: >-
+  Tokenizer (thường dùng thuật toán BPE hoặc tương tự) chia văn bản thành các đơn vị con từ có trong bộ từ vựng cố định
+  của mô hình, rồi ánh xạ mỗi đơn vị thành một số nguyên. Mô hình xử lý và sinh ra chuỗi số này. Ngôn ngữ ít xuất hiện
+  trong dữ liệu huấn luyện thường bị cắt nhỏ hơn, nên tốn nhiều token hơn cho cùng một ý.
+misconceptions:
+  - Một token bằng một từ. Thực tế một từ có thể bị cắt thành nhiều token, nhất là từ tiếng Việt có dấu.
+  - Token chỉ là chuyện kỹ thuật, người dùng không cần biết. Nó giải thích vì sao AI đếm chữ sai và vì sao cuộc trò chuyện dài bị "quên".
+examples:
+  - AI đếm sai số chữ "n" trong một từ vì nó nhìn thấy token, không nhìn thấy từng chữ cái.
+  - Dịch vụ AI tính tiền theo số token gửi vào và nhận về.
+when_you_need_it: Khi AI đếm chữ sai, khi cuộc trò chuyện quá dài, hoặc khi bạn xem bảng giá dịch vụ AI.
+when_you_dont: Khi chỉ chat bình thường với ChatGPT trên điện thoại, bạn không cần đếm token.
+related: [context-window, next-token-prediction, llm]
+prerequisites: [llm]
+lab: token-predictor
+last_reviewed_at: "2026-10-26"
+confidence: high

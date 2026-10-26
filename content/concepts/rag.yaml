@@ -1,0 +1,28 @@
+id: rag
+label_vi: Truy xuất rồi trả lời (RAG)
+label_en: Retrieval-Augmented Generation
+emoji: "🗃️"
+layer: just-in-time
+group: agents-integration
+one_liner: AI tìm đoạn tài liệu liên quan trước, rồi dựa vào đó để trả lời, thay vì chỉ dựa vào trí nhớ.
+beginner_explanation: >-
+  Khi bạn tải lên một file và hỏi về nó, hoặc khi chatbot của một công ty trả lời theo tài liệu nội bộ, thường là RAG.
+  Hệ thống lục trong kho tài liệu tìm vài đoạn liên quan, đưa cho AI đọc, rồi AI trả lời. Cách này giảm bịa, nhưng nếu
+  tìm sai đoạn thì AI vẫn trả lời sai.
+analogy: Như làm bài thi được mở sách. Học sinh lật đúng trang thì làm tốt, lật nhầm trang thì vẫn sai.
+rigorous_explanation: >-
+  RAG gồm bước truy xuất (thường dùng embedding và tìm kiếm vector, có thể kết hợp tìm theo từ khoá) để lấy các đoạn văn
+  liên quan, rồi chèn chúng vào ngữ cảnh để mô hình sinh câu trả lời có căn cứ (grounding). Chất lượng phụ thuộc cách
+  chia đoạn, chất lượng truy xuất và việc mô hình có bám sát nguồn hay không. Trích dẫn nguồn giúp người dùng kiểm lại.
+misconceptions:
+  - Có RAG thì AI hết bịa. Nó giảm bịa, nhưng vẫn có thể hiểu sai hoặc trộn thêm kiến thức ngoài tài liệu.
+  - RAG là huấn luyện lại AI bằng tài liệu của mình. RAG chỉ đưa tài liệu vào ngữ cảnh, không đổi model.
+examples:
+  - Chatbot ngân hàng trả lời câu hỏi phí thẻ dựa trên biểu phí chính thức.
+  - Tải hợp đồng thuê nhà lên và hỏi "điều khoản nào nói về tiền cọc?".
+when_you_need_it: Khi bạn muốn AI trả lời dựa trên tài liệu cụ thể, và muốn có chỗ để đối chiếu.
+when_you_dont: Người dùng ChatGPT trên điện thoại chỉ cần biết tải file lên và hỏi AI chỉ ra đoạn gốc.
+related: [embedding, context-window, hallucination, web-search]
+prerequisites: [context-window]
+last_reviewed_at: "2026-10-26"
+confidence: high

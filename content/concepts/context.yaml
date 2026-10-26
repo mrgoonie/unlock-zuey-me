@@ -17,7 +17,7 @@ misconceptions:
 examples:
   - Dán lại ràng buộc vào cuộc trò chuyện mới để AI không đưa ra kế hoạch lệch.
 when_you_need_it: Khi AI "quên" điều bạn đã dặn, hoặc khi bạn làm việc với tài liệu dài.
-related: [prompt, hallucination]
+related: [prompt, hallucination, context-window, memory]
 lab: context-lab
 last_reviewed_at: "2026-10-26"
 confidence: high

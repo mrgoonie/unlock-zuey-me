@@ -1,0 +1,28 @@
+id: api-key
+label_vi: Khoá API (API key)
+label_en: API key
+emoji: "🔑"
+layer: just-in-time
+group: software
+one_liner: Chuỗi mật mã để phần mềm dùng dịch vụ AI dưới tên bạn. Lộ ra là người khác tiêu tiền của bạn.
+beginner_explanation: >-
+  Khi dùng AI qua API, bạn nhận một khoá dài kiểu "sk-...". Ai có khoá này là dùng được dịch vụ, và hoá đơn tính vào tài
+  khoản của bạn. Đừng bao giờ dán khoá vào nhóm chat, ảnh chụp màn hình, hay đưa cho trang web lạ. Nghi lộ thì vào trang
+  quản lý để thu hồi và tạo khoá mới ngay.
+analogy: Như mã PIN thẻ ngân hàng. Đưa cho người lạ là họ rút tiền được, dù bạn vẫn giữ chiếc thẻ.
+rigorous_explanation: >-
+  API key là thông tin xác thực dạng chuỗi bí mật, gửi kèm mỗi yêu cầu để nhà cung cấp nhận diện tài khoản và tính phí.
+  Thực hành tốt gồm lưu trong biến môi trường hoặc kho bí mật, không đưa vào mã nguồn hay ứng dụng phía trình duyệt, đặt
+  hạn mức chi tiêu, cấp quyền tối thiểu và xoay vòng (rotate) khi nghi lộ. Bot tự động liên tục quét các kho mã công khai
+  để tìm khoá bị lộ.
+misconceptions:
+  - Chỉ cho bạn bè mượn khoá một lúc thì không sao. Khoá có thể bị chia tiếp và dùng hết hạn mức.
+  - Xoá tin nhắn có khoá là an toàn. Hãy thu hồi khoá, vì có thể đã có người sao chép.
+examples:
+  - Một người dán khoá vào kho mã công khai và bị tính hàng trăm đô la sau một đêm.
+when_you_need_it: Khi bạn dùng AI qua API, hoặc một công cụ yêu cầu bạn nhập API key.
+when_you_dont: Người dùng ChatGPT trên điện thoại chỉ đăng nhập tài khoản, không cần API key.
+related: [api, guardrails]
+prerequisites: [api]
+last_reviewed_at: "2026-10-26"
+confidence: high

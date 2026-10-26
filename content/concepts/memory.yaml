@@ -1,0 +1,26 @@
+id: memory
+label_vi: Bộ nhớ của AI
+label_en: Memory
+emoji: "🗂️"
+layer: just-in-time
+group: fundamentals
+one_liner: Tính năng giúp app AI ghi lại vài điều về bạn để dùng ở các cuộc trò chuyện sau.
+beginner_explanation: >-
+  Bình thường, mở cuộc trò chuyện mới là AI quên cuộc cũ. Một số app như ChatGPT có tính năng "bộ nhớ". Nó lưu vài ghi
+  chú ngắn về bạn (ví dụ "có con 5 tuổi") và tự dùng lại lần sau. Bạn có thể xem, xoá hoặc tắt bộ nhớ trong phần cài đặt.
+analogy: Như cuốn sổ nhỏ của cô bán hàng quen, ghi "chị này thích ít đường". Cô không nhớ hết mọi câu chuyện bạn kể.
+rigorous_explanation: >-
+  Mô hình không tự nhớ giữa các phiên. "Memory" là lớp ứng dụng lưu thông tin (ghi chú, tóm tắt, hoặc truy xuất từ lịch
+  sử chat) rồi chèn lại vào ngữ cảnh ở phiên sau. Lưu gì và khi nào dùng là do ứng dụng quyết định, và ghi chú có thể
+  sai hoặc lỗi thời.
+misconceptions:
+  - AI nhớ nguyên văn mọi điều bạn từng nói. Nó chỉ giữ vài ghi chú tóm tắt, và có thể ghi sai.
+  - Bộ nhớ là chuyện riêng tư tuyệt đối. Thông tin vẫn được lưu trên máy chủ nhà cung cấp, nên đừng để AI ghi nhớ thông tin nhạy cảm.
+examples:
+  - ChatGPT tự gợi ý món không có hải sản vì từng ghi nhớ bạn bị dị ứng.
+  - Bạn vào cài đặt xoá ghi chú cũ "đang ở Hà Nội" sau khi chuyển vào Sài Gòn.
+when_you_need_it: Khi AI cứ nhắc thông tin cũ về bạn, hoặc khi bạn muốn nó nhớ sở thích lâu dài.
+related: [context, context-window, training-vs-inference]
+prerequisites: [context]
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,29 @@
+id: context-window
+label_vi: Cửa sổ ngữ cảnh
+label_en: Context window
+emoji: "🪟"
+layer: foundation
+group: fundamentals
+one_liner: Giới hạn lượng chữ AI "nhìn thấy" cùng một lúc, tính cả câu hỏi, tài liệu và câu trả lời.
+beginner_explanation: >-
+  Mỗi AI chỉ xem được một lượng chữ nhất định trong một lần trả lời. Lượng đó gọi là cửa sổ ngữ cảnh. Nếu cuộc trò
+  chuyện hoặc tài liệu dài quá, phần cũ có thể bị cắt bớt hoặc tóm tắt, và AI "quên" điều bạn dặn từ đầu.
+analogy: >-
+  Như tấm bảng trắng trong lớp học. Viết đầy rồi thì phải xoá bớt phần cũ để viết tiếp.
+rigorous_explanation: >-
+  Context window là số token tối đa mô hình xử lý trong một lượt, gồm system prompt, lịch sử hội thoại, tài liệu, kết
+  quả công cụ và token đầu ra. Các mô hình hiện nay có cửa sổ từ vài chục nghìn đến hàng triệu token. Cửa sổ lớn không
+  đảm bảo AI dùng tốt mọi phần, vì thông tin nằm giữa văn bản dài thường được chú ý kém hơn ("lost in the middle").
+misconceptions:
+  - Cửa sổ càng lớn thì AI càng nhớ chính xác mọi chi tiết. Thực tế chất lượng vẫn giảm khi ngữ cảnh rất dài.
+  - Cửa sổ ngữ cảnh là bộ nhớ lâu dài. Nó chỉ tồn tại trong một cuộc trò chuyện.
+examples:
+  - Dán một hợp đồng 50 trang, AI trả lời đúng phần đầu nhưng bỏ sót điều khoản ở giữa.
+  - Sau 2 tiếng chat liên tục, AI quên mất ngân sách bạn đã nói lúc đầu.
+when_you_need_it: Khi làm việc với tài liệu dài hoặc cuộc trò chuyện kéo dài và AI bắt đầu lệch yêu cầu.
+when_you_dont: Với câu hỏi ngắn, một lượt hỏi đáp, bạn không cần lo về giới hạn này.
+related: [context, token, memory]
+prerequisites: [token]
+lab: context-lab
+last_reviewed_at: "2026-10-26"
+confidence: high

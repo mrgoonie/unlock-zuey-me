@@ -1,0 +1,25 @@
+id: multimodal
+label_vi: Đa phương thức
+label_en: Multimodal
+emoji: "🖼️"
+layer: foundation
+group: fundamentals
+one_liner: AI hiểu và tạo được nhiều loại dữ liệu, không chỉ chữ mà cả ảnh, giọng nói, video.
+beginner_explanation: >-
+  Nhiều app AI bây giờ cho bạn chụp ảnh, gửi ghi âm hay nói chuyện bằng giọng. Đó là AI đa phương thức. Bạn có thể chụp
+  hoá đơn, tờ hướng dẫn thuốc hay bài tập của con rồi hỏi. Nhưng AI vẫn có thể đọc nhầm số trong ảnh mờ.
+analogy: Như một người vừa đọc được chữ, vừa nhìn được hình, vừa nghe được giọng, thay vì chỉ đọc tin nhắn.
+rigorous_explanation: >-
+  Mô hình đa phương thức mã hoá ảnh, âm thanh hoặc video thành biểu diễn (thường cũng là chuỗi token) chung không gian
+  với văn bản, để một mô hình xử lý cùng lúc. Độ chính xác phụ thuộc chất lượng đầu vào. Các chi tiết nhỏ như số liệu,
+  chữ viết tay hay bảng biểu vẫn dễ bị đọc sai.
+misconceptions:
+  - AI nhìn ảnh thì đọc đúng mọi con số. Ảnh mờ, nghiêng hay chữ nhỏ dễ bị đọc sai.
+examples:
+  - Chụp hoá đơn tiền điện và nhờ AI giải thích từng dòng.
+  - Gửi ghi âm buổi họp phụ huynh và nhờ AI tóm tắt.
+when_you_need_it: Khi thông tin bạn có nằm trong ảnh, giấy tờ, giọng nói thay vì chữ gõ sẵn.
+related: [ocr, llm, hallucination]
+prerequisites: [llm]
+last_reviewed_at: "2026-10-26"
+confidence: high

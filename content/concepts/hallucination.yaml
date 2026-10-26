@@ -17,7 +17,7 @@ misconceptions:
 examples:
   - AI nói quán mở 7h nhưng Google Maps ghi 7h30.
 when_you_need_it: Khi câu trả lời có con số, tên riêng, ngày giờ, giá, lời khuyên sức khoẻ, pháp lý hoặc tài chính.
-related: [context, prompt]
+related: [context, prompt, knowledge-cutoff, web-search, next-token-prediction]
 lab: hallucination-detective
 last_reviewed_at: "2026-10-26"
 confidence: high

@@ -1,0 +1,28 @@
+id: benchmark
+label_vi: Bài kiểm tra chuẩn (benchmark)
+label_en: Benchmark
+emoji: "📊"
+layer: just-in-time
+group: advanced
+one_liner: Bộ đề chung để chấm điểm và so sánh các model. Điểm cao chưa chắc đã hợp việc của bạn.
+beginner_explanation: >-
+  Các hãng hay khoe "model mới đạt 90 điểm trên bài kiểm tra X". Benchmark là bộ câu hỏi chuẩn để so model với nhau.
+  Nhưng bộ đề đó có thể là toán, lập trình hay tiếng Anh, chẳng liên quan đến việc viết tin nhắn tiếng Việt của bạn.
+  Cách thử tốt nhất là đưa chính việc của bạn cho vài model và tự so.
+analogy: >-
+  Như điểm thi đại học. Hữu ích để so sánh chung, nhưng không cho biết người đó có hợp với công việc cụ thể của bạn không.
+rigorous_explanation: >-
+  Benchmark là tập dữ liệu và cách chấm chuẩn hoá (ví dụ cho kiến thức, toán, lập trình, dùng công cụ). Hạn chế gồm
+  rò rỉ đề vào dữ liệu huấn luyện (contamination), bão hoà khi model đạt gần điểm tối đa, tối ưu riêng cho bài kiểm tra,
+  và độ lệch giữa điểm số với hiệu quả thực tế. Các bảng xếp hạng dựa trên đánh giá của người dùng cũng có thiên lệch riêng.
+misconceptions:
+  - Model điểm cao nhất sẽ làm tốt nhất mọi việc của tôi.
+  - Điểm benchmark do bên độc lập chấm nên luôn khách quan. Nhiều con số do chính hãng tự công bố.
+examples:
+  - Hai model chênh nhau 2 điểm benchmark, nhưng với việc soạn email tiếng Việt thì model điểm thấp hơn lại viết tự nhiên hơn.
+when_you_need_it: Khi bạn đọc tin quảng cáo model mới, hoặc cần chọn model cho một việc quan trọng.
+when_you_dont: Người dùng ChatGPT trên điện thoại chỉ cần tự thử việc của mình.
+related: [ai-vendors-and-models, model, agi]
+prerequisites: [model]
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,28 @@
+id: gpu
+label_vi: GPU (chip xử lý đồ hoạ)
+label_en: GPU
+emoji: "🎛️"
+layer: just-in-time
+group: software
+one_liner: Loại chip làm rất nhiều phép tính nhỏ cùng lúc, là "cơ bắp" để huấn luyện và chạy AI.
+beginner_explanation: >-
+  GPU ban đầu dùng cho game và đồ hoạ. Vì nó tính được hàng nghìn phép tính cùng lúc, nó rất hợp với AI. Các công ty AI
+  dùng hàng chục nghìn GPU trong trung tâm dữ liệu. Đây là lý do AI tốn điện, tốn tiền, và vì sao các gói AI trả phí có
+  giới hạn số lượt dùng.
+analogy: >-
+  CPU như một đầu bếp giỏi làm từng món phức tạp. GPU như cả trăm người phụ bếp, mỗi người thái rau rất nhanh, cùng lúc.
+rigorous_explanation: >-
+  GPU có hàng nghìn lõi tối ưu cho phép nhân ma trận song song, phép toán chủ đạo của mạng nơ-ron. Huấn luyện LLM cần cụm
+  GPU (hoặc chip chuyên dụng như TPU) nối mạng tốc độ cao. Khi suy luận, dung lượng và băng thông bộ nhớ (VRAM) thường
+  là nút thắt quyết định model nào chạy được và chạy nhanh đến đâu.
+misconceptions:
+  - Có GPU xịn là tự làm được ChatGPT. Huấn luyện model lớn cần hàng nghìn GPU, dữ liệu khổng lồ và đội ngũ chuyên môn.
+examples:
+  - Giá cổ phiếu hãng làm GPU tăng mạnh nhờ nhu cầu AI.
+  - Laptop có GPU nhiều bộ nhớ chạy model local mượt hơn.
+when_you_need_it: Khi bạn đọc tin về chi phí AI, trung tâm dữ liệu, hoặc định chạy model trên máy mình.
+when_you_dont: Người dùng ChatGPT trên điện thoại không cần quan tâm GPU.
+related: [training-vs-inference, local-models, model]
+prerequisites: []
+last_reviewed_at: "2026-10-26"
+confidence: high

@@ -1,0 +1,26 @@
+id: ocr
+label_vi: Nhận dạng chữ trong ảnh (OCR)
+label_en: OCR
+emoji: "🔍"
+layer: just-in-time
+group: software
+one_liner: Công nghệ đọc chữ trong ảnh chụp hay file scan để biến thành chữ gõ được.
+beginner_explanation: >-
+  Khi bạn chụp hoá đơn, đơn thuốc hay trang sách rồi nhờ AI đọc, nó phải nhận ra từng chữ trong ảnh. Việc này gọi là
+  OCR. Ảnh rõ, thẳng, đủ sáng thì đọc tốt. Chữ viết tay, ảnh mờ hay bảng nhiều cột dễ bị đọc nhầm, nhất là con số. Với
+  số tiền, liều thuốc, hãy so lại với ảnh gốc.
+analogy: Như nhờ người khác đọc giúp tờ giấy qua tấm kính mờ. Đa phần đúng, nhưng số 1 và số 7 dễ bị nhìn nhầm.
+rigorous_explanation: >-
+  OCR truyền thống phát hiện vùng chữ rồi nhận dạng ký tự. Model đa phương thức hiện nay đọc ảnh trực tiếp và hiểu cả
+  bố cục, nhưng có thể "đoán" chữ bị mờ cho hợp ngữ cảnh, tạo ra lỗi khó phát hiện. Độ chính xác giảm với chữ viết tay,
+  dấu tiếng Việt, độ phân giải thấp và bảng phức tạp.
+misconceptions:
+  - AI đọc ảnh thì chính xác như gõ tay. Con số và dấu tiếng Việt vẫn hay bị nhầm.
+examples:
+  - Chụp hoá đơn tiền nước, AI đọc 1.250.000đ thành 1.750.000đ vì ảnh bị loá.
+  - Dùng Google Lens chép chữ từ tờ thông báo của trường.
+when_you_need_it: Khi thông tin bạn cần nằm trong ảnh chụp, giấy tờ scan hay PDF dạng ảnh.
+related: [multimodal, hallucination]
+prerequisites: [multimodal]
+last_reviewed_at: "2026-10-26"
+confidence: high

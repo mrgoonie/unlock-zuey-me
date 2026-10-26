@@ -1,0 +1,26 @@
+id: slm
+label_vi: Mô hình ngôn ngữ nhỏ (SLM)
+label_en: Small language model
+emoji: "🐣"
+layer: just-in-time
+group: software
+one_liner: Phiên bản LLM gọn nhẹ, nhanh và rẻ, chạy được trên điện thoại hay laptop, nhưng biết ít hơn.
+beginner_explanation: >-
+  Không phải việc nào cũng cần "bộ não khổng lồ". Model nhỏ làm tốt các việc đơn giản như sửa chính tả, gợi ý trả lời
+  nhanh, phân loại tin nhắn. Nó chạy nhanh, rẻ, có thể chạy ngay trên máy. Nhưng với câu hỏi khó hay kiến thức hiếm, nó
+  dễ sai hơn model lớn.
+analogy: Như xe máy so với xe tải. Xe máy nhanh, rẻ, len lỏi giỏi, nhưng chở cả nhà đi xa thì không hợp.
+rigorous_explanation: >-
+  SLM thường có từ dưới một tỷ đến khoảng mười tỷ tham số, được tối ưu bằng chưng cất kiến thức (distillation) từ model
+  lớn, dữ liệu chọn lọc và lượng tử hoá. Chúng phù hợp cho tác vụ hẹp, độ trễ thấp, chạy trên thiết bị. Ranh giới "nhỏ"
+  và "lớn" không cố định và dịch chuyển theo thời gian.
+misconceptions:
+  - Model nhỏ thì vô dụng. Với việc hẹp, nó có thể đủ tốt mà rẻ và nhanh hơn nhiều.
+examples:
+  - Bàn phím điện thoại gợi ý câu trả lời nhanh bằng model nhỏ chạy trên máy.
+when_you_need_it: Khi cần AI chạy nhanh, rẻ, riêng tư trên thiết bị cho việc đơn giản.
+when_you_dont: Người dùng ChatGPT trên điện thoại không cần tự chọn model nhỏ.
+related: [llm, local-models, model]
+prerequisites: [llm]
+last_reviewed_at: "2026-10-26"
+confidence: high

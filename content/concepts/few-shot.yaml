@@ -1,0 +1,26 @@
+id: few-shot
+label_vi: Cho ví dụ mẫu (few-shot)
+label_en: Few-shot prompting
+emoji: "🎯"
+layer: foundation
+group: prompt-knowledge
+one_liner: Đưa cho AI vài ví dụ mẫu để nó bắt chước đúng kiểu bạn muốn.
+beginner_explanation: >-
+  Thay vì mô tả dài dòng "viết vui vẻ nhưng lịch sự, ngắn thôi", bạn dán 2–3 tin nhắn mẫu mà bạn thích rồi bảo "viết
+  theo kiểu này". AI bắt chước ví dụ rất giỏi. Cách này gọi là few-shot (vài phát mẫu).
+analogy: Như đưa thợ may một chiếc áo cũ vừa người và nói "may giống cái này", thay vì cố tả số đo bằng lời.
+rigorous_explanation: >-
+  Few-shot prompting đặt một số cặp ví dụ đầu vào và đầu ra vào ngữ cảnh. Mô hình suy ra định dạng, giọng điệu và quy
+  tắc ngầm từ các ví dụ (học trong ngữ cảnh, in-context learning) mà không cần thay đổi trọng số. Ví dụ kém hoặc lệch
+  sẽ bị bắt chước y như vậy, kể cả lỗi.
+misconceptions:
+  - Càng nhiều ví dụ càng tốt. Vài ví dụ tốt và đa dạng thường hiệu quả hơn nhiều ví dụ giống nhau.
+  - AI chỉ học nội dung ví dụ. Nó học cả độ dài, giọng điệu và lỗi trong đó.
+examples:
+  - Dán 2 bài đăng Facebook cũ của bạn và nhờ AI viết bài mới cùng giọng văn.
+  - Đưa 3 dòng chi tiêu mẫu đã phân loại, rồi nhờ AI phân loại tiếp cả danh sách.
+when_you_need_it: Khi AI hiểu đúng nội dung nhưng viết sai kiểu, sai giọng hoặc sai định dạng.
+related: [prompt, structured-output, role-prompting]
+prerequisites: [prompt]
+last_reviewed_at: "2026-10-26"
+confidence: high

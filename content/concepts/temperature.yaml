@@ -1,0 +1,28 @@
+id: temperature
+label_vi: Nhiệt độ (độ ngẫu nhiên)
+label_en: Temperature
+emoji: "🌡️"
+layer: just-in-time
+group: fundamentals
+one_liner: Núm chỉnh độ "phóng khoáng" của AI. Thấp thì ổn định, cao thì đa dạng nhưng dễ lạc đề.
+beginner_explanation: >-
+  Cùng một câu hỏi, AI có thể trả lời mỗi lần một khác. Đó là vì nó chọn chữ có chút ngẫu nhiên. Nhiệt độ là mức ngẫu
+  nhiên đó. Trong ChatGPT bạn không chỉnh trực tiếp được, nhưng biết điều này giúp bạn hiểu vì sao hỏi lại thì ra câu
+  trả lời khác.
+analogy: >-
+  Như nêm gia vị. Nêm ít thì món ăn quen thuộc, dễ đoán. Nêm nhiều thì lạ miệng hơn, nhưng có lúc quá tay.
+rigorous_explanation: >-
+  Temperature chia các logit trước khi đưa qua softmax khi lấy mẫu token. Nhiệt độ thấp làm phân phối nhọn hơn, gần với
+  luôn chọn token có xác suất cao nhất. Nhiệt độ cao làm phân phối phẳng hơn, tăng đa dạng và cả rủi ro lạc đề. Tham số
+  này thường chỉnh được qua API, ít khi có trong ứng dụng chat.
+misconceptions:
+  - Nhiệt độ 0 thì AI luôn đúng. Nhiệt độ thấp chỉ làm câu trả lời ổn định hơn, không làm nó chính xác hơn.
+  - Câu trả lời khác nhau mỗi lần là AI bị lỗi. Đó là cách nó được thiết kế.
+examples:
+  - Hỏi AI ba lần "đặt tên cho quán trà sữa" sẽ được ba danh sách khác nhau.
+when_you_need_it: Khi bạn thấy AI trả lời không nhất quán, hoặc khi dùng API và cần kết quả ổn định.
+when_you_dont: Người dùng ChatGPT trên điện thoại thường không cần chỉnh tham số này.
+related: [next-token-prediction, api]
+prerequisites: [next-token-prediction]
+last_reviewed_at: "2026-10-26"
+confidence: high
