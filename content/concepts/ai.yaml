@@ -1,0 +1,31 @@
+id: ai
+label_vi: Trí tuệ nhân tạo (AI)
+label_en: Artificial Intelligence
+emoji: "🤖"
+layer: foundation
+group: fundamentals
+one_liner: Phần mềm học từ rất nhiều dữ liệu để làm những việc trước đây cần con người, như viết, dịch, nhận diện ảnh.
+beginner_explanation: >-
+  AI là tên gọi chung cho các chương trình máy tính có thể làm việc "giống người", như trả lời câu hỏi, viết thư,
+  nhận ra khuôn mặt trong ảnh. ChatGPT, Gemini hay Claude chỉ là một loại AI, chuyên về ngôn ngữ. AI không có cảm xúc
+  hay ý định riêng. Nó là một công cụ, mạnh nhưng có lúc sai.
+analogy: >-
+  Như một người học việc đã đọc hàng triệu cuốn sách. Nói chuyện rất trôi chảy, làm được nhiều việc, nhưng chưa từng
+  ra ngoài đời và đôi khi nhớ nhầm.
+rigorous_explanation: >-
+  AI là lĩnh vực rộng gồm nhiều kỹ thuật, từ hệ luật viết tay đến học máy (machine learning). Hầu hết AI hiện nay là
+  học máy, đặc biệt là học sâu (deep learning) với mạng nơ-ron nhiều lớp, được huấn luyện để tìm quy luật thống kê
+  trong dữ liệu. Chatbot hiện đại dựa trên mô hình ngôn ngữ lớn (LLM), một nhánh của học sâu.
+misconceptions:
+  - AI "hiểu" và "nghĩ" giống con người. Thực tế nó tìm quy luật trong dữ liệu, không có trải nghiệm hay ý thức như người.
+  - AI luôn đúng vì là máy tính. AI hiện đại dựa trên xác suất nên có thể sai rất tự tin.
+  - Phải giỏi công nghệ mới dùng được AI. Chỉ cần biết nói rõ mình cần gì và biết kiểm tra lại.
+examples:
+  - Điện thoại tự gom ảnh theo khuôn mặt từng người trong nhà.
+  - Nhờ ChatGPT viết giúp tin nhắn chúc mừng sinh nhật cô giáo của con.
+  - Google Dịch dịch thực đơn tiếng Nhật khi đi du lịch.
+when_you_need_it: Khi bạn muốn hiểu bức tranh chung trước khi học các thuật ngữ khác.
+related: [llm, model, hallucination]
+prerequisites: []
+last_reviewed_at: "2026-10-26"
+confidence: high

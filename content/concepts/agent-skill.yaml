@@ -1,0 +1,27 @@
+id: agent-skill
+label_vi: Kỹ năng cho agent (agent skill)
+label_en: Agent skill
+emoji: "🎒"
+layer: just-in-time
+group: agents-integration
+one_liner: Gói hướng dẫn và công cụ soạn sẵn giúp agent làm một loại việc nhanh hơn, đều tay hơn.
+beginner_explanation: >-
+  Skill giống một "cẩm nang nghề" cho AI, gồm các bước nên làm, mẫu có sẵn, vài đoạn mã hỗ trợ. Có skill thì AI đỡ phải
+  mò, tốn ít thời gian và chi phí hơn. Nhưng không có skill, AI mạnh vẫn tự làm được nhiều việc nếu bạn nói rõ yêu cầu.
+  Skill là trợ lực, không phải điều kiện bắt buộc.
+analogy: Như cuốn công thức nấu ăn của gia đình. Đầu bếp giỏi vẫn nấu được, nhưng có công thức thì nhanh và đúng vị nhà hơn.
+rigorous_explanation: >-
+  Agent skill (như Agent Skills của Anthropic) là thư mục gồm tệp hướng dẫn (ví dụ SKILL.md) kèm script và tài nguyên.
+  Agent chỉ nạp phần mô tả ngắn lúc đầu và đọc chi tiết khi cần, giúp tiết kiệm ngữ cảnh. Skill đưa vào quy trình,
+  guardrails và kiến thức chuyên biệt mà mô hình ít gặp khi huấn luyện, nhưng không mở thêm năng lực mà mô hình thiếu hẳn.
+misconceptions:
+  - Phải có đúng skill thì AI mới làm được việc. Mô hình mạnh vẫn làm được nhiều việc chỉ với một câu lệnh rõ ràng.
+  - Cài càng nhiều skill càng tốt. Nhiều skill chồng chéo có thể làm agent chọn sai.
+examples:
+  - Skill tạo slide giúp agent luôn dùng đúng mẫu màu của công ty.
+when_you_need_it: Khi bạn dùng agent cho một loại việc lặp lại và muốn kết quả đều, nhanh, đúng quy chuẩn.
+when_you_dont: Người dùng ChatGPT trên điện thoại cho việc hằng ngày không cần skill.
+related: [agent, mcp, tool-use, system-prompt]
+prerequisites: [agent]
+last_reviewed_at: "2026-10-26"
+confidence: high

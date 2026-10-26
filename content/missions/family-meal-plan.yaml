@@ -1,0 +1,184 @@
+schema_version: 1
+id: family-meal-plan
+version: 1
+locale: vi
+status: published
+title: Thực đơn tuần cho cả nhà, đúng ngân sách
+tagline: Nhờ AI lên thực đơn 7 bữa tối và danh sách đi chợ, rồi tự cộng lại tiền xem có thật sự vừa túi.
+emoji: "🍲"
+outcome: Bạn có thực đơn tuần và danh sách đi chợ hợp khẩu vị cả nhà, và tự kiểm được tổng tiền thay vì tin con số của AI.
+why_it_matters: >-
+  "Hôm nay ăn gì?" là câu hỏi mỗi ngày. AI gợi ý món rất nhanh và nhớ được ai kiêng gì. Nhưng AI hay cộng sai, đoán
+  giá chợ theo dữ liệu cũ, và đôi khi gợi ý món không hợp với người có bệnh hay dị ứng. Tự cộng lại là kỹ năng kiểm
+  chứng đơn giản nhất mà ai cũng làm được.
+persona_tags: [beginner, basic, everyday-life]
+estimated_minutes: 15
+risk_tier: medium
+safety_notes:
+  - Với người bị dị ứng, tiểu đường, cao huyết áp, phụ nữ mang thai hay trẻ dưới 1 tuổi, hãy hỏi bác sĩ hoặc chuyên gia dinh dưỡng về chế độ ăn. AI chỉ gợi ý món.
+  - Giá thực phẩm khác nhau theo chợ và theo mùa. Dùng giá chợ quen của bạn để tính lại.
+competency_targets:
+  - { id: describe, weight: 2 }
+  - { id: verify, weight: 2 }
+  - { id: operate, weight: 1 }
+  - { id: reflect, weight: 1 }
+concept_refs: [prompt, structured-output, hallucination, next-token-prediction]
+steps:
+  - id: needs
+    type: guided-input
+    title: Nhà bạn ăn thế nào?
+    prompt: >-
+      Ghi số người, ngân sách đi chợ cho 7 bữa tối, và những điều AI cần biết (ai kiêng gì, bé mấy tuổi, có bao nhiêu
+      thời gian nấu, món cả nhà thích hay ghét).
+    fields:
+      - { id: people, label: Mấy người ăn?, placeholder: "2 người lớn, 1 bé 6 tuổi", kind: text, min: 3 }
+      - { id: budget, label: Ngân sách cho 7 bữa tối, placeholder: "1 triệu đồng", kind: text, min: 3 }
+      - { id: constraints, label: Điều cần lưu ý (mỗi dòng một ý), placeholder: "Chồng không ăn cay\nBé không thích rau đắng\nNấu tối đa 40 phút\nĐi chợ 2 lần/tuần", kind: list, min: 3 }
+    hints:
+      - Nếu một người lạ nấu cho nhà bạn một tuần, họ cần biết gì để không ai bỏ bữa?
+      - Nghĩ về khẩu vị, sức khoẻ, thời gian nấu và cách bạn đi chợ.
+      - Ví dụ "Không ăn nội tạng", "Bé ăn được cá không xương", "Tối thứ Tư về muộn, cần món nhanh".
+      - Ghi số người, ngân sách, và ít nhất 3 điều cần lưu ý, mỗi dòng một ý.
+  - id: ask-ai
+    type: ai-task
+    title: Nhờ AI lên thực đơn và danh sách đi chợ
+    instruction: >-
+      Gửi thông tin trên cho AI. Xin thực đơn 7 bữa tối dạng bảng, kèm danh sách đi chợ có số lượng và giá ước tính từng
+      món, và tổng cộng. Dán câu trả lời vào ô bên dưới.
+    prompt_suggestions:
+      - "Nhà mình có [số người]. Ngân sách đi chợ cho 7 bữa tối là [ngân sách]. Lưu ý: [điều cần lưu ý]. Hãy lên thực đơn 7 bữa tối dạng bảng (thứ, món chính, món rau, món canh). Sau đó lập danh sách đi chợ gồm tên, số lượng, giá ước tính từng thứ và tổng cộng."
+      - "Ghi rõ giá bạn dùng là giá ước tính ở đâu, thời điểm nào, để mình so với chợ gần nhà."
+    allow_in_app_chat: true
+    capture: { id: meal_plan, label: Thực đơn và danh sách đi chợ AI đưa ra (dán vào đây), min: 150, allow_image: true }
+    hints:
+      - AI có biết nhà bạn ăn mấy người và ngân sách bao nhiêu chưa?
+      - Xin AI trình bày dạng bảng thì bạn dễ đọc và dễ cộng lại hơn.
+      - Ví dụ "...2 lớn 1 bé, 1 triệu cho 7 bữa tối, chồng không ăn cay. Làm bảng thực đơn và danh sách đi chợ có giá."
+      - Sao chép gợi ý đầu, thay phần ngoặc vuông, gửi đi rồi dán cả thực đơn lẫn danh sách đi chợ vào đây.
+  - id: predict
+    type: prediction
+    title: Bạn đoán thử
+    question: Nếu bạn tự cộng lại cột giá trong danh sách đi chợ của AI, khả năng nào dễ xảy ra?
+    options:
+      - { id: opt-exact, text: "Chắc chắn khớp với tổng AI ghi, vì máy tính không cộng sai" }
+      - { id: opt-maybe-off, text: "Có thể lệch, vì AI viết ra con số theo kiểu đoán chữ, không phải bấm máy tính" }
+      - { id: opt-always-off, text: "Lúc nào cũng sai, nên không cần đọc danh sách của AI" }
+    correct: opt-maybe-off
+    explanation: >-
+      Chatbot tạo câu trả lời bằng cách đoán từng mẩu chữ tiếp theo, kể cả chữ số. Nhiều khi tổng đúng, nhưng lệch vài
+      chục nghìn là chuyện hay gặp, nhất là danh sách dài. Danh sách vẫn hữu ích, bạn chỉ cần tự cộng lại.
+    hints:
+      - AI là máy tính, nhưng chatbot có bấm máy tính khi viết câu trả lời không?
+      - Nhớ lại khái niệm "dự đoán token tiếp theo". Con số cũng là chữ đối với AI.
+      - Ví dụ AI liệt kê 12 món, cộng ra 985.000đ, nhưng bấm máy thì là 1.045.000đ.
+      - Đáp án là "có thể lệch". Chọn nó và đặt mức tự tin thật của bạn.
+  - id: verify
+    type: verification
+    title: Kiểm tiền và kiểm món
+    instruction: >-
+      Chọn mức tin cậy cho từng câu dưới đây (kiểu câu AI hay viết trong thực đơn). Sau đó dùng máy tính trên điện thoại
+      cộng lại tổng tiền trong danh sách của BẠN, và so ít nhất một giá với chợ hoặc siêu thị bạn hay mua.
+    claims:
+      - id: claim-total
+        text: "Tổng chi phí cả tuần: 985.000đ, vừa đủ ngân sách 1 triệu."
+        answer: needs_lookup
+        explanation: Tổng do AI tự viết ra, không phải bấm máy. Cộng lại bằng máy tính trước khi tin.
+      - id: claim-price
+        text: "Thịt ba chỉ giá khoảng 110.000đ/kg."
+        answer: needs_lookup
+        explanation: Giá chợ thay đổi theo nơi và theo thời điểm. So với chợ hoặc app siêu thị bạn hay mua.
+      - id: claim-veg
+        text: "Mỗi bữa tối nên có rau hoặc canh rau."
+        answer: verified
+        explanation: Đây là lời khuyên dinh dưỡng phổ biến và hợp lý.
+      - id: claim-allergy
+        text: "Bé dị ứng đạm sữa bò vẫn ăn được phô mai vì phô mai đã lên men."
+        answer: expert
+        explanation: Sai và nguy hiểm - phô mai làm từ sữa bò vẫn chứa đạm sữa bò. Chuyện dị ứng phải hỏi bác sĩ, không làm theo AI.
+    notes: { id: check_notes, label: Tổng bạn tự cộng là bao nhiêu? Có khớp AI không? Bạn so giá món nào?, min: 40 }
+    hints:
+      - Câu nào có con số? Câu nào liên quan sức khoẻ của bé?
+      - Tổng tiền và giá thịt "cần tra cứu" (tự cộng, tự so giá). Rau mỗi bữa là kiến thức chung. Dị ứng là "cần chuyên gia".
+      - Ví dụ ghi chú "Mình cộng lại ra 1.120.000đ, AI ghi 985.000đ, lệch 135k. Thịt ba chỉ ở chợ gần nhà 140k/kg."
+      - Mở máy tính trên điện thoại, cộng từng dòng giá trong danh sách của bạn, ghi tổng bạn tính và tổng AI ghi.
+  - id: adjust
+    type: guided-input
+    title: Sửa cho vừa túi
+    prompt: >-
+      Báo cho AI tổng tiền đúng (hoặc giá chợ thật), và nhờ nó điều chỉnh cho vừa ngân sách, hoặc đổi một món cả nhà
+      không thích. Ghi lại AI đã đổi gì.
+    fields:
+      - { id: request, label: Bạn đã nhờ AI sửa gì?, placeholder: "Tổng thật là 1,12 triệu, vượt 120k. Hãy đổi 2 món cho rẻ hơn.", kind: text, min: 10 }
+      - { id: result, label: AI đã đổi những gì? Tổng mới bạn tự cộng là bao nhiêu?, kind: textarea, min: 40 }
+    hints:
+      - Khi AI cộng sai, bạn sẽ báo cho nó thế nào?
+      - Nói rõ con số đúng và điều bạn muốn - giảm tiền, đổi món, hay cả hai.
+      - Ví dụ "Bạn cộng sai, tổng thật là 1.120.000đ. Đổi 2 bữa có thịt bò sang trứng hoặc đậu hũ để dưới 1 triệu."
+      - Gửi con số đúng cho AI, xin sửa, rồi tự cộng lại tổng mới một lần nữa và ghi vào đây.
+  - id: reflect
+    type: reflection
+    title: Đúc kết
+    prompt: Lần sau nhờ AI làm việc có con số (tiền, số lượng, thời gian), bạn sẽ làm gì?
+    field_id: lesson
+    min: 30
+    hints:
+      - Lần này AI cộng đúng hay sai? Bạn có bất ngờ không?
+      - Nghĩ về một thói quen kiểm tra đơn giản bạn có thể làm mỗi lần.
+      - Ví dụ "Mình sẽ luôn tự bấm máy tính cộng lại tổng, và dùng giá chợ quen thay cho giá AI đoán."
+      - Viết 1–2 câu về cách bạn sẽ kiểm con số AI đưa ra.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: clear-needs
+      label: Nêu rõ người ăn, ngân sách và lưu ý
+      weight: 15
+      competency: describe
+      method: deterministic
+      check: { kind: list_min, step: needs, field: constraints, min: 3 }
+    - id: usable-plan
+      label: Thực đơn và danh sách đi chợ dùng được
+      weight: 15
+      competency: delegate
+      method: ai
+      guidance: >-
+        The pasted AI answer should contain a 7-dinner menu and a shopping list with quantities and estimated prices,
+        reflecting the learner's household size, dislikes and dietary notes. Score low if constraints are ignored or
+        there is no shopping list with prices.
+      step_refs: [needs, ask-ai]
+    - id: number-sense
+      label: Biết con số của AI có thể lệch
+      weight: 10
+      competency: verify
+      method: deterministic
+      check: { kind: prediction_correct, step: predict }
+    - id: verdicts
+      label: Phân loại đúng mức tin cậy
+      weight: 15
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: verify }
+    - id: recomputed
+      label: Tự cộng lại và so giá thật
+      weight: 20
+      competency: verify
+      method: ai
+      guidance: >-
+        Strong notes report the learner's own recomputed total next to the AI's stated total (whether they match or
+        not) and compare at least one item price with a real local source (market, supermarket app, receipt). Notes
+        with no numbers score low.
+      step_refs: [ask-ai, verify]
+    - id: fixed-budget
+      label: Nhờ AI sửa và kiểm lại lần nữa
+      weight: 15
+      competency: operate
+      method: ai
+      guidance: >-
+        The learner gave the AI a concrete correction (the real total, a real price, or a dish to replace), reports
+        what changed, and recomputed or sanity-checked the new total themselves.
+      step_refs: [adjust]
+    - id: lesson
+      label: Thói quen kiểm con số
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 30 }

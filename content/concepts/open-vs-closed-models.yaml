@@ -1,0 +1,29 @@
+id: open-vs-closed-models
+label_vi: Model mở và model đóng
+label_en: Open vs closed models
+emoji: "🔓"
+layer: just-in-time
+group: software
+one_liner: Model mở cho tải về tự chạy. Model đóng chỉ dùng được qua app hoặc dịch vụ của hãng.
+beginner_explanation: >-
+  ChatGPT, Gemini, Claude là model đóng, bạn chỉ dùng qua app hay dịch vụ của hãng. Llama, Qwen, DeepSeek, Mistral có
+  các bản model mở, ai cũng tải về được và chạy trên máy riêng. Model mở cho nhiều quyền kiểm soát hơn, nhưng cần máy
+  mạnh và chút kỹ thuật. Với người dùng thông thường, model đóng qua app là dễ nhất.
+analogy: >-
+  Như mua món ăn ở nhà hàng (đóng) và mua công thức kèm nguyên liệu về tự nấu (mở). Tự nấu thì chủ động, nhưng phải có bếp.
+rigorous_explanation: >-
+  Model "open-weight" công bố trọng số để tải về, chạy và tinh chỉnh, với giấy phép khác nhau (có loại hạn chế dùng
+  thương mại). Rất ít model là mã nguồn mở đầy đủ, tức công bố cả dữ liệu và quy trình huấn luyện. Model đóng chỉ truy
+  cập qua API hoặc ứng dụng. Khoảng cách năng lực giữa hai nhóm thay đổi theo thời gian, và an toàn, chi phí, quyền riêng
+  tư phụ thuộc cách triển khai.
+misconceptions:
+  - Model mở nghĩa là mã nguồn mở hoàn toàn. Thường chỉ là công bố trọng số, kèm giấy phép có điều kiện.
+  - Model mở luôn kém hơn model đóng. Một số model mở bám rất sát các model đóng hàng đầu.
+examples:
+  - Một công ty chạy model mở trên máy chủ riêng để dữ liệu khách hàng không gửi ra ngoài.
+when_you_need_it: Khi bạn quan tâm quyền riêng tư dữ liệu, chi phí lâu dài, hoặc muốn tự tuỳ chỉnh model.
+when_you_dont: Người dùng ChatGPT trên điện thoại không cần chọn giữa hai loại này.
+related: [local-models, fine-tuning, ai-vendors-and-models, model]
+prerequisites: [model]
+last_reviewed_at: "2026-10-26"
+confidence: high

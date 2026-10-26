@@ -3,8 +3,63 @@
   emoji: "🏅"
   description: Hoàn thành mission đầu tiên với bằng chứng đạt yêu cầu.
   rule: { kind: first_pass }
+- id: three-missions
+  name: Vào guồng
+  emoji: "🚀"
+  description: Hoàn thành 3 mission. Bạn đã dùng AI cho ba việc thật trong đời sống.
+  rule: { kind: missions_completed, count: 3 }
+- id: all-missions
+  name: Tự làm được với AI
+  emoji: "🏆"
+  description: Hoàn thành cả 8 mission. Bạn đã tự làm việc thật với AI và tự kiểm được kết quả.
+  rule: { kind: missions_completed, count: 8 }
+- id: caught-a-hallucination
+  name: Bắt quả tang AI bịa
+  emoji: "🕵️"
+  description: Hoàn thành mission "Bắt lỗi AI" - tự tìm ra chỗ AI nói sai mà vẫn rất tự tin.
+  rule: { kind: mission_completed, mission: spot-the-ai-mistake }
 - id: fact-checker
   name: Thám tử kiểm chứng
   emoji: "🔎"
   description: Đạt điểm kiểm chứng cao (năng lực Kiểm chứng từ 0.8).
   rule: { kind: competency_score, competency: verify, min: 0.8 }
+- id: clear-asker
+  name: Hỏi đâu trúng đó
+  emoji: "🎯"
+  description: Nói rõ mình cần gì với AI (năng lực Diễn đạt từ 0.8).
+  rule: { kind: competency_score, competency: describe, min: 0.8 }
+- id: thoughtful-learner
+  name: Biết đúc kết
+  emoji: "🌱"
+  description: Sau mỗi việc đều rút ra bài học cho lần sau (năng lực Đúc kết từ 0.8).
+  rule: { kind: competency_score, competency: reflect, min: 0.8 }
+- id: lab-explorer
+  name: Nhà khám phá phòng lab
+  emoji: "🧪"
+  description: Thử cả 3 phòng lab để hiểu AI "nghĩ" thế nào - đoán token, ngữ cảnh và ảo giác.
+  rule: { kind: labs_completed, count: 3 }
+- id: streak-3
+  name: Ba ngày liền
+  emoji: "🔥"
+  description: Học 3 ngày liền. Một chút mỗi ngày là đủ.
+  rule: { kind: streak_days, count: 3 }
+- id: streak-7
+  name: Một tuần đều đặn
+  emoji: "📅"
+  description: Học đều 7 ngày (được nghỉ 1 ngày trong tuần mà không mất chuỗi).
+  rule: { kind: streak_days, count: 7 }
+- id: solo-pass
+  name: Tự lực cánh sinh
+  emoji: "💪"
+  description: Hoàn thành một mission mà không cần mở gợi ý nào.
+  rule: { kind: no_hint_pass }
+- id: well-calibrated
+  name: Biết mình biết gì
+  emoji: "⚖️"
+  description: Mức tự tin bạn chọn khớp với kết quả thật (lệch không quá 15 điểm).
+  rule: { kind: calibrated, within: 0.15 }
+- id: transfer-master
+  name: Làm lại được với việc mới
+  emoji: "🔁"
+  description: Đạt cả một mission và mission biến thể của nó, ví dụ kế hoạch cuối tuần rồi chuyến đi gia đình. Bạn đã nắm cách làm, không chỉ nhớ đáp án.
+  rule: { kind: transfer_pass }

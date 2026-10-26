@@ -1,7 +1,82 @@
 ---
+/** Home: greeting, today's 3 recommendations, continue card, a lab, level/streak/XP/badge, guest banner. */
 import AppLayout from '../layouts/AppLayout.astro';
+import MissionCard from '../components/mission/MissionCard.astro';
+import LevelBar from '../components/progress/LevelBar.astro';
+import StreakChip from '../components/progress/StreakChip.astro';
+import GuestBanner from '../components/home/GuestBanner.astro';
+import { getMission } from '../lib/content/loader';
+import { loadMissionList, loadProgress } from '../lib/ui/server-data';
+import { LAB_LINKS } from '../lib/ui/lab-links';
+
+const learner = Astro.locals.learner;
+const [progress, missions] = await Promise.all([loadProgress(Astro.locals), loadMissionList(Astro.locals)]);
+
+const open = missions.filter((m) => m.status !== 'completed');
+const recommended = [...open.filter((m) => m.recommended), ...open.filter((m) => !m.recommended)].slice(0, 3);
+const active = progress?.activeRuns
+  .slice()
+  .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  .map((r) => ({ run: r, mission: getMission(r.missionId) }))
+  .find((x) => x.mission);
+const latestBadge = progress?.badges.slice().sort((a, b) => b.grantedAt.localeCompare(a.grantedAt))[0];
+// Rotate the featured lab by day so the card feels fresh; prefer labs not done yet.
+const labsLeft = LAB_LINKS.filter((l) => !progress?.labsDone.includes(l.id));
+const labPool = labsLeft.length ? labsLeft : LAB_LINKS;
+const lab = labPool[Math.floor(Date.now() / 86_400_000) % labPool.length];
+const name = learner?.kind === 'member' && learner.displayName ? learner.displayName : 'bạn';
 ---
 <AppLayout title="Hôm nay">
-  <h1 class="text-2xl font-bold mt-2">Hôm nay</h1>
-  <p class="mt-2 text-ink-muted">Mission gợi ý, tiến độ và streak của bạn.</p>
+  <div class="flex flex-col gap-6 pt-2">
+    <section aria-labelledby="greet" class="flex flex-col gap-3">
+      <h1 id="greet" class="text-2xl font-bold">Chào {name} 👋</h1>
+      {progress && (
+        <div class="flex flex-wrap items-start gap-2">
+          <StreakChip streak={progress.streak} />
+          <span class="chip min-h-[36px]">⭐ {progress.xp} XP</span>
+          {latestBadge && <span class="chip min-h-[36px]" data-testid="latest-badge">{latestBadge.emoji} {latestBadge.name}</span>}
+        </div>
+      )}
+    </section>
+
+    {learner?.kind !== 'member' && <GuestBanner returnTo="/home" />}
+
+    {active && active.mission && (
+      <section aria-labelledby="continue" class="card flex flex-col gap-3 border-accent/40">
+        <h2 id="continue" class="text-sm font-semibold uppercase tracking-wide text-accent">Đang làm dở</h2>
+        <p class="font-semibold">{active.mission.emoji} {active.mission.title}</p>
+        <p class="text-sm text-ink-muted">Bài làm của bạn đã được lưu. Tiếp tục ngay chỗ bạn dừng.</p>
+        <a href={`/missions/${active.mission.id}/run`} class="btn-primary" data-testid="continue-run">Làm tiếp</a>
+      </section>
+    )}
+
+    <section aria-labelledby="today" class="flex flex-col gap-3">
+      <h2 id="today" class="text-xl font-bold">Hôm nay thử gì?</h2>
+      {recommended.length ? (
+        <ul class="flex flex-col gap-3">
+          {recommended.map((m) => <li><MissionCard mission={m} /></li>)}
+        </ul>
+      ) : (
+        <p class="card text-ink-muted">Bạn đã làm hết mission hiện có. Thử một lab hoặc xem lại thành tích nhé! 🎉</p>
+      )}
+      <a href="/missions" class="self-start text-sm font-semibold text-accent underline-offset-4 hover:underline">Xem tất cả mission →</a>
+    </section>
+
+    <section aria-labelledby="lab">
+      <h2 id="lab" class="sr-only">Lab gợi ý</h2>
+      <a href={lab.href} class="card flex items-center gap-3 transition hover:border-accent" data-testid="home-lab">
+        <span aria-hidden="true" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-calm/10 text-2xl">{lab.emoji}</span>
+        <span class="flex flex-col">
+          <span class="font-semibold">🧪 Lab: {lab.name}</span>
+          <span class="text-sm text-ink-muted">{lab.tagline}</span>
+        </span>
+      </a>
+    </section>
+
+    {progress && (
+      <section aria-label="Cấp độ" class="card">
+        <LevelBar level={progress.level} xp={progress.xp} />
+      </section>
+    )}
+  </div>
 </AppLayout>

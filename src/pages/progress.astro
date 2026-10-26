@@ -1,7 +1,59 @@
 ---
+/** Progress: level/XP, competency radar + list, streak week, weekly recap, completed missions. */
 import AppLayout from '../layouts/AppLayout.astro';
+import LevelBar from '../components/progress/LevelBar.astro';
+import CompetencyRadar from '../components/progress/CompetencyRadar.astro';
+import StreakWeek from '../components/progress/StreakWeek.astro';
+import WeeklyRecap from '../components/progress/WeeklyRecap';
+import ProgressUnavailable from '../components/ui/ProgressUnavailable.astro';
+import { getMission } from '../lib/content/loader';
+import { loadProgress } from '../lib/ui/server-data';
+
+const progress = await loadProgress(Astro.locals);
+const completed = (progress?.completedMissions ?? []).map(getMission).filter((m) => m !== undefined);
+const timezone = Astro.locals.learner?.profile.timezone;
 ---
 <AppLayout title="Tiến độ">
-  <h1 class="text-2xl font-bold mt-2">Tiến độ</h1>
-  <p class="mt-2 text-ink-muted">XP, cấp độ, năng lực và recap.</p>
+  <div class="flex flex-col gap-5 pt-2">
+    <header class="flex items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">Tiến độ của bạn</h1>
+      <a href="/achievements" class="btn-ghost text-sm">🏅 Thành tích</a>
+    </header>
+
+    {!progress ? <ProgressUnavailable /> : (
+      <>
+        <section class="card" aria-label="Cấp độ"><LevelBar level={progress.level} xp={progress.xp} /></section>
+
+        <section class="card flex flex-col gap-3" aria-labelledby="streak-h">
+          <h2 id="streak-h" class="font-semibold">🔥 Chuỗi ngày học</h2>
+          <StreakWeek streak={progress.streak} timezone={timezone} />
+        </section>
+
+        <section class="card flex flex-col gap-3" aria-labelledby="comp-h">
+          <h2 id="comp-h" class="font-semibold">6 năng lực dùng AI</h2>
+          <CompetencyRadar competencies={progress.competencies} />
+        </section>
+
+        <section class="card flex flex-col gap-3" aria-labelledby="recap-h">
+          <h2 id="recap-h" class="font-semibold">🗓️ Tổng kết tuần</h2>
+          <WeeklyRecap client:visible />
+        </section>
+
+        <section class="flex flex-col gap-3" aria-labelledby="done-h">
+          <h2 id="done-h" class="font-semibold">Mission đã hoàn thành ({completed.length})</h2>
+          {completed.length ? (
+            <ul class="flex flex-col gap-2">
+              {completed.map((m) => (
+                <li><a href={`/missions/${m.id}`} class="card flex items-center gap-3 hover:border-accent"><span aria-hidden="true" class="text-2xl">{m.emoji}</span><span class="flex-1 font-medium">{m.title}</span><span class="text-calm">✓</span></a></li>
+              ))}
+            </ul>
+          ) : (
+            <p class="card text-ink-muted">Chưa có mission nào. <a href="/home" class="font-semibold text-accent">Chọn một mission đầu tiên →</a></p>
+          )}
+        </section>
+
+        <p class="text-sm text-ink-muted">Đã thử {progress.labsDone.length} lab · đã đọc {progress.conceptsSeen} khái niệm</p>
+      </>
+    )}
+  </div>
 </AppLayout>

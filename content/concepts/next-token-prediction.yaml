@@ -1,0 +1,28 @@
+id: next-token-prediction
+label_vi: Dự đoán token tiếp theo
+label_en: Next-token prediction
+emoji: "🔮"
+layer: foundation
+group: fundamentals
+one_liner: Cách LLM viết. Nó đoán mẩu chữ tiếp theo hợp lý nhất, lặp đi lặp lại đến hết câu trả lời.
+beginner_explanation: >-
+  Khi trả lời, AI không soạn sẵn cả đoạn trong đầu. Nó đoán từng mẩu chữ một, dựa trên mọi thứ đứng trước. Vì nó chọn
+  điều "nghe hợp lý nhất" chứ không kiểm tra sự thật, câu trả lời có thể trôi chảy mà vẫn sai.
+analogy: >-
+  Như trò nối câu. Nghe "Một con ngựa đau, cả tàu..." bạn đoán ngay "bỏ cỏ". AI làm việc đó cực kỳ giỏi, với mọi loại văn bản.
+rigorous_explanation: >-
+  LLM tự hồi quy mô hình hoá xác suất có điều kiện của token tiếp theo khi biết các token trước. Khi sinh, nó lấy mẫu
+  một token từ phân phối này, nối vào chuỗi rồi lặp lại. Nhiều năng lực phức tạp (dịch, tóm tắt, lập luận) nổi lên từ
+  mục tiêu đơn giản này khi mô hình và dữ liệu đủ lớn, nhưng thứ được tối ưu là độ hợp lý của chữ, không phải tính đúng.
+misconceptions:
+  - Chỉ đoán chữ thì không thể làm được việc gì thông minh. Đoán chữ thật tốt đòi hỏi mô hình học được rất nhiều quy luật về thế giới.
+  - AI soạn xong toàn bộ câu trả lời rồi mới hiện ra cho bạn.
+examples:
+  - Gõ "Thủ đô của Việt Nam là" thì AI gần như chắc chắn viết tiếp "Hà Nội".
+  - AI viết ra một tên sách nghe rất thật nhưng không tồn tại, vì tên đó "hợp lý" về mặt chữ.
+when_you_need_it: Khi bạn muốn hiểu tận gốc vì sao AI giỏi viết nhưng vẫn cần được kiểm tra.
+related: [token, llm, hallucination, temperature]
+prerequisites: [token]
+lab: token-predictor
+last_reviewed_at: "2026-10-26"
+confidence: high

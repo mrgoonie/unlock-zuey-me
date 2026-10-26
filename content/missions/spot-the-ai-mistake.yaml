@@ -1,0 +1,200 @@
+schema_version: 1
+id: spot-the-ai-mistake
+version: 1
+locale: vi
+status: published
+title: Bắt lỗi AI
+tagline: Làm thám tử - tìm chỗ AI nói sai một cách tự tin, và biết cách kiểm lại cho chắc.
+emoji: "🕵️"
+outcome: >-
+  Bạn tự bắt được ít nhất một lỗi thật của AI, biết loại câu nào dễ sai, và có thói quen hỏi "mình kiểm điều này ở
+  đâu?" trước khi tin.
+why_it_matters: >-
+  AI viết trôi chảy và tự tin ngay cả khi sai. Người dùng giỏi không phải người tin AI nhiều nhất, mà là người biết
+  chỗ nào cần kiểm và kiểm bằng cách nào. Bắt được lỗi một lần, bạn sẽ bớt sợ AI và bớt tin mù quáng cùng lúc.
+persona_tags: [beginner, basic, everyday-life]
+estimated_minutes: 15
+risk_tier: medium
+safety_notes:
+  - Các câu sai trong mission này là tình huống luyện tập có dán nhãn. Đừng chia sẻ chúng như thông tin thật.
+  - Với lời khuyên sức khoẻ, tiền bạc, pháp lý, kể cả khi AI nói đúng, hãy hỏi người có chuyên môn trước khi làm theo.
+competency_targets:
+  - { id: verify, weight: 3 }
+  - { id: discover, weight: 1 }
+  - { id: reflect, weight: 1 }
+concept_refs: [hallucination, next-token-prediction, token, knowledge-cutoff, web-search]
+steps:
+  - id: predict
+    type: prediction
+    title: Tự tin có nghĩa là đúng?
+    question: Khi AI trả lời rất tự tin, không có chữ "có thể" hay "tôi không chắc", thì câu trả lời đó...
+    options:
+      - { id: opt-more-right, text: "Thường đúng hơn, vì AI chỉ tự tin khi nó biết chắc" }
+      - { id: opt-no-signal, text: "Không đúng hơn bao nhiêu - giọng tự tin không cho biết câu đó đúng hay sai" }
+      - { id: opt-always-wrong, text: "Thường sai, nên câu nào tự tin thì bỏ qua" }
+    correct: opt-no-signal
+    explanation: >-
+      AI tạo ra câu nghe hợp lý nhất, và câu nghe hợp lý thường nghe tự tin. Giọng văn không phải bằng chứng. Thứ cho
+      biết câu nào đúng là nguồn bạn kiểm được, không phải cách AI nói.
+    hints:
+      - Bạn đã bao giờ gặp người nói rất chắc mà vẫn sai chưa?
+      - AI được tạo ra để viết trôi chảy. Viết trôi chảy và biết sự thật là hai chuyện khác nhau.
+      - Ví dụ AI nói "Quán mở cửa lúc 7h" với giọng y hệt khi nói "Hà Nội là thủ đô Việt Nam".
+      - Đáp án là "không đúng hơn bao nhiêu". Chọn nó và đặt mức tự tin thật của bạn.
+  - id: sample-check
+    type: verification
+    title: Soi một câu trả lời mẫu
+    instruction: >-
+      Một người hỏi AI vài câu linh tinh và nhận được các câu trả lời dưới đây. Có câu đúng, có câu sai, có câu không thể
+      biết. Chọn mức tin cậy cho từng câu. Rồi chọn MỘT câu bạn chưa chắc, tự tra (Google, Wikipedia, trang chính thức,
+      hoặc tự đếm) và ghi lại bạn tìm thấy gì.
+    claims:
+      - id: claim-mid-autumn
+        text: "Tết Trung thu rơi vào ngày rằm tháng Tám âm lịch."
+        answer: verified
+        explanation: Đây là kiến thức văn hoá phổ biến, nhiều nguồn khớp nhau.
+      - id: claim-strawberry
+        text: "Từ tiếng Anh \"strawberry\" có 2 chữ r."
+        answer: needs_lookup
+        explanation: Sai - có 3 chữ r. AI nhìn chữ theo từng mẩu (token) nên hay đếm chữ cái sai. Bạn tự đếm là kiểm được ngay.
+      - id: claim-halong
+        text: "Vịnh Hạ Long được UNESCO công nhận là Di sản Thiên nhiên Thế giới lần đầu vào năm 2010."
+        answer: needs_lookup
+        explanation: Sai - lần đầu là năm 1994. Năm tháng là chi tiết AI hay nhầm. Tra trang UNESCO hoặc Wikipedia.
+      - id: claim-link
+        text: "Bạn đọc thêm ở bài báo này nhé - https://vnexpress.net/bi-quyet-ngu-ngon-cho-me-bim-sua-4729183.html"
+        answer: insufficient
+        explanation: AI hay bịa đường link trông rất thật. Chưa mở link và đọc thấy đúng nội dung thì chưa thể tin.
+      - id: claim-lemon
+        text: "Uống nước chanh ấm mỗi sáng chữa khỏi trào ngược dạ dày."
+        answer: expert
+        explanation: Lời khuyên chữa bệnh phải hỏi bác sĩ. Với trào ngược, đồ chua còn có thể làm nặng thêm ở một số người.
+    notes: { id: lookup_notes, label: Bạn đã tự tra câu nào? Tra ở đâu? Kết quả thế nào?, min: 40 }
+    hints:
+      - Câu nào bạn tự kiểm được ngay trong 1 phút? Câu nào liên quan sức khoẻ?
+      - Đếm chữ và năm tháng là "cần tra cứu". Đường link chưa mở là "không đủ dữ liệu". Chữa bệnh là "cần chuyên gia".
+      - Ví dụ ghi chú "Mình đếm s-t-r-a-w-b-e-r-r-y, có 3 chữ r, AI sai. Wikipedia ghi Hạ Long được công nhận năm 1994."
+      - Trung thu là tin có căn cứ; strawberry và Hạ Long là cần tra cứu; link là không đủ dữ liệu; nước chanh là cần chuyên gia.
+  - id: own-test
+    type: ai-task
+    title: Thử AI bằng điều bạn rành
+    instruction: >-
+      Hỏi AI 3 câu về điều BẠN rất rành (quê bạn, món bạn nấu giỏi, công việc của bạn, con đường bạn đi hằng ngày). Hỏi
+      cả chi tiết cụ thể như tên, số, ngày. Dán câu hỏi và câu trả lời của AI vào ô bên dưới.
+    prompt_suggestions:
+      - "Món [món bạn nấu giỏi] nấu thế nào cho đúng vị? Liệt kê nguyên liệu và định lượng cho 4 người."
+      - "Kể cho mình về [quê bạn / phường bạn ở]: đặc sản, chợ lớn nhất, và một lễ hội địa phương."
+      - "Bạn chắc chắn bao nhiêu phần trăm về câu trả lời vừa rồi? Chi tiết nào bạn có thể sai?"
+    allow_in_app_chat: true
+    capture: { id: own_answers, label: Câu hỏi và câu trả lời của AI (dán vào đây), min: 100, allow_image: true }
+    hints:
+      - Chủ đề nào bạn biết rõ đến mức nghe sai là nhận ra ngay?
+      - Hỏi về chi tiết nhỏ, địa phương, cụ thể - AI dễ sai ở đó hơn là ở kiến thức chung.
+      - Ví dụ "Chợ lớn nhất ở thị trấn [quê bạn] tên gì, họp vào ngày nào?"
+      - Chọn 1 trong 3 gợi ý, thay phần ngoặc vuông, hỏi thêm 2 câu nữa rồi dán cả cuộc trò chuyện vào đây.
+  - id: catch-log
+    type: guided-input
+    title: Biên bản bắt lỗi
+    prompt: >-
+      Ghi lại một chi tiết AI nói sai (hoặc nếu AI đúng hết, một chi tiết bạn đã kiểm và thấy đúng). Ghi rõ điều đúng là
+      gì và vì sao bạn biết.
+    fields:
+      - { id: ai_claim, label: AI đã nói gì?, placeholder: "AI nói chợ quê mình họp ngày mùng 5", kind: text, min: 10 }
+      - { id: truth, label: Thực tế là gì?, placeholder: "Chợ họp ngày 2 và 7 âm lịch", kind: text, min: 5 }
+      - { id: evidence, label: Bạn biết nhờ đâu? (kinh nghiệm, nguồn nào, hỏi ai), placeholder: "Mình ở đó 20 năm, và hỏi lại mẹ cho chắc", kind: text, min: 10 }
+    hints:
+      - Đọc lại câu trả lời của AI, dừng ở mỗi tên riêng và con số.
+      - Không bắt được lỗi cũng không sao - ghi một chi tiết bạn đã kiểm và nguồn kiểm.
+      - Ví dụ "AI nói cá kho cần 2 thìa đường cho 500g cá, mẹ mình chỉ dùng nửa thìa. AI nói đúng tên đặc sản quê mình."
+      - Điền đủ 3 ô - AI nói gì, thực tế ra sao, và bạn biết nhờ đâu.
+  - id: source-quiz
+    type: quiz
+    title: Kiểm ở đâu cho chắc?
+    questions:
+      - id: q-link
+        prompt: AI đưa một đường link làm nguồn. Bạn nên làm gì?
+        options:
+          - { id: trust, text: "Tin luôn, vì đã có nguồn" }
+          - { id: open-read, text: "Mở link, xem trang có thật và có nói đúng điều AI nói không" }
+          - { id: ask-again, text: "Hỏi AI \"link này đúng không?\" và tin câu trả lời" }
+        correct: [open-read]
+        explanation: Link có thể bịa, hoặc có thật nhưng không nói điều đó. Hỏi lại chính AI không phải là kiểm chứng.
+      - id: q-best-source
+        prompt: Muốn kiểm giờ mở cửa của một bảo tàng, nguồn nào đáng tin nhất?
+        options:
+          - { id: official, text: "Trang web hoặc số điện thoại chính thức của bảo tàng" }
+          - { id: another-ai, text: "Hỏi thêm một AI khác" }
+          - { id: old-blog, text: "Một bài blog du lịch từ 3 năm trước" }
+        correct: [official]
+        explanation: Nguồn chính thức, mới nhất là tốt nhất. Một AI khác có thể sai giống hệt, blog cũ có thể đã lỗi thời.
+    hints:
+      - Hỏi lại người vừa nói sai thì có kiểm được không?
+      - Nguồn tốt là nguồn gốc (chính thức) và mới.
+      - Ví dụ muốn biết lịch tiêm của bé, nguồn tốt là sổ tiêm chủng và trạm y tế, không phải một AI khác.
+      - Câu 1 chọn mở link xem trang có nói đúng không. Câu 2 chọn trang hoặc số điện thoại chính thức.
+  - id: reflect
+    type: reflection
+    title: Đúc kết của thám tử
+    prompt: Loại câu nào của AI bạn sẽ luôn kiểm lại? Loại nào bạn thấy có thể tin tạm?
+    field_id: lesson
+    min: 40
+    hints:
+      - Lỗi bạn bắt được hôm nay thuộc loại nào - con số, tên riêng, link, hay lời khuyên?
+      - Nghĩ về hai nhóm - câu cần kiểm và câu tin tạm được.
+      - Ví dụ "Mình luôn kiểm con số, ngày tháng, link và lời khuyên sức khoẻ. Giải thích khái niệm chung thì tin tạm."
+      - Viết 2 câu - một nhóm luôn kiểm, một nhóm có thể tin tạm, kèm lý do ngắn.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: confidence-signal
+      label: Hiểu rằng giọng tự tin không phải bằng chứng
+      weight: 10
+      competency: verify
+      method: deterministic
+      check: { kind: prediction_correct, step: predict }
+    - id: verdicts
+      label: Phân loại đúng mức tin cậy
+      weight: 20
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: sample-check }
+    - id: real-lookup
+      label: Tự tra một câu chưa chắc
+      weight: 15
+      competency: verify
+      method: ai
+      guidance: >-
+        The learner names one of the sample claims, says how they checked it (counting, a named website, an official
+        source) and what they found. A correct finding for a checkable claim (e.g. three r's, 1994) is strong evidence.
+      step_refs: [sample-check]
+    - id: probing-questions
+      label: Hỏi AI về điều mình rành, có chi tiết cụ thể
+      weight: 15
+      competency: discover
+      method: ai
+      guidance: >-
+        The pasted conversation shows the learner asking about a topic they know first-hand and including specific,
+        checkable details (names, numbers, dates, quantities), not only broad questions.
+      step_refs: [own-test]
+    - id: catch-log
+      label: Biên bản bắt lỗi có bằng chứng
+      weight: 20
+      competency: verify
+      method: ai
+      guidance: >-
+        The log quotes a specific AI claim from the learner's own conversation, states what is actually true, and gives
+        a concrete basis (first-hand experience, a named source, a person asked). If the AI was right, a clearly checked
+        correct detail with its source is also strong evidence. Vague logs score low.
+      step_refs: [own-test, catch-log]
+    - id: sources
+      label: Biết chọn nguồn kiểm chứng
+      weight: 10
+      competency: verify
+      method: deterministic
+      check: { kind: quiz_score, step: source-quiz }
+    - id: lesson
+      label: Đúc kết loại câu cần kiểm
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 40 }

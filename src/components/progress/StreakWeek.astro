@@ -1,0 +1,43 @@
+---
+/**
+ * Seven-day streak strip ending today. The progress contract exposes the streak length, not per-day
+ * history, so the strip marks the most recent `current` days (capped at 7) as active, ending today when
+ * the learner was active today and yesterday otherwise.
+ */
+import type { StreakInfo } from '../../lib/learning/types';
+
+interface Props { streak: StreakInfo; timezone?: string }
+const { streak, timezone } = Astro.props;
+const DAY = 86_400_000;
+const now = Date.now();
+const lastActiveOffset = streak.activeToday ? 0 : 1;
+const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) => {
+  try {
+    return d.toLocaleDateString('vi-VN', { ...opts, timeZone: timezone });
+  } catch {
+    return d.toLocaleDateString('vi-VN', opts);
+  }
+};
+const days = Array.from({ length: 7 }, (_, i) => {
+  const offset = 6 - i;
+  const d = new Date(now - offset * DAY);
+  const active = offset >= lastActiveOffset && offset < lastActiveOffset + Math.min(streak.current, 7);
+  return { offset, active, label: fmt(d, { weekday: 'short' }), full: fmt(d, { weekday: 'long', day: 'numeric', month: 'numeric' }) };
+});
+---
+<div class="flex flex-col gap-2" data-testid="streak-week">
+  <ol class="grid grid-cols-7 gap-1.5">
+    {days.map((d) => (
+      <li class="flex flex-col items-center gap-1">
+        <span class:list={['flex h-10 w-10 items-center justify-center rounded-full text-lg', d.active ? 'bg-warn/20' : 'bg-line/50', d.offset === 0 && 'ring-2 ring-accent']}
+              aria-label={`${d.full}: ${d.active ? 'có học' : 'chưa ghi nhận'}`} role="img">
+          {d.active ? '🔥' : '·'}
+        </span>
+        <span class="text-[11px] text-ink-muted" aria-hidden="true">{d.offset === 0 ? 'Nay' : d.label}</span>
+      </li>
+    ))}
+  </ol>
+  <p class="text-sm text-ink-muted">
+    Chuỗi hiện tại: <strong class="text-ink">{streak.current} ngày</strong>. Còn {streak.restDaysLeft} ngày nghỉ được phép trong tuần này.
+  </p>
+</div>

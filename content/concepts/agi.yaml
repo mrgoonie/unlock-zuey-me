@@ -1,0 +1,30 @@
+id: agi
+label_vi: Trí tuệ nhân tạo tổng quát (AGI)
+label_en: Artificial General Intelligence
+emoji: "🌌"
+layer: current-fact
+group: advanced
+one_liner: Ý tưởng về AI làm được hầu hết việc trí óc như con người. Chưa có định nghĩa thống nhất và vẫn còn tranh cãi.
+beginner_explanation: >-
+  Bạn sẽ nghe nhiều tin "AGI sắp đến" hoặc "đã đạt AGI". Thực tế, mỗi công ty và mỗi nhà nghiên cứu hiểu AGI một kiểu,
+  và chưa có bài kiểm tra nào được mọi người công nhận. AI hiện nay rất giỏi nhiều việc nhưng vẫn mắc lỗi mà người bình
+  thường không mắc. Đừng để những tin này làm bạn lo lắng hay thấy mình bị bỏ lại.
+analogy: >-
+  Như câu hỏi "khi nào một đứa trẻ thành người lớn". Mỗi người có một tiêu chí, và rất khó chỉ ra đúng một ngày.
+rigorous_explanation: >-
+  AGI thường được mô tả là hệ thống đạt hoặc vượt con người trên phạm vi rộng các nhiệm vụ nhận thức, có khả năng học
+  và chuyển giao sang việc mới. Các định nghĩa khác nhau (theo năng lực, theo giá trị kinh tế, theo mức độ tự chủ), và
+  dự báo thời điểm dao động rất rộng. Tuyên bố về AGI thường gắn với lợi ích truyền thông hoặc hợp đồng, nên cần đọc
+  với tinh thần phản biện.
+misconceptions:
+  - AGI là một mốc rõ ràng, ai cũng sẽ nhận ra ngay khi đạt tới. Thực tế các bên còn bất đồng ngay ở định nghĩa.
+  - AI hiện tại đã nghĩ như con người. Nó vẫn có những điểm yếu rất khác người.
+examples:
+  - Một bài báo giật tít "AI đã đạt AGI" dựa trên điểm số của một bài kiểm tra duy nhất.
+when_you_need_it: Khi bạn đọc tin tức về tương lai AI và muốn giữ góc nhìn tỉnh táo.
+when_you_dont: Để dùng AI cho việc hằng ngày, bạn không cần quan tâm AGI.
+related: [ai, benchmark, ai-vendors-and-models]
+prerequisites: [ai]
+last_reviewed_at: "2026-10-26"
+review_due_at: "2027-01-26"
+confidence: medium

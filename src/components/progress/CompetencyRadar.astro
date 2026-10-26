@@ -1,0 +1,39 @@
+---
+/** Six-axis competency radar (plain SVG) with an accessible list of the same values next to it. */
+import { COMPETENCIES, type CompetencyId } from '../../lib/content/schema';
+import { COMPETENCY_LABEL, pct } from '../../lib/ui/labels';
+import { radarModel } from '../../lib/ui/radar-geometry';
+
+interface Props { competencies: Array<{ id: CompetencyId; score: number; evidenceCount: number }> }
+const { competencies } = Astro.props;
+const byId = new Map(competencies.map((c) => [c.id, c]));
+const rows = COMPETENCIES.map((id) => ({ id, score: byId.get(id)?.score ?? 0, evidence: byId.get(id)?.evidenceCount ?? 0 }));
+const SIZE = 280;
+const model = radarModel(rows.map((r) => r.score), SIZE);
+---
+<div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start" data-testid="competency-radar">
+  <svg viewBox={`0 0 ${SIZE} ${SIZE}`} class="w-full max-w-[300px] overflow-visible" role="img" aria-labelledby="radar-title">
+    <title id="radar-title">Biểu đồ 6 năng lực: {rows.map((r) => `${COMPETENCY_LABEL[r.id].name} ${pct(r.score)}%`).join(', ')}</title>
+    {model.rings.map((ring) => <polygon points={ring} fill="none" stroke="rgb(var(--line))" stroke-width="1" />)}
+    {model.axes.map((a) => <line x1={SIZE / 2} y1={SIZE / 2} x2={a.end.x} y2={a.end.y} stroke="rgb(var(--line))" stroke-width="1" />)}
+    <polygon points={model.shape} fill="rgb(var(--calm) / 0.25)" stroke="rgb(var(--calm))" stroke-width="2" stroke-linejoin="round" />
+    {model.dots.map((d) => <circle cx={d.x} cy={d.y} r="3.5" fill="rgb(var(--calm))" />)}
+    {model.axes.map((a, i) => (
+      <text x={a.label.x} y={a.label.y} text-anchor={a.anchor} dominant-baseline="middle" font-size="12" fill="rgb(var(--ink-muted))">
+        {COMPETENCY_LABEL[rows[i].id].name}
+      </text>
+    ))}
+  </svg>
+  <ul class="flex w-full flex-col gap-2">
+    {rows.map((r) => (
+      <li class="flex items-center gap-3">
+        <span aria-hidden="true" class="text-lg">{COMPETENCY_LABEL[r.id].emoji}</span>
+        <span class="flex-1">
+          <span class="flex justify-between text-sm"><span class="font-medium">{COMPETENCY_LABEL[r.id].name}</span><span>{pct(r.score)}%</span></span>
+          <span class="bar mt-1" aria-hidden="true"><span class="bar-fill" style={`width:${pct(r.score)}%`}></span></span>
+          <span class="text-xs text-ink-muted">{r.evidence ? `${r.evidence} bằng chứng` : 'Chưa có bằng chứng'}</span>
+        </span>
+      </li>
+    ))}
+  </ul>
+</div>

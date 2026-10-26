@@ -1,0 +1,27 @@
+id: embedding
+label_vi: Vector nhúng (embedding)
+label_en: Embedding
+emoji: "📍"
+layer: just-in-time
+group: agents-integration
+one_liner: Cách biến câu chữ thành dãy số sao cho những ý giống nhau thì nằm gần nhau.
+beginner_explanation: >-
+  Máy tính không hiểu nghĩa chữ, nhưng rất giỏi so số. Embedding biến mỗi câu thành một "toạ độ" trong không gian ý
+  nghĩa. "Con mèo ngủ trên ghế" và "chú mèo nằm trên sofa" sẽ có toạ độ gần nhau dù khác chữ. Nhờ vậy máy tìm được đoạn
+  văn đúng ý, không cần trùng từ khoá.
+analogy: >-
+  Như sắp xếp sách trong thư viện theo chủ đề. Sách nấu ăn đứng gần nhau, sách du lịch đứng gần nhau, dù tên sách khác hẳn.
+rigorous_explanation: >-
+  Embedding là vector số thực nhiều chiều do một mô hình mã hoá sinh ra, sao cho độ tương tự ngữ nghĩa xấp xỉ bằng độ
+  tương tự hình học (thường là cosine). Embedding là nền tảng của tìm kiếm ngữ nghĩa, RAG, phân cụm và gợi ý. Nó phản
+  ánh dữ liệu huấn luyện của mô hình mã hoá, nên có thể kém với tiếng Việt chuyên ngành hoặc từ lóng.
+misconceptions:
+  - Embedding lưu nguyên văn bản. Nó là dãy số tóm lược ý nghĩa, dù đôi khi vẫn có thể suy ngược ra một phần nội dung.
+examples:
+  - Tìm "món chay dễ nấu" vẫn ra công thức "đậu hũ sốt cà chua" dù không trùng chữ nào.
+when_you_need_it: Khi bạn tìm hiểu cách AI tìm đúng đoạn tài liệu hoặc xây hệ thống hỏi đáp riêng.
+when_you_dont: Người dùng ChatGPT trên điện thoại không cần biết khái niệm này.
+related: [rag, token, llm]
+prerequisites: [token]
+last_reviewed_at: "2026-10-26"
+confidence: high

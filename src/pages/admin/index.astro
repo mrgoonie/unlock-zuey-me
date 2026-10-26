@@ -1,7 +1,32 @@
 ---
+/** Observer dashboard: consenting learners. Admins only; everyone else gets a plain 404. */
 import AppLayout from '../../layouts/AppLayout.astro';
+import AdminNotFound from '../../components/admin/AdminNotFound.astro';
+import LearnerTable from '../../components/admin/LearnerTable.astro';
+import { listObservedLearners, type ObservedLearner } from '../../lib/observer/queries';
+
+const isAdmin = Astro.locals.learner?.isAdmin === true;
+let learners: ObservedLearner[] = [];
+let failed = false;
+if (!isAdmin) {
+  Astro.response.status = 404;
+} else {
+  Astro.response.headers.set('cache-control', 'no-store');
+  try {
+    learners = await listObservedLearners(Astro.locals.runtime.env.DB);
+  } catch (err) {
+    console.error('admin: learner list failed', err);
+    failed = true;
+  }
+}
 ---
-<AppLayout title="Quan sát">
-  <h1 class="text-2xl font-bold mt-2">Quan sát</h1>
-  <p class="mt-2 text-ink-muted">Dashboard quan sát hành trình học (chỉ khi người học đồng ý).</p>
-</AppLayout>
+{isAdmin ? (
+  <AppLayout title="Quan sát">
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <h1 class="text-2xl font-bold mt-2">Quan sát hành trình học</h1>
+    <p class="mt-2 mb-4 text-sm text-ink-muted">Chỉ hiện người học đã đồng ý. Khi họ tắt quyền, dữ liệu biến mất ngay ở lần tải tiếp theo.</p>
+    {failed ? <p role="alert" class="card text-danger">Không tải được danh sách. Thử tải lại trang.</p> : <LearnerTable learners={learners} />}
+  </AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy"><AdminNotFound /></AppLayout>
+)}

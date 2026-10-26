@@ -1,7 +1,68 @@
 ---
+/** Public, shareable certificate (no learner session). 404 when unknown or revoked; 503 on DB failure. */
 import AppLayout from '../../layouts/AppLayout.astro';
+import NotFound from '../../components/ui/NotFound.astro';
+import ShareLink from '../../components/progress/ShareLink';
+import { COMPETENCY_LABEL, formatDateVi, pct } from '../../lib/ui/labels';
+import { getPublicCertificate, type PublicCertificate } from '../../lib/ui/public-certificate';
+
+const code = Astro.params.code ?? '';
+let cert: PublicCertificate | null = null;
+let failed = false;
+try {
+  cert = await getPublicCertificate(Astro.locals.runtime?.env?.DB, code);
+} catch (err) {
+  console.error('certificate lookup failed', err instanceof Error ? err.message : err);
+  failed = true;
+}
+if (failed) Astro.response.status = 503;
+else if (!cert) Astro.response.status = 404;
+
+const url = new URL(`/certificates/${encodeURIComponent(code)}`, Astro.url.origin).toString();
+const title = cert ? `${cert.displayName} · Chứng nhận AI Unlocked cấp ${cert.level}` : 'Chứng nhận';
+const description = cert
+  ? `${cert.displayName} đã đạt cấp ${cert.level} trên AI Unlocked: dùng AI cho việc thật và biết tự kiểm chứng.`
+  : undefined;
 ---
-<AppLayout title="Chứng nhận" bare>
-  <h1 class="text-2xl font-bold mt-2">Chứng nhận</h1>
-  <p class="mt-2 text-ink-muted">Chứng nhận hoàn thành AI Unlocked.</p>
+<AppLayout title={title} description={description} bare>
+  <Fragment slot="head">
+    {cert && <meta property="og:type" content="website" />}
+    {cert && <meta property="og:url" content={url} />}
+    {cert && <link rel="canonical" href={url} />}
+    {!cert && <meta name="robots" content="noindex" />}
+  </Fragment>
+
+  {failed ? (
+    <section class="flex min-h-[50dvh] flex-col items-center justify-center gap-4 text-center" role="alert">
+      <p class="text-5xl" aria-hidden="true">🌧️</p>
+      <h1 class="text-2xl font-bold">Chưa tải được chứng nhận</h1>
+      <p class="text-ink-muted">Máy chủ đang bận. Hãy thử tải lại sau ít phút.</p>
+      <a href="" class="btn-primary">Tải lại</a>
+    </section>
+  ) : !cert ? (
+    <NotFound what="chứng nhận này" backHref="/" backLabel="Về AI Unlocked" />
+  ) : (
+    <article class="mx-auto flex max-w-lg flex-col gap-6" data-testid="certificate">
+      <div class="card flex flex-col items-center gap-3 border-2 border-accent/40 px-6 py-8 text-center">
+        <p class="text-sm font-semibold uppercase tracking-widest text-accent">🔓 AI Unlocked · Chứng nhận</p>
+        <p class="text-ink-muted">Chứng nhận rằng</p>
+        <h1 class="text-3xl font-bold leading-tight">{cert.displayName}</h1>
+        <p>đã đạt <strong class="text-accent">cấp {cert.level}</strong> bằng cách dùng AI cho những việc thật và tự kiểm chứng kết quả.</p>
+        {cert.missionsCompleted !== null && <p class="chip">✅ {cert.missionsCompleted} mission có bằng chứng đạt</p>}
+        {cert.competencies.length > 0 && (
+          <ul class="mt-2 grid w-full grid-cols-2 gap-2 text-left">
+            {cert.competencies.map((c) => (
+              <li class="rounded-xl bg-bg p-2">
+                <span class="flex justify-between text-sm"><span>{COMPETENCY_LABEL[c.id].emoji} {COMPETENCY_LABEL[c.id].name}</span><span class="font-semibold">{pct(c.score)}%</span></span>
+                <span class="bar mt-1" aria-hidden="true"><span class="bar-fill" style={`width:${pct(c.score)}%`}></span></span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p class="mt-2 text-xs text-ink-muted">Cấp ngày {formatDateVi(cert.issuedAt)} · Mã {cert.code}</p>
+      </div>
+      <ShareLink client:load url={url} title="Chứng nhận AI Unlocked" text={description ?? ''} />
+      <a href="/" class="text-center text-sm font-semibold text-accent">Bạn cũng muốn thử? Bắt đầu miễn phí →</a>
+    </article>
+  )}
 </AppLayout>

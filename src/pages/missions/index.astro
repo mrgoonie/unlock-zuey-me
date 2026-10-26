@@ -1,7 +1,75 @@
 ---
+/** Mission list with competency + time filters (plain links with query params: works without JS). */
 import AppLayout from '../../layouts/AppLayout.astro';
+import MissionCard from '../../components/mission/MissionCard.astro';
+import { COMPETENCIES, type CompetencyId } from '../../lib/content/schema';
+import { COMPETENCY_LABEL } from '../../lib/ui/labels';
+import { loadMissionList } from '../../lib/ui/server-data';
+
+const TIME_FILTERS = [
+  { value: '', label: 'Mọi thời lượng' },
+  { value: '10', label: '≤ 10 phút' },
+  { value: '20', label: '≤ 20 phút' },
+  { value: '45', label: '≤ 45 phút' },
+];
+
+const params = Astro.url.searchParams;
+const rawC = params.get('c') ?? '';
+const competency = (COMPETENCIES as readonly string[]).includes(rawC) ? (rawC as CompetencyId) : null;
+const rawT = params.get('t') ?? '';
+const maxMinutes = TIME_FILTERS.some((t) => t.value === rawT && rawT) ? Number(rawT) : null;
+
+const all = await loadMissionList(Astro.locals);
+const missions = all.filter((m) =>
+  (!competency || m.competencies.includes(competency)) && (!maxMinutes || m.estimatedMinutes <= maxMinutes));
+
+const href = (c: string | null, t: number | null) => {
+  const q = new URLSearchParams();
+  if (c) q.set('c', c);
+  if (t) q.set('t', String(t));
+  const s = q.toString();
+  return s ? `/missions?${s}` : '/missions';
+};
+const chipClass = (on: boolean) => ['chip min-h-[40px] px-3 text-sm', on ? 'bg-accent text-accent-ink' : ''];
 ---
 <AppLayout title="Mission">
-  <h1 class="text-2xl font-bold mt-2">Mission</h1>
-  <p class="mt-2 text-ink-muted">Việc thật bạn có thể làm cùng AI.</p>
+  <div class="flex flex-col gap-5 pt-2">
+    <header class="flex flex-col gap-1">
+      <h1 class="text-2xl font-bold">Mission</h1>
+      <p class="text-ink-muted">Mỗi mission là một việc thật. Làm cùng AI, tự kiểm chứng, nhận nhận xét.</p>
+    </header>
+
+    <nav aria-label="Lọc theo năng lực" class="-mx-4 overflow-x-auto px-4">
+      <ul class="flex w-max gap-2">
+        <li><a href={href(null, maxMinutes)} class:list={chipClass(!competency)} aria-current={!competency ? 'true' : undefined}>Tất cả</a></li>
+        {COMPETENCIES.map((c) => (
+          <li>
+            <a href={href(c, maxMinutes)} class:list={chipClass(competency === c)} aria-current={competency === c ? 'true' : undefined}>
+              <span aria-hidden="true">{COMPETENCY_LABEL[c].emoji}</span> {COMPETENCY_LABEL[c].name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+    <nav aria-label="Lọc theo thời lượng" class="-mx-4 overflow-x-auto px-4">
+      <ul class="flex w-max gap-2">
+        {TIME_FILTERS.map((t) => {
+          const on = String(maxMinutes ?? '') === t.value;
+          return <li><a href={href(competency, t.value ? Number(t.value) : null)} class:list={chipClass(on)} aria-current={on ? 'true' : undefined}>⏱️ {t.label}</a></li>;
+        })}
+      </ul>
+    </nav>
+
+    <p class="text-sm text-ink-muted" aria-live="polite">{missions.length} mission</p>
+    {missions.length ? (
+      <ul class="flex flex-col gap-3">
+        {missions.map((m) => <li><MissionCard mission={m} /></li>)}
+      </ul>
+    ) : (
+      <div class="card flex flex-col items-start gap-3">
+        <p>Chưa có mission nào khớp bộ lọc này.</p>
+        <a href="/missions" class="btn-ghost">Bỏ lọc</a>
+      </div>
+    )}
+  </div>
 </AppLayout>

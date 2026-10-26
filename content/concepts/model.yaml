@@ -1,0 +1,27 @@
+id: model
+label_vi: Mô hình (model)
+label_en: Model
+emoji: "🧪"
+layer: foundation
+group: fundamentals
+one_liner: Phiên bản "bộ não" cụ thể mà ứng dụng AI đang dùng. Mỗi model mạnh yếu khác nhau.
+beginner_explanation: >-
+  ChatGPT là ứng dụng, còn bên trong nó có thể chạy nhiều model khác nhau. Có model nhanh và rẻ, có model chậm hơn
+  nhưng suy nghĩ kỹ hơn. Khi bạn chọn model trong app, bạn đang chọn "bộ não" sẽ trả lời mình.
+analogy: >-
+  Như ứng dụng gọi xe và các loại xe. App chỉ có một, nhưng bạn có thể chọn xe máy cho nhanh, hay xe 7 chỗ cho cả nhà.
+rigorous_explanation: >-
+  Model là tập tham số (trọng số) đã được huấn luyện cùng kiến trúc mạng tương ứng. Ứng dụng (ChatGPT, Gemini app...)
+  bọc model bằng giao diện, system prompt, công cụ và bộ nhớ. Cùng một ứng dụng có thể cho kết quả khác nhau khi đổi
+  model, và nhà cung cấp thay model định kỳ.
+misconceptions:
+  - ChatGPT là một model. ChatGPT là ứng dụng, có thể chạy nhiều model khác nhau.
+  - Model mới nhất luôn tốt nhất cho mọi việc. Có việc model nhanh, rẻ vẫn đủ tốt.
+examples:
+  - Chọn chế độ "suy nghĩ" trong app để AI giải một bài toán khó cho con.
+  - Dùng model nhanh để viết lại một tin nhắn ngắn.
+when_you_need_it: Khi kết quả chưa tốt và bạn muốn thử "bộ não" khác, hoặc khi chọn gói trả phí.
+related: [llm, slm, ai-vendors-and-models, training-vs-inference]
+prerequisites: [ai]
+last_reviewed_at: "2026-10-26"
+confidence: high

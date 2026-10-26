@@ -1,7 +1,62 @@
 ---
+/** Lab list. "Đã xong" markers are filled in client-side from /api/v1/me plus the device-local done list. */
 import AppLayout from '../../layouts/AppLayout.astro';
+import { LABS } from '../../lib/labs/registry';
 ---
-<AppLayout title="Lab">
-  <h1 class="text-2xl font-bold mt-2">Lab</h1>
-  <p class="mt-2 text-ink-muted">Thí nghiệm nhỏ để hiểu AI hoạt động thế nào.</p>
+<AppLayout title="Lab" description="Thí nghiệm nhỏ, chơi mà hiểu: AI đoán chữ, nhớ ngữ cảnh và bịa chuyện thế nào.">
+  <h1 class="mt-2 text-2xl font-bold">🧪 Lab</h1>
+  <p class="mt-2 text-ink-muted">Thí nghiệm nhỏ để hiểu AI hoạt động thế nào. Mỗi lab vài phút, không cần AI thật, sai thoải mái.</p>
+  <p class="mt-1 text-sm text-ink-muted" id="labs-progress" aria-live="polite"></p>
+
+  <ul class="mt-4 grid gap-3">
+    {LABS.map((lab) => (
+      <li>
+        <a href={`/labs/${lab.id}`} data-lab-id={lab.id} class="card flex min-h-[44px] items-start gap-3 transition hover:border-accent">
+          <span class="text-4xl leading-none" aria-hidden="true">{lab.emoji}</span>
+          <span class="min-w-0 flex-1">
+            <span class="flex flex-wrap items-center gap-2">
+              <span class="font-semibold">{lab.title}</span>
+              <span class="chip">⏱️ {lab.minutes} phút</span>
+              <span class="chip hidden bg-calm/15 text-calm" data-done-chip>✅ Đã xong</span>
+            </span>
+            <span class="mt-1 block text-sm text-ink-muted">{lab.summary}</span>
+            <span class="mt-2 block text-sm font-semibold text-accent" data-cta>Bắt đầu →</span>
+          </span>
+        </a>
+      </li>
+    ))}
+  </ul>
 </AppLayout>
+
+<script>
+  import { readLocalLabsDone } from '../../lib/labs/lab-recorder';
+
+  function mark(done: Set<string>) {
+    const cards = document.querySelectorAll<HTMLAnchorElement>('[data-lab-id]');
+    let count = 0;
+    cards.forEach((card) => {
+      if (!done.has(card.dataset.labId ?? '')) return;
+      count++;
+      card.querySelector('[data-done-chip]')?.classList.remove('hidden');
+      const cta = card.querySelector('[data-cta]');
+      if (cta) cta.textContent = 'Chơi lại →';
+    });
+    const progress = document.getElementById('labs-progress');
+    if (progress && count > 0) progress.textContent = `Bạn đã xong ${count}/${cards.length} lab. Giỏi quá!`;
+  }
+
+  const done = new Set(readLocalLabsDone());
+  mark(done);
+  fetch('/api/v1/me', { credentials: 'same-origin' })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data: unknown) => {
+      const labsDone = (data as { progress?: { labsDone?: unknown } } | null)?.progress?.labsDone;
+      if (Array.isArray(labsDone)) {
+        labsDone.filter((id): id is string => typeof id === 'string').forEach((id) => done.add(id));
+        mark(done);
+      }
+    })
+    .catch(() => {
+      // Progress is a nice-to-have; the list works without it.
+    });
+</script>

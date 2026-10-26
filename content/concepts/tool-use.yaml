@@ -1,0 +1,26 @@
+id: tool-use
+label_vi: Dùng công cụ (tool use)
+label_en: Tool use / function calling
+emoji: "🛠️"
+layer: just-in-time
+group: agents-integration
+one_liner: AI gọi các công cụ bên ngoài như tìm kiếm, máy tính, lịch, để làm việc nó không tự làm tốt.
+beginner_explanation: >-
+  Bản thân AI chỉ viết chữ. Nhưng app có thể cho nó "cầm" công cụ, như tìm trên Google, chạy phép tính, đọc file, tạo
+  ảnh. Khi bạn thấy dòng "Đang tìm kiếm..." hay "Đang phân tích..." trong ChatGPT, đó là AI đang dùng công cụ.
+analogy: Như người làm bếp biết dùng cân, nhiệt kế, đồng hồ hẹn giờ thay vì đoán bằng mắt.
+rigorous_explanation: >-
+  Với tool use (function calling), mô hình được mô tả danh sách công cụ kèm tham số. Thay vì trả lời ngay, nó sinh ra một
+  lời gọi có cấu trúc. Ứng dụng thực thi công cụ, đưa kết quả trở lại ngữ cảnh, và mô hình tiếp tục. Mô hình vẫn có thể
+  chọn sai công cụ, truyền sai tham số hoặc hiểu sai kết quả.
+misconceptions:
+  - Có dùng công cụ thì kết quả chắc chắn đúng. AI vẫn có thể đọc sai hoặc tóm tắt sai kết quả công cụ trả về.
+examples:
+  - ChatGPT chạy công cụ phân tích để cộng đúng bảng chi tiêu tháng thay vì nhẩm.
+  - AI dùng công cụ tìm kiếm để tra giá vé mới nhất.
+when_you_need_it: Khi việc cần dữ liệu mới, tính toán chính xác, hoặc thao tác với file, lịch, email.
+when_you_dont: Viết, dịch, giải thích kiến thức chung thường không cần công cụ.
+related: [agent, mcp, api, web-search]
+prerequisites: [llm]
+last_reviewed_at: "2026-10-26"
+confidence: high

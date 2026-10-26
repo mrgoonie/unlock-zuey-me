@@ -1,0 +1,17 @@
+---
+/** Soft streak: active days with one rest day allowed per 7. Explained in a disclosure so nobody feels punished. */
+import type { StreakInfo } from '../../lib/learning/types';
+
+interface Props { streak: StreakInfo }
+const { streak } = Astro.props;
+---
+<details class="group">
+  <summary class="chip min-h-[36px] cursor-pointer list-none bg-warn/15 text-ink" data-testid="streak-chip">
+    🔥 {streak.current} ngày{streak.restDaysLeft > 0 ? ` · còn ${streak.restDaysLeft} ngày nghỉ` : ''}
+    <span class="sr-only">(bấm để xem giải thích)</span>
+  </summary>
+  <p class="mt-2 max-w-xs rounded-xl border border-line bg-surface p-3 text-sm text-ink-muted">
+    Chuỗi ngày “mềm”: cứ 7 ngày bạn được nghỉ 1 ngày mà chuỗi không bị mất.
+    {streak.activeToday ? ' Hôm nay bạn đã học rồi, nghỉ ngơi thoải mái nhé.' : ' Làm một mission hoặc lab hôm nay để giữ chuỗi.'}
+  </p>
+</details>

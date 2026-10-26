@@ -19,7 +19,8 @@ competency_targets:
   - { id: describe, weight: 2 }
   - { id: verify, weight: 2 }
   - { id: reflect, weight: 1 }
-concept_refs: [prompt, context, hallucination]
+concept_refs: [prompt, context, hallucination, knowledge-cutoff]
+transfer_variant: plan-family-trip
 steps:
   - id: intro
     type: intro
