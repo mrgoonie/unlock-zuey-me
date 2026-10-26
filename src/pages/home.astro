@@ -7,7 +7,7 @@ import StreakChip from '../components/progress/StreakChip.astro';
 import GuestBanner from '../components/home/GuestBanner.astro';
 import { getMission } from '../lib/content/loader';
 import { loadMissionList, loadProgress } from '../lib/ui/server-data';
-import { LAB_LINKS } from '../lib/ui/lab-links';
+import { LABS } from '../lib/labs/registry';
 
 const learner = Astro.locals.learner;
 const [progress, missions] = await Promise.all([loadProgress(Astro.locals), loadMissionList(Astro.locals)]);
@@ -21,8 +21,8 @@ const active = progress?.activeRuns
   .find((x) => x.mission);
 const latestBadge = progress?.badges.slice().sort((a, b) => b.grantedAt.localeCompare(a.grantedAt))[0];
 // Rotate the featured lab by day so the card feels fresh; prefer labs not done yet.
-const labsLeft = LAB_LINKS.filter((l) => !progress?.labsDone.includes(l.id));
-const labPool = labsLeft.length ? labsLeft : LAB_LINKS;
+const labsLeft = LABS.filter((l) => !progress?.labsDone.includes(l.id));
+const labPool = labsLeft.length ? labsLeft : LABS;
 const lab = labPool[Math.floor(Date.now() / 86_400_000) % labPool.length];
 const name = learner?.kind === 'member' && learner.displayName ? learner.displayName : 'bạn';
 ---
@@ -64,11 +64,11 @@ const name = learner?.kind === 'member' && learner.displayName ? learner.display
 
     <section aria-labelledby="lab">
       <h2 id="lab" class="sr-only">Lab gợi ý</h2>
-      <a href={lab.href} class="card flex items-center gap-3 transition hover:border-accent" data-testid="home-lab">
+      <a href={`/labs/${lab.id}`} class="card flex items-center gap-3 transition hover:border-accent" data-testid="home-lab">
         <span aria-hidden="true" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-calm/10 text-2xl">{lab.emoji}</span>
         <span class="flex flex-col">
-          <span class="font-semibold">🧪 Lab: {lab.name}</span>
-          <span class="text-sm text-ink-muted">{lab.tagline}</span>
+          <span class="font-semibold">🧪 Lab: {lab.title}</span>
+          <span class="text-sm text-ink-muted">{lab.summary} · ~{lab.minutes} phút</span>
         </span>
       </a>
     </section>
