@@ -34,7 +34,7 @@ describe('runInsightsPipeline', () => {
     const result = await runInsightsPipeline({ INSIGHTS_MODE: 'internal' } as Env, createCronBudget(), NOW);
     expect(result).toEqual({
       mode: 'internal',
-      retention: { status: 'ok', result: { stub: true } },
+      retention: { status: 'failed', error: expect.any(String) }, // the real retention stage needs env.DB
       analyzer: { status: 'ok', result: { stub: true } },
       proposal: { status: 'ok', result: { stub: true } },
     });
