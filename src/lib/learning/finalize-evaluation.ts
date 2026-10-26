@@ -1,7 +1,9 @@
 /**
  * Persists an evaluation and its consequences. One atomic batch writes the evaluation, the run status, the
  * XP ledger row (passed only; keyed by mission, so a mission pays XP once per learner: retries and later
- * passing runs of the same mission earn 0 XP) and competency EMAs (graded only).
+ * passing runs of the same mission earn 0 XP) and competency EMAs (graded only, and only until the mission's
+ * first pass: once a learner has passed a mission, later evaluations of it are still graded and shown but
+ * no longer move competency scores, so repeating an easy mission cannot inflate them).
  * The batch is guarded on the claim: the evaluation is inserted only while the run is still `evaluating` at
  * the claimed `rev`, and every other write requires that evaluation row. A stale evaluation that finishes
  * after the run was re-claimed (e.g. a retry of a stuck evaluation) therefore writes nothing and gets a
@@ -24,6 +26,15 @@ import type { Evaluation, LearnerContext, MissionRun, Rewards, Source } from './
 import { computeMissionXp, levelForXp } from './xp-and-levels';
 
 export const MISSION_PASS_XP_REASON = 'mission_pass';
+
+/** True when the learner already has a passing evaluation of this mission (any run). */
+export async function hasPassedMission(db: D1Database, learnerId: string, missionId: string): Promise<boolean> {
+  const row = await db.prepare(
+    `SELECT 1 AS x FROM evaluations e JOIN mission_runs r ON r.id = e.run_id
+      WHERE e.learner_id = ? AND r.mission_id = ? AND e.status = 'passed' LIMIT 1`,
+  ).bind(learnerId, missionId).first<{ x: number }>();
+  return row !== null;
+}
 
 export async function finalizeEvaluation(env: Env, input: {
   /** The run as claimed by the submit batch: status `evaluating` at the post-claim `rev`. */
@@ -54,7 +65,7 @@ export async function finalizeEvaluation(env: Env, input: {
       `INSERT OR IGNORE INTO xp_ledger (id, learner_id, amount, reason, ref, created_at) SELECT ?, ?, ?, ?, ?, ? WHERE ${ifEvaluated}`,
     ).bind(newId('xp'), learner.id, xp.total, MISSION_PASS_XP_REASON, mission.id, at, evaluation.id));
   }
-  if (draft.status !== 'failed') {
+  if (draft.status !== 'failed' && !(await hasPassedMission(db, learner.id, mission.id))) {
     const current = new Map((await competencyRows(db, learner.id)).map((c) => [c.competency, c]));
     for (const [competency, observed] of competencyAverages(draft.criteria)) {
       const prev = current.get(competency);

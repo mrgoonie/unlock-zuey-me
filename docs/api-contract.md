@@ -21,8 +21,8 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 | `POST /api/v1/missions/:id/start` | `{ again?: boolean }` (body optional) | `{ run: MissionRun }`: the open run, else the latest completed run (result, read-only), else a new run. `again: true` starts a new run of a completed mission ("Làm lại") |
 | `GET /api/v1/runs/:id` | – | `{ run, mission: LearnerMission, evaluation: Evaluation \| null, answerKey: AnswerKey }` |
 | `PATCH /api/v1/runs/:id/answers` | `{ stepId, answers, currentStep?, rev }` | `{ run }`; `409 conflict` with `{ error, run }` when `rev` is stale |
-| `POST /api/v1/runs/:id/hints` | `{ stepId, level: 1..4 }` | `HintResult` |
-| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards (`403 forbidden` on change) |
+| `POST /api/v1/runs/:id/hints` | `{ stepId, level: 1..4 }` | `HintResult`; charged once per (run, step, level): a retry returns the stored hint (the authored static hint while the first request is still generating or when the AI fails). Worst case ~45 s; the browser waits 55 s |
+| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards: `PATCH …/answers` or submit changing it gets `403 { error, run }` with the current run |
 | `POST /api/v1/runs/:id/submit` | `{ idempotencyKey, confidence?: 0..100, imageKeys?: string[] }` | `SubmitResult & { answerKey }` |
 | `POST /api/v1/evidence/upload` | multipart `file` (image ≤ 5 MB) | `{ key }` |
 | `GET /api/v1/evidence/:key` | – | image bytes (owner, or admin observer with consent) |
@@ -30,7 +30,7 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 | `POST /api/v1/labs/:id/result` | `{ result: object }` | `{ labsDone: string[], newBadges }` (labs never grant XP) |
 | `POST /api/v1/concepts/:id/view` | – | `{ ok: true }` |
 | `GET /api/v1/recap?period=week` | – | `{ period, missionsCompleted, xpGained, competencyDeltas, highlights: string[], reflections: string[] }` |
-| `POST /api/v1/certificates` | `{ displayName }` | `{ code, url }` (`403 forbidden` if not eligible) |
+| `POST /api/v1/certificates` | `{ displayName }` | `{ code, url }` (`403 forbidden` if not eligible; only the first passing evaluation per mission counts toward the verify ≥ 80% condition) |
 | `POST /api/v1/events` | `{ name, missionId?, runId?, props? }` (allow-listed client events only) | `{ ok: true }` |
 
 Answer keys: the browser only gets `LearnerMission` (`src/lib/learning/learner-mission-view.ts`), which has no claim verdicts, quiz/prediction answers, explanations, static hints or rubric checks. `answerKey` (`"stepId:itemId"` → `{ correct, explanation }`) holds only items revealed on the server, or every item once the run is `completed`.

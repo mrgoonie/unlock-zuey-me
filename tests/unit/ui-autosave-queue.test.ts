@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Answers, MissionRun } from '../../src/lib/learning/types';
 import { ApiError } from '../../src/lib/ui/api-client';
-import { createSaveQueue, type SaveState } from '../../src/lib/ui/autosave-queue';
+import { createSaveQueue, LOCKED_ANSWER_NOTICE, type SaveState } from '../../src/lib/ui/autosave-queue';
 import { emptyDraft, setField, type RunDraft } from '../../src/lib/ui/run-draft';
 
 const run = (rev: number, answers: Answers = {}): MissionRun => ({
@@ -122,5 +122,91 @@ describe('autosave queue', () => {
     expect(await queue.settle()).toBe(true);
     expect(draft.dirty).toEqual({});
     expect(current.rev).toBe(2);
+  });
+
+  describe('locked (revealed) answers', () => {
+    /** Server where `quiz:q1` was revealed (locked at 'a'); 403 when a save changes it, like the engine. */
+    function lockedHarness(opts: { runInBody: boolean; lockedField?: string }) {
+      const lockedField = opts.lockedField ?? 'q1';
+      let server: MissionRun = { ...run(5, { quiz: { q1: 'a', q2: 'x' } }), revealed: ['quiz:q1'] };
+      let current: MissionRun = { ...run(5, { quiz: { q1: 'a', q2: 'x' } }), revealed: [] }; // stale tab: reveal not seen
+      let draft: RunDraft = emptyDraft('run_1', 'm');
+      draft = { ...draft, answers: { quiz: { q1: 'a', q2: 'x' } } };
+      const calls: Array<{ stepId: string; answers: Answers[string] }> = [];
+      const states: SaveState[] = [];
+      const notices: string[] = [];
+      let refetches = 0;
+      const queue = createSaveQueue({
+        getDraft: () => draft, getRun: () => current, setDraft: (d) => { draft = d; }, setRun: (r) => { current = r; },
+        currentStepId: () => undefined, onState: (st) => states.push(st), onNotice: (m) => notices.push(m),
+        refetchRun: async () => { refetches += 1; return server; },
+        save: async (_id, input) => {
+          calls.push({ stepId: input.stepId, answers: input.answers });
+          if (input.rev !== server.rev) throw new ApiError('conflict', 'stale', 409, { error: { code: 'conflict' }, run: server });
+          if (input.stepId === 'quiz' && input.answers[lockedField] !== server.answers.quiz?.[lockedField]) {
+            const body = { error: { code: 'forbidden', message: 'locked' }, ...(opts.runInBody ? { run: server } : {}) };
+            throw new ApiError('forbidden', 'locked', 403, body);
+          }
+          server = { ...server, rev: server.rev + 1, answers: { ...server.answers, [input.stepId]: input.answers } };
+          return { run: server };
+        },
+      });
+      return {
+        queue, calls, states, notices,
+        edit: (step: string, field: string, value: string) => { draft = setField(draft, step, field, value); },
+        draft: () => draft, server: () => server, refetches: () => refetches,
+      };
+    }
+
+    it('restores the locked field from the 403 body, keeps the other edits and saves the other steps', async () => {
+      const h = lockedHarness({ runInBody: true });
+      h.edit('quiz', 'q1', 'b'); // locked on the server
+      h.edit('quiz', 'q2', 'y'); // free field in the same step
+      h.edit('notes', 'text', 'hello'); // another step
+      expect(await h.queue.settle()).toBe(true);
+      expect(h.draft().answers.quiz).toEqual({ q1: 'a', q2: 'y' });
+      expect(h.draft().dirty).toEqual({});
+      expect(h.server().answers).toEqual({ quiz: { q1: 'a', q2: 'y' }, notes: { text: 'hello' } });
+      expect(h.notices).toEqual([LOCKED_ANSWER_NOTICE]);
+      expect(h.states.at(-1)).toBe('saved');
+      expect(h.refetches()).toBe(0);
+      expect(h.queue.pending()).toBe(false);
+    });
+
+    it('refetches the run when the 403 body carries none', async () => {
+      const h = lockedHarness({ runInBody: false });
+      h.edit('quiz', 'q1', 'b');
+      expect(await h.queue.settle()).toBe(true);
+      expect(h.refetches()).toBe(1);
+      expect(h.draft().answers.quiz?.q1).toBe('a');
+      expect(h.draft().dirty).toEqual({});
+      expect(h.notices).toEqual([LOCKED_ANSWER_NOTICE]);
+    });
+
+    it('resets the whole step to the server copy when restoring the known locked fields was not enough', async () => {
+      // The server locks a field the client cannot map from `revealed` (q2): the second 403 resets the step.
+      const h = lockedHarness({ runInBody: true, lockedField: 'q2' });
+      h.edit('quiz', 'q2', 'y');
+      h.edit('notes', 'text', 'kept');
+      expect(await h.queue.settle()).toBe(true);
+      expect(h.draft().answers.quiz).toEqual({ q1: 'a', q2: 'x' });
+      expect(h.server().answers.notes).toEqual({ text: 'kept' });
+      expect(h.draft().dirty).toEqual({});
+    });
+
+    it('reports failure when no server run can be obtained', async () => {
+      let draft = setField(emptyDraft('run_1', 'm'), 'quiz', 'q1', 'b');
+      let current = run(1);
+      const states: SaveState[] = [];
+      const queue = createSaveQueue({
+        getDraft: () => draft, getRun: () => current, setDraft: (d) => { draft = d; }, setRun: (r) => { current = r; },
+        currentStepId: () => undefined, onState: (st) => states.push(st),
+        refetchRun: async () => { throw new ApiError('network', 'offline', 0); },
+        save: async () => { throw new ApiError('forbidden', 'locked', 403, { error: { code: 'forbidden' } }); },
+      });
+      expect(await queue.flush()).toBe(false);
+      expect(states.at(-1)).toBe('offline');
+      expect(draft.dirty).toEqual({ quiz: ['q1'] });
+    });
   });
 });

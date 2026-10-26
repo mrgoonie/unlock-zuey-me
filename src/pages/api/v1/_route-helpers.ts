@@ -5,7 +5,7 @@
  */
 import type { APIContext, APIRoute } from 'astro';
 import { apiError, json, toErrorResponse } from '../../../lib/http/api-response';
-import { RunConflictError } from '../../../lib/learning/errors';
+import { RevealedAnswerLockedError, RunConflictError } from '../../../lib/learning/errors';
 import type { LearningDeps } from '../../../lib/learning/service';
 import type { LearnerContext } from '../../../lib/learning/types';
 
@@ -13,6 +13,7 @@ export type LearnerHandler = (ctx: APIContext, learner: LearnerContext, deps: Le
 
 export function errorResponse(err: unknown): Response {
   if (err instanceof RunConflictError) return json({ error: { code: 'conflict', message: err.message }, run: err.run }, 409);
+  if (err instanceof RevealedAnswerLockedError) return json({ error: { code: 'forbidden', message: err.message }, run: err.run }, 403);
   return toErrorResponse(err);
 }
 

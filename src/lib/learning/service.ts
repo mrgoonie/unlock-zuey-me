@@ -5,8 +5,6 @@
  * Every function takes the caller's LearnerContext and scopes all reads/writes to `learner.id`
  * (another learner's run is LearningError('not_found'), never leaked).
  */
-import { getMission } from '../content/loader';
-import type { Mission } from '../content/schema';
 import { revealAnswerImpl } from './answer-reveals';
 import { requestHintImpl } from './hints';
 import {
@@ -17,7 +15,6 @@ import { submitEvidenceImpl } from './submit-evidence';
 import type {
   AnswerKey, AnswerKeyEntry, Answers, HintResult, LearnerContext, MissionListItem, MissionRun, ProgressSummary, Source, SubmitResult,
 } from './types';
-import { LearningError } from './types';
 
 export interface LearningDeps {
   env: Env;
@@ -33,13 +30,6 @@ export async function getProgress(deps: LearningDeps, learner: LearnerContext): 
 
 export async function listMissions(deps: LearningDeps, learner: LearnerContext): Promise<MissionListItem[]> {
   return listMissionsImpl(deps, learner);
-}
-
-/** A published mission's full content (steps, rubric), or not_found. */
-export function getMissionContent(missionId: string): Mission {
-  const m = getMission(missionId);
-  if (!m || m.status !== 'published') throw new LearningError('not_found', 'Không tìm thấy mission này.');
-  return m;
 }
 
 /**

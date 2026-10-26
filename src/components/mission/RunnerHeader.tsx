@@ -1,4 +1,4 @@
-/** Runner top bar: exit link, progress dots (current/done/todo) and the autosave status. */
+/** Runner top bar: exit link, progress dots (current/done/todo), the autosave status and its notices. */
 import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import type { SaveState } from './use-run-autosave';
 
@@ -14,11 +14,13 @@ interface Props {
   stepIndex: number;
   completed: boolean[];
   saveState: SaveState;
+  /** Calm notice from autosave (e.g. a revealed answer was kept as it was). */
+  notice?: string | null;
   /** Dots are clickable while answering (free navigation between steps). */
   onJump?: (i: number) => void;
 }
 
-export default function RunnerHeader({ mission, stepIndex, completed, saveState, onJump }: Props) {
+export default function RunnerHeader({ mission, stepIndex, completed, saveState, notice, onJump }: Props) {
   return (
     <header className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -28,6 +30,7 @@ export default function RunnerHeader({ mission, stepIndex, completed, saveState,
           {SAVE_COPY[saveState]}
         </p>
       </div>
+      <p role="status" className={notice ? 'text-center text-xs text-ink-muted' : 'sr-only'} data-testid="save-notice">{notice ?? ''}</p>
       <nav aria-label="Các bước">
         <ol className="flex items-center justify-center gap-1.5" data-testid="progress-dots">
           {mission.steps.map((s, i) => {

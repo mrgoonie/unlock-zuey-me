@@ -85,7 +85,7 @@ export async function submitEvidenceImpl(
   const answers = previous ? previous.answers : input.answers ? mergeAnswers(run.answers, validateAnswersDoc(mission, input.answers)) : run.answers;
   const imageKeys = [...new Set(input.imageKeys ?? previous?.imageKeys ?? [])];
   assertAnswersSize(answers);
-  if (!previous) assertRevealedUnchanged(mission, run.revealed, run.answers, answers);
+  if (!previous) assertRevealedUnchanged(mission, { ...run, status }, answers);
   if (!hasAnyAnswer(answers)) throw new LearningError('invalid', 'Bạn chưa có câu trả lời nào để nộp.');
   await assertOwnedEvidenceKeys(env, learner.id, imageKeys);
 

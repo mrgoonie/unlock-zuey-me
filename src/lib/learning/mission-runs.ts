@@ -115,7 +115,7 @@ export async function saveAnswersImpl(
   const status = transition(run.status, { type: 'edit', reachedLastStep: currentStep === lastStepId });
   const answers = mergeAnswers(run.answers, { [step.id]: clean });
   assertAnswersSize(answers);
-  assertRevealedUnchanged(mission, run.revealed, run.answers, answers);
+  assertRevealedUnchanged(mission, run, answers);
 
   const now = clock(deps);
   const next: MissionRun = { ...run, status, currentStep, answers, rev: run.rev + 1, updatedAt: nowIso(now) };
