@@ -1,0 +1,80 @@
+---
+/**
+ * One learner's journey for the observer. Admin only (404 otherwise). Consent is re-checked by every query
+ * in src/lib/observer/queries.ts; without it the page is the same 404.
+ */
+import AppLayout from '../../../layouts/AppLayout.astro';
+import AdminNotFound from '../../../components/admin/AdminNotFound.astro';
+import CoachTranscripts from '../../../components/admin/CoachTranscripts.astro';
+import CompetencyRadar from '../../../components/admin/CompetencyRadar.astro';
+import EventTimeline from '../../../components/admin/EventTimeline.astro';
+import EvidenceList from '../../../components/admin/EvidenceList.astro';
+import HintDependence from '../../../components/admin/HintDependence.astro';
+import MissionFunnel from '../../../components/admin/MissionFunnel.astro';
+import ScoresAndCalibration from '../../../components/admin/ScoresAndCalibration.astro';
+import { formatDateTime } from '../../../components/admin/admin-format';
+import { getLearnerDetail, type LearnerDetail } from '../../../lib/observer/queries';
+
+const cursor = Astro.url.searchParams.get('cursor');
+let detail: LearnerDetail | null = null;
+let failed = false;
+if (Astro.locals.learner?.isAdmin === true && Astro.params.id) {
+  Astro.response.headers.set('cache-control', 'no-store');
+  try {
+    detail = await getLearnerDetail(Astro.locals.runtime.env.DB, Astro.params.id, cursor);
+  } catch (err) {
+    console.error('admin: learner detail failed', err);
+    failed = true;
+  }
+}
+if (!detail && !failed) Astro.response.status = 404;
+if (failed) Astro.response.status = 500;
+const basePath = `/admin/learners/${encodeURIComponent(Astro.params.id ?? '')}`;
+const section = 'card flex flex-col gap-3';
+const name = detail ? (detail.learner.displayName ?? `Khách ${detail.learner.id.slice(-4)}`) : '';
+---
+{detail ? (
+  <AppLayout title={`Quan sát · ${name}`}>
+    <meta slot="head" name="robots" content="noindex, nofollow" />
+    <a href="/admin" class="btn-ghost mt-2 text-sm">← Danh sách</a>
+    <h1 class="mt-3 text-2xl font-bold">{name}</h1>
+    <p class="mt-1 text-sm text-ink-muted">
+      {detail.learner.kind === 'member' ? 'Thành viên' : 'Khách'} · {detail.learner.xp} XP · {detail.learner.missionsDone} mission xong ·
+      đồng ý từ {formatDateTime(detail.learner.consentAt)}
+    </p>
+    <div class="mt-4 flex flex-col gap-4">
+      <section id="timeline" class={section} aria-labelledby="h-timeline">
+        <h2 id="h-timeline" class="text-lg font-semibold">Dòng thời gian</h2>
+        <EventTimeline page={detail.timeline} basePath={basePath} isFirstPage={!cursor} />
+      </section>
+      <section class={section} aria-labelledby="h-funnel">
+        <h2 id="h-funnel" class="text-lg font-semibold">Phễu mission</h2>
+        <MissionFunnel funnel={detail.funnel} />
+      </section>
+      <section class={section} aria-labelledby="h-hints">
+        <h2 id="h-hints" class="text-lg font-semibold">Mức phụ thuộc gợi ý theo thời gian</h2>
+        <HintDependence runs={detail.hints} />
+      </section>
+      <section class={section} aria-labelledby="h-scores">
+        <h2 id="h-scores" class="text-lg font-semibold">Điểm, hiệu chỉnh và lần đầu đạt</h2>
+        <ScoresAndCalibration evaluations={detail.evaluations} firstWin={detail.firstWin} />
+      </section>
+      <section class={section} aria-labelledby="h-radar">
+        <h2 id="h-radar" class="text-lg font-semibold">Năng lực</h2>
+        <CompetencyRadar scores={detail.competencies} />
+      </section>
+      <section class={section} aria-labelledby="h-evidence">
+        <h2 id="h-evidence" class="text-lg font-semibold">Bằng chứng đã nộp</h2>
+        <EvidenceList items={detail.evidence} />
+      </section>
+      <section class={section} aria-labelledby="h-coach">
+        <h2 id="h-coach" class="text-lg font-semibold">Hội thoại với trợ lý</h2>
+        <CoachTranscripts messages={detail.coach} />
+      </section>
+    </div>
+  </AppLayout>
+) : failed ? (
+  <AppLayout title="Quan sát"><p role="alert" class="card mt-4 text-danger">Không tải được dữ liệu. Thử tải lại trang.</p></AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy"><AdminNotFound /></AppLayout>
+)}

@@ -1,0 +1,35 @@
+---
+/** Consenting learners: name/kind, last active, missions done, XP. Rows link to the detail view. */
+import type { ObservedLearner } from '../../lib/observer/queries';
+import { formatDateTime } from './admin-format';
+
+interface Props { learners: ObservedLearner[] }
+const { learners } = Astro.props;
+---
+{learners.length === 0 ? (
+  <p class="card text-ink-muted">Chưa có người học nào cho phép quan sát. Người học bật quyền này trong Cài đặt → Quyền riêng tư.</p>
+) : (
+  <div class="card overflow-x-auto p-0">
+    <table class="w-full min-w-[520px] text-sm">
+      <caption class="sr-only">Người học đã đồng ý cho quan sát</caption>
+      <thead class="text-left text-ink-muted">
+        <tr><th scope="col" class="p-3">Người học</th><th scope="col" class="p-3">Hoạt động gần nhất</th><th scope="col" class="p-3 text-right">Mission xong</th><th scope="col" class="p-3 text-right">XP</th></tr>
+      </thead>
+      <tbody>
+        {learners.map((l) => (
+          <tr class="border-t border-line">
+            <th scope="row" class="p-3 text-left font-medium">
+              <a href={`/admin/learners/${encodeURIComponent(l.id)}`} class="inline-flex min-h-[44px] items-center gap-2 text-accent underline-offset-2 hover:underline">
+                {l.displayName ?? `Khách ${l.id.slice(-4)}`}
+              </a>
+              <span class="chip ml-1">{l.kind === 'member' ? 'Thành viên' : 'Khách'}</span>
+            </th>
+            <td class="p-3">{formatDateTime(l.lastActiveAt)}</td>
+            <td class="p-3 text-right">{l.missionsDone}</td>
+            <td class="p-3 text-right">{l.xp}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}

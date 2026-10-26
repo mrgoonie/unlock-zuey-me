@@ -1,0 +1,37 @@
+---
+/** Six-competency radar (SVG) with a text table for screen readers. */
+import { COMPETENCIES } from '../../lib/content/schema';
+import type { CompetencyScore } from '../../lib/observer/queries';
+import { COMPETENCY_LABELS, percent } from './admin-format';
+
+interface Props { scores: CompetencyScore[] }
+const { scores } = Astro.props;
+const byId = new Map(scores.map((s) => [s.competency, s]));
+const C = 110;
+const R = 80;
+const point = (i: number, r: number) => {
+  const a = (Math.PI * 2 * i) / COMPETENCIES.length - Math.PI / 2;
+  return [C + Math.cos(a) * r, C + Math.sin(a) * r] as const;
+};
+const ring = (f: number) => COMPETENCIES.map((_, i) => point(i, R * f).join(',')).join(' ');
+const shape = COMPETENCIES.map((id, i) => point(i, R * Math.min(1, Math.max(0, byId.get(id)?.score ?? 0))).join(',')).join(' ');
+---
+<div class="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+  <svg viewBox="0 0 220 220" class="h-56 w-56 shrink-0" role="img" aria-label="Biểu đồ radar năng lực">
+    {[0.25, 0.5, 0.75, 1].map((f) => <polygon points={ring(f)} fill="none" class="stroke-line" stroke-width="1" />)}
+    <polygon points={shape} class="fill-calm/30 stroke-calm" stroke-width="2" />
+    {COMPETENCIES.map((id, i) => {
+      const [x, y] = point(i, R + 18);
+      return <text x={x} y={y} text-anchor="middle" dominant-baseline="middle" class="fill-ink text-[10px]">{COMPETENCY_LABELS[id]}</text>;
+    })}
+  </svg>
+  <table class="text-sm">
+    <caption class="sr-only">Điểm năng lực</caption>
+    <tbody>
+      {COMPETENCIES.map((id) => (
+        <tr><th scope="row" class="pr-3 text-left font-normal">{COMPETENCY_LABELS[id]}</th>
+          <td class="tabular-nums">{percent(byId.get(id)?.score ?? 0)} <span class="text-ink-muted">({byId.get(id)?.evidenceCount ?? 0} bằng chứng)</span></td></tr>
+      ))}
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,12 @@
+---
+/**
+ * Generic "page not found" body. Admin pages render it with HTTP 404 for non-admins and for learners who
+ * have not consented, so neither the dashboard nor a learner's existence is revealed.
+ */
+---
+<div class="mt-10 text-center">
+  <p class="text-5xl" aria-hidden="true">🧭</p>
+  <h1 class="mt-3 text-2xl font-bold">Không tìm thấy trang</h1>
+  <p class="mt-2 text-ink-muted">Đường dẫn này không tồn tại hoặc đã bị gỡ.</p>
+  <a href="/home" class="btn-primary mt-4">Về trang Hôm nay</a>
+</div>
