@@ -10,6 +10,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "content:check": "bun scripts/validate-content.ts",
+    "migrations:check": "bun scripts/check-migrations.ts",
     "db:migrate:local": "wrangler d1 migrations apply unlock_zuey_me_db --local",
     "db:migrate:remote": "wrangler d1 migrations apply unlock_zuey_me_db --remote"
   },

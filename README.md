@@ -40,4 +40,4 @@ Secrets (không commit): `OPENROUTER_API_KEY`, `SESSION_SECRET`, `VAPID_PUBLIC_K
 
 ## Đóng góp
 
-`main` được bảo vệ bằng quy ước: mọi thay đổi qua PR, CI (`content:check`, `test`, `build`) phải xanh. Merge vào `main` sẽ tự deploy.
+`main` được bảo vệ bằng quy ước: mọi thay đổi qua PR, CI (`content:check`, `migrations:check`, `test`, `build`) phải xanh. Merge vào `main` sẽ tự deploy. Thứ tự deploy, quy tắc migration tương thích ngược và cách rollback: [docs/deployment.md](docs/deployment.md).

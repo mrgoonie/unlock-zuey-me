@@ -27,8 +27,28 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bun run content:check
+      - run: bun run migrations:check
       - run: bun run test
       - run: bun run build
+      # Rollback point: D1 Time Travel can restore the database to this bookmark (docs/deployment.md).
+      # Only the bookmark and a timestamp are printed; the API token stays in the environment.
+      - name: Record D1 time-travel bookmark
+        run: |
+          taken_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          info=$(bunx wrangler d1 time-travel info unlock_zuey_me_db --json)
+          bookmark=$(printf '%s' "$info" | jq -r '.bookmark // empty')
+          if [ -z "$bookmark" ]; then
+            echo "::error::could not read a D1 time-travel bookmark; not migrating without a rollback point"
+            exit 1
+          fi
+          echo "D1 bookmark before migrations ($taken_at): $bookmark"
+          {
+            echo "### D1 rollback point"
+            echo ""
+            echo "- Taken at: \`$taken_at\` (before \`d1 migrations apply\`, commit \`$GITHUB_SHA\`)"
+            echo "- Bookmark: \`$bookmark\`"
+            echo "- Restore: \`bunx wrangler d1 time-travel restore unlock_zuey_me_db --bookmark=$bookmark\`"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Apply D1 migrations
         run: bunx wrangler d1 migrations apply unlock_zuey_me_db --remote
       - name: Deploy worker

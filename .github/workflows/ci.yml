@@ -23,6 +23,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Content schema gate
         run: bun run content:check
+      - name: Migration safety gate (expand/contract, docs/deployment.md)
+        run: bun run migrations:check
       - name: Unit tests
         run: bun run test
       - name: Type-check and build
