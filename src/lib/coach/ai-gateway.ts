@@ -23,9 +23,13 @@ export interface AiDeps {
   fetchImpl?: typeof fetch;
 }
 
-export type AiPurpose = 'grade' | 'hint' | 'chat';
+export type AiPurpose = 'grade' | 'hint' | 'chat' | 'insights';
 
-/** Grading may use the full caps; practice chat and hints share the capped coaching slice of each. */
+/**
+ * Grading may use the full caps. Practice chat, hints and the ai-tutor insights analyzer (a server-side
+ * background analyzer run by the cron) share the capped coaching slice of each, so insights can never
+ * starve grading.
+ */
 export const budgetPool = (purpose: AiPurpose): BudgetPool => (purpose === 'grade' ? 'grading' : 'coaching');
 
 export interface AiRequest<T> {
@@ -39,6 +43,8 @@ export interface AiRequest<T> {
   jsonSchema?: JsonSchemaSpec;
   parse: (text: string) => T;
   timeoutMs: number;
+  /** Workers AI fallback deadline; defaults to WORKERS_AI_TIMEOUT_MS (grading needs the longer default). */
+  workersAiTimeoutMs?: number;
   runId?: string;
   missionId?: string;
 }
@@ -158,7 +164,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
   await event('ai.fallback_used', { reason: fallbackReason, model: req.workersAiModel });
   try {
     const messages = req.jsonSchema ? withJsonInstruction(req.messages, req.jsonSchema) : req.messages;
-    const c = await workersAiChat(env.AI, req.workersAiModel, messages, req.maxTokens, WORKERS_AI_TIMEOUT_MS);
+    const c = await workersAiChat(env.AI, req.workersAiModel, messages, req.maxTokens, req.workersAiTimeoutMs ?? WORKERS_AI_TIMEOUT_MS);
     await settle(c, 0);
     return { value: req.parse(c.content), model: c.model, provider: 'workers-ai' };
   } catch (err) {
