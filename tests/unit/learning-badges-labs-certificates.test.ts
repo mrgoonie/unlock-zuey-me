@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Badge } from '../../src/lib/content/parse-content';
 import { listPublishedMissions } from '../../src/lib/content/loader';
 import { badgeRuleMet, eligibleBadges, type BadgeContext } from '../../src/lib/learning/badges';
+import { GUEST_CERTIFICATE_PROMPT } from '../../src/lib/learning/certificate-messages';
 import { newCertificateCode } from '../../src/lib/learning/certificates';
 import { buildMissionList } from '../../src/lib/learning/progress';
 import {
@@ -63,6 +64,8 @@ describe('labs, concepts, events, profile, recap, certificates', () => {
     env = fakeEnv();
     alice = await seedLearner(env.DB, 'lrn_alice');
     bob = await seedLearner(env.DB, 'lrn_bob');
+    await env.DB.prepare("UPDATE learners SET kind = 'member' WHERE id = 'lrn_alice'").run();
+    alice = { ...alice, kind: 'member' };
   });
 
   it('records lab results without XP', async () => {
@@ -116,6 +119,8 @@ describe('labs, concepts, events, profile, recap, certificates', () => {
     const criteria = JSON.stringify([{ id: 'c', label: 'c', weight: 1, score: 0.85, method: 'ai', competency: 'verify', feedback: '' }]);
     await env.DB.prepare(`INSERT INTO evaluations (id, run_id, submission_id, learner_id, status, score, criteria_json, feedback, mode, created_at) VALUES ('evl_1', 'run_m-one', 'sub_1', ?, 'passed', 0.85, ?, 'ok', 'mixed', ?)`)
       .bind(alice.id, criteria, at).run();
+    // A qualifying guest is asked to sign in instead of getting a public page.
+    await expect(issueCertificate(deps(), { ...alice, kind: 'guest' }, 'Linh')).rejects.toMatchObject({ code: 'forbidden', message: GUEST_CERTIFICATE_PROMPT });
     const cert = await issueCertificate(deps(), alice, 'Linh Nguyễn');
     expect(cert.code).toMatch(/^[A-HJ-NP-Z2-9]{10}$/);
     expect(cert.url).toBe(`https://unlock.zuey.me/certificates/${cert.code}`);

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createTestD1 } from '../helpers/d1-sqlite';
 import { GET as exportRoute } from '../../src/pages/api/v1/me/export';
 import { POST as deleteRoute } from '../../src/pages/api/v1/me/delete';
-import { expireAllCookies } from '../../src/lib/privacy/delete-learner-data';
+import { deleteLearnerData, expireAllCookies } from '../../src/lib/privacy/delete-learner-data';
 import type { LearnerExport } from '../../src/lib/privacy/export-learner-data';
 import { LEARNER_TABLES } from '../../src/lib/privacy/learner-data-tables';
 import { fakeBucket, learnerCtx, routeContext, seedLearner } from './observer-seed-fixtures';
@@ -102,5 +102,33 @@ describe('POST /api/v1/me/delete', () => {
       'a=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
       '__Host-s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
     ]);
+  });
+});
+
+describe('deleteLearnerData OAuth grants', () => {
+  it('revokes every /mcp grant of the learner across pages, and nobody elses', async () => {
+    const grants: Record<string, string[]> = { lrn_me: ['g1', 'g2', 'g3'], lrn_you: ['g9'] };
+    const revoked: string[] = [];
+    const oauth = {
+      async listUserGrants(userId: string, o?: { limit?: number; cursor?: string }) {
+        const all = grants[userId] ?? [];
+        const start = o?.cursor ? Number(o.cursor) : 0;
+        const end = start + 2;
+        return { items: all.slice(start, end).map((id) => ({ id })), cursor: end < all.length ? String(end) : undefined };
+      },
+      async revokeGrant(grantId: string, userId: string) { revoked.push(`${userId}:${grantId}`); },
+    };
+    const result = await deleteLearnerData(db, r2.bucket, 'lrn_me', oauth);
+    expect(result.grantsRevoked).toBe(3);
+    expect(revoked).toEqual(['lrn_me:g1', 'lrn_me:g2', 'lrn_me:g3']);
+  });
+
+  it('does not delete D1 rows when revocation fails, so a retry can finish', async () => {
+    const oauth = {
+      async listUserGrants() { throw new Error('kv down'); },
+      async revokeGrant() {},
+    };
+    await expect(deleteLearnerData(db, r2.bucket, 'lrn_me', oauth)).rejects.toThrow('kv down');
+    expect(await rowCount('learners', 'lrn_me')).toBe(1);
   });
 });

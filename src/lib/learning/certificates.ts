@@ -1,8 +1,11 @@
 /**
  * Shareable certificates. Eligible after ≥3 passed missions with at least one verify criterion scored
  * ≥ 0.8 in a passed evaluation. One certificate per level (re-issuing returns the existing code).
+ * Only signed-in members can issue one: the public page shows a self-chosen display name on unlock.zuey.me,
+ * so guests (anonymous, unverifiable) could impersonate anyone.
  * The snapshot freezes level, badges and competencies at issue time.
  */
+import { GUEST_CERTIFICATE_PROMPT } from './certificate-messages';
 import { getMission } from '../content/loader';
 import { nowIso, parseJson } from '../db/ids';
 import { completedMissionIds, sumXp } from '../db/progress-queries';
@@ -48,6 +51,7 @@ export async function issueCertificate(deps: RunDeps, learner: LearnerContext, r
   if (completed.length < CERTIFICATE_MIN_MISSIONS || !(await hasStrongVerify(db, learner.id))) {
     throw new LearningError('forbidden', `Cần hoàn thành ít nhất ${CERTIFICATE_MIN_MISSIONS} mission và có một lần kiểm chứng đạt từ ${CERTIFICATE_MIN_VERIFY_SCORE * 100}% để nhận chứng nhận.`);
   }
+  if (learner.kind !== 'member') throw new LearningError('forbidden', GUEST_CERTIFICATE_PROMPT);
   const level = levelForXp(await sumXp(db, learner.id));
   const existing = await db.prepare('SELECT code, revoked_at FROM certificates WHERE learner_id = ? AND level = ?')
     .bind(learner.id, level.id).first<{ code: string; revoked_at: string | null }>();

@@ -3,6 +3,7 @@
  * Vietnamese reason); the UI shows the likely state from the level and the server's answer verbatim.
  */
 import { useId, useState } from 'react';
+import { GUEST_CERTIFICATE_PROMPT } from '../../lib/learning/certificate-messages';
 import { ApiError, api, friendlyMessage } from '../../lib/ui/api-client';
 
 interface Props {
@@ -50,6 +51,20 @@ export default function CertificateRequest({ levelId, levelName, defaultName, is
     );
   }
 
+  if (!isMember) {
+    return (
+      <div className="flex flex-col gap-3" data-testid="certificate-guest-prompt">
+        <p className="text-sm">
+          Cấp hiện tại: <strong>{levelId} · {levelName}</strong>.
+        </p>
+        <p>{GUEST_CERTIFICATE_PROMPT}</p>
+        <a href={`/auth/zuey/login?return_to=${encodeURIComponent('/achievements')}`} className="btn-primary self-start" data-testid="certificate-login">
+          Đăng nhập với zuey.me
+        </a>
+      </div>
+    );
+  }
+
   return (
     <form className="flex flex-col gap-3" onSubmit={request} noValidate>
       <p className="text-sm">
@@ -58,7 +73,6 @@ export default function CertificateRequest({ levelId, levelName, defaultName, is
           ? 'Bạn có thể nhận chứng nhận cho cấp này.'
           : 'Hoàn thành mission với bằng chứng đạt để lên L1, rồi quay lại nhận chứng nhận nhé.'}
       </p>
-      {!isMember && <p className="text-xs text-ink-muted">Mẹo: đăng nhập với zuey.me trước để chứng nhận gắn với tài khoản của bạn.</p>}
       <div className="flex flex-col gap-1.5">
         <label htmlFor={id} className="font-medium">Tên in trên chứng nhận</label>
         <input id={id} className="field" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} autoComplete="name" />
