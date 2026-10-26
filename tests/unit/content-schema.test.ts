@@ -35,7 +35,7 @@ describe('content', () => {
 
   it('requires review_due_at for current-fact concepts', () => {
     const files = real();
-    files.concepts = [...files.concepts, { path: 'x.yaml', text: files.concepts[0].text.replace('id: prompt', 'id: fresh-fact').replace('layer: foundation', 'layer: current-fact') }];
+    files.concepts = [...files.concepts, { path: 'x.yaml', text: files.concepts.find((f) => f.path === 'prompt.yaml')!.text.replace('id: prompt', 'id: fresh-fact').replace('layer: foundation', 'layer: current-fact') }];
     expect(parseContent(files).errors.join('\n')).toMatch(/current-fact needs review_due_at/);
   });
 });
