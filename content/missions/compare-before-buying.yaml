@@ -1,0 +1,185 @@
+schema_version: 1
+id: compare-before-buying
+version: 1
+locale: vi
+status: published
+title: So sánh trước khi mua
+tagline: Nhờ AI lập bảng so sánh hai món đồ bạn định mua, rồi kiểm giá và thông số từ nguồn thật.
+emoji: "🛒"
+outcome: Bạn chọn được món đồ hợp với nhu cầu của mình, có lý do rõ ràng và đã tự kiểm giá, bảo hành từ nguồn chính thức.
+why_it_matters: >-
+  AI giúp bạn biết nên so sánh những tiêu chí nào và giải thích thông số khó hiểu. Nhưng AI hay nói sai giá, nhầm
+  phiên bản sản phẩm, và không biết khuyến mãi hôm nay. Quyết định tiêu tiền phải dựa trên thông tin bạn đã kiểm.
+persona_tags: [beginner, basic, everyday-life]
+estimated_minutes: 15
+risk_tier: medium
+safety_notes:
+  - Chỉ mua qua cửa hàng hoặc sàn chính thức. Không bấm vào đường link mua hàng lạ do AI hay ai đó gửi.
+  - Giá, khuyến mãi và bảo hành phải xem trên trang người bán, không tin con số AI đưa ra.
+  - Với đồ an toàn cho trẻ (ghế ô tô, nôi, đồ chơi nhỏ), kiểm tra chứng nhận an toàn từ nhà sản xuất.
+competency_targets:
+  - { id: describe, weight: 2 }
+  - { id: verify, weight: 2 }
+  - { id: delegate, weight: 1 }
+  - { id: reflect, weight: 1 }
+concept_refs: [prompt, hallucination, knowledge-cutoff, web-search, structured-output]
+steps:
+  - id: needs
+    type: guided-input
+    title: Bạn định mua gì?
+    prompt: >-
+      Chọn một món bạn thật sự đang cân nhắc (nồi chiên không dầu, máy lọc nước, điện thoại cho mẹ...). Ghi hai lựa chọn
+      bạn đang phân vân (hoặc tầm giá nếu chưa có), và những tiêu chí quan trọng với NHÀ BẠN.
+    fields:
+      - { id: product, label: Món đồ và tầm giá, placeholder: "Nồi chiên không dầu, dưới 2,5 triệu", kind: text, min: 8 }
+      - { id: candidates, label: Hai lựa chọn bạn đang phân vân (nếu có), placeholder: "Hãng A loại 5 lít / Hãng B loại 6 lít", kind: text, required: false, min: 0 }
+      - { id: criteria, label: Tiêu chí quan trọng với bạn (mỗi dòng một ý), placeholder: "Dễ rửa\nĐủ cho 4 người ăn\nBảo hành ít nhất 1 năm\nBếp nhỏ, máy không quá to", kind: list, min: 3 }
+    hints:
+      - Lần trước mua đồ, điều gì khiến bạn hối hận hoặc hài lòng?
+      - Tiêu chí tốt thường là về cách nhà bạn dùng - mấy người, dùng bao nhiêu lần, để ở đâu, ai rửa.
+      - Ví dụ "Nhà 4 người", "Bếp chật, ngang dưới 35cm", "Mẹ lớn tuổi, cần nút bấm dễ hiểu".
+      - Viết ít nhất 3 tiêu chí, mỗi tiêu chí là một điều cụ thể về nhà bạn, không chỉ "tốt", "bền".
+  - id: ask-ai
+    type: ai-task
+    title: Nhờ AI lập bảng so sánh
+    instruction: >-
+      Gửi cho AI món đồ, các lựa chọn và tiêu chí của bạn. Xin một bảng so sánh theo đúng tiêu chí đó, và yêu cầu AI ghi
+      rõ thông tin nào nó không chắc. Dán câu trả lời vào ô bên dưới.
+    prompt_suggestions:
+      - "Mình đang phân vân mua [món đồ], tầm giá [giá]. Hai lựa chọn: [lựa chọn]. Tiêu chí của nhà mình: [tiêu chí]. Hãy lập bảng so sánh theo đúng các tiêu chí này. Cột cuối ghi mức độ chắc chắn của bạn và mình nên kiểm ở đâu."
+      - "Nếu mình chưa có lựa chọn cụ thể, hãy gợi ý 2–3 loại phù hợp tiêu chí và giải thích nên xem thông số nào. Đừng đưa giá nếu bạn không chắc."
+    allow_in_app_chat: true
+    capture: { id: comparison, label: Bảng so sánh AI đưa ra (dán vào đây), min: 100, allow_image: true }
+    hints:
+      - AI có biết nhà bạn mấy người và bếp rộng bao nhiêu không?
+      - Dùng gợi ý đầu và giữ câu "ghi mức độ chắc chắn" để AI tự đánh dấu chỗ yếu.
+      - Ví dụ "...Tiêu chí - dễ rửa, đủ 4 người, bảo hành 1 năm, ngang dưới 35cm. Lập bảng và ghi mức chắc chắn."
+      - Sao chép gợi ý đầu, sửa phần ngoặc vuông, gửi đi rồi dán bảng vào đây (chụp màn hình cũng được).
+  - id: predict
+    type: prediction
+    title: Đoán xem cột nào dễ sai
+    question: Trong bảng so sánh AI vừa đưa, thông tin nào bạn nghĩ dễ sai nhất?
+    options:
+      - { id: opt-price, text: "Giá bán và khuyến mãi hiện tại" }
+      - { id: opt-meaning, text: "Giải thích ý nghĩa của một thông số (ví dụ dung tích 5 lít là nấu được bao nhiêu)" }
+      - { id: opt-criteria, text: "Gợi ý nên cân nhắc tiêu chí nào" }
+    correct: opt-price
+    explanation: >-
+      Giá và khuyến mãi đổi theo tuần, theo cửa hàng, và AI không xem được giá hôm nay trừ khi nó tra web (mà tra web cũng
+      có thể lấy trang cũ). Giải thích thông số và gợi ý tiêu chí là kiến thức chung, AI thường làm khá tốt.
+    hints:
+      - Thông tin nào hôm nay khác với tháng trước?
+      - AI học từ dữ liệu cũ. Loại thông tin nào "hết hạn" nhanh nhất?
+      - Ví dụ AI nói "đang giảm còn 1,9 triệu" nhưng chương trình đó đã kết thúc từ lâu.
+      - Đáp án là giá bán và khuyến mãi. Chọn nó và đặt mức tự tin thật của bạn.
+  - id: verify
+    type: verification
+    title: Kiểm chứng trước khi xuống tiền
+    instruction: >-
+      Chọn mức tin cậy cho từng câu dưới đây (kiểu câu AI hay viết khi so sánh đồ). Sau đó tự kiểm ít nhất HAI thông tin
+      trong bảng của BẠN trên trang chính thức của hãng hoặc cửa hàng lớn, và ghi lại kết quả.
+    claims:
+      - id: claim-price
+        text: "Máy A đang có giá 2.190.000đ tại các cửa hàng điện máy."
+        answer: needs_lookup
+        explanation: Giá đổi liên tục và khác nhau giữa các cửa hàng. Xem trực tiếp trên trang người bán.
+      - id: claim-capacity
+        text: "Nồi 5 lít thường đủ nấu cho gia đình 3–4 người."
+        answer: verified
+        explanation: Đây là kiến thức chung, phổ biến và hợp lý. Sai một chút cũng không gây hại lớn.
+      - id: claim-warranty
+        text: "Máy B được bảo hành 24 tháng chính hãng."
+        answer: needs_lookup
+        explanation: Thời hạn bảo hành khác nhau theo đời máy và nơi bán. Kiểm trên trang hãng hoặc phiếu bảo hành.
+      - id: claim-best
+        text: "Máy A bền hơn máy B, dùng 5 năm không hỏng."
+        answer: insufficient
+        explanation: AI không có dữ liệu theo dõi độ bền thật. Câu này nghe chắc chắn nhưng không có căn cứ.
+      - id: claim-coating
+        text: "Lớp chống dính của máy B hoàn toàn an toàn cho sức khoẻ ở mọi nhiệt độ."
+        answer: expert
+        explanation: An toàn vật liệu là chuyện chuyên môn. Xem chứng nhận của nhà sản xuất và hướng dẫn của cơ quan y tế, không tin lời khẳng định tuyệt đối.
+    notes: { id: check_notes, label: Bạn đã kiểm hai thông tin nào, ở trang nào? Có khác AI không?, min: 60 }
+    hints:
+      - Câu nào nói về con số hôm nay? Câu nào dùng chữ "hoàn toàn", "không bao giờ"?
+      - Giá và bảo hành là "cần tra cứu". Câu đoán độ bền là "không đủ dữ liệu". Câu về an toàn sức khoẻ là "cần chuyên gia".
+      - Ví dụ ghi chú "AI nói bảo hành 24 tháng, trang hãng ghi 12 tháng. Giá AI nói 2,19 triệu, cửa hàng X đang bán 2,49 triệu."
+      - Mở trang chính thức của hãng hoặc một cửa hàng lớn, tìm đúng tên máy, so giá và bảo hành rồi ghi lại.
+  - id: decide
+    type: guided-input
+    title: Bạn chọn gì?
+    prompt: Dựa trên bảng của AI và những gì bạn tự kiểm, bạn chọn món nào (hoặc quyết định chưa mua)? Vì sao?
+    fields:
+      - { id: choice, label: Lựa chọn của bạn, placeholder: "Máy A, hoặc chờ thêm", kind: text, min: 3 }
+      - { id: reasons, label: Lý do, dựa trên tiêu chí của bạn (mỗi dòng một ý), kind: list, min: 2 }
+    hints:
+      - Tiêu chí nào quan trọng nhất với nhà bạn? Máy nào hơn ở tiêu chí đó?
+      - Dùng thông tin bạn đã tự kiểm, không chỉ thông tin AI nói.
+      - Ví dụ "Chọn máy A vì bảo hành thật 24 tháng (đã kiểm)", "Máy B to quá, không vừa bếp".
+      - Ghi lựa chọn và ít nhất 2 lý do nối với tiêu chí bạn viết ở bước đầu. "Chưa mua" cũng là quyết định hợp lệ.
+  - id: reflect
+    type: reflection
+    title: Đúc kết
+    prompt: Lần sau nhờ AI so sánh đồ, phần nào bạn tin AI, phần nào bạn luôn tự kiểm?
+    field_id: lesson
+    min: 30
+    hints:
+      - AI giúp bạn nhiều nhất ở phần nào?
+      - Bạn bắt được AI sai ở đâu?
+      - Ví dụ "AI giỏi gợi ý tiêu chí và giải thích thông số. Giá và bảo hành thì mình luôn xem trên trang hãng."
+      - Viết 1–2 câu - phần nào giao cho AI, phần nào luôn tự kiểm.
+rubric:
+  pass_score: 0.7
+  criteria:
+    - id: own-criteria
+      label: Có tiêu chí riêng của nhà mình
+      weight: 20
+      competency: describe
+      method: deterministic
+      check: { kind: list_min, step: needs, field: criteria, min: 3 }
+    - id: useful-table
+      label: Bảng so sánh bám đúng tiêu chí
+      weight: 15
+      competency: delegate
+      method: ai
+      guidance: >-
+        The pasted AI answer should compare the options against the learner's own criteria (not a generic spec dump)
+        and ideally flag uncertain information. Score low when it ignores the stated criteria or is not a comparison.
+      step_refs: [needs, ask-ai]
+    - id: risk-sense
+      label: Đoán đúng thông tin dễ sai
+      weight: 10
+      competency: verify
+      method: deterministic
+      check: { kind: prediction_correct, step: predict }
+    - id: verdicts
+      label: Phân loại đúng mức tin cậy
+      weight: 15
+      competency: verify
+      method: deterministic
+      check: { kind: claims_score, step: verify }
+    - id: real-checks
+      label: Tự kiểm hai thông tin trên nguồn chính thức
+      weight: 20
+      competency: verify
+      method: ai
+      guidance: >-
+        Strong notes name two concrete facts from the learner's comparison (price, warranty, size, capacity, model
+        name), say where they were checked (manufacturer site, a named major retailer, the physical label), and report
+        the result including any mismatch. Vague notes or "the AI was right" with no source score low.
+      step_refs: [verify, ask-ai]
+    - id: grounded-decision
+      label: Quyết định có lý do gắn với tiêu chí
+      weight: 10
+      competency: operate
+      method: ai
+      guidance: >-
+        The decision (buying one option or deliberately waiting) is justified by at least two reasons tied to the
+        learner's own criteria, preferably using facts they verified themselves rather than only the AI's claims.
+      step_refs: [needs, decide]
+    - id: lesson
+      label: Rút ra phần nào giao AI, phần nào tự kiểm
+      weight: 10
+      competency: reflect
+      method: deterministic
+      check: { kind: text_min, step: reflect, field: lesson, min_chars: 30 }
