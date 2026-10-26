@@ -2,7 +2,8 @@
  * One path for every model call: OpenRouter models in order (only while the learner and global daily USD
  * budgets allow), then Workers AI (capped per learner and globally per day). Budgets are reserved before
  * each call and settled after it (see ai-usage.ts), so concurrent requests cannot overshoot them.
- * Practice chat and hints draw from a capped share of the global caps so they can never starve grading.
+ * Practice chat and hints draw from a capped share of the per-learner and global caps so they can never
+ * starve grading, neither the learner's own nor everyone else's.
  * `parse` validates the raw text; a rejected output moves on to the next model just like an HTTP error.
  */
 import { recordEventSafe } from '../observer/events';
@@ -24,7 +25,7 @@ export interface AiDeps {
 
 export type AiPurpose = 'grade' | 'hint' | 'chat';
 
-/** Grading may use the full global caps; practice chat and hints share the capped coaching slice. */
+/** Grading may use the full caps; practice chat and hints share the capped coaching slice of each. */
 export const budgetPool = (purpose: AiPurpose): BudgetPool => (purpose === 'grade' ? 'grading' : 'coaching');
 
 export interface AiRequest<T> {
@@ -66,12 +67,15 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
     recordEventSafe(db, { learnerId: req.learnerId, name, runId: req.runId, missionId: req.missionId, props: { purpose: req.purpose, ...props } });
   /** Which cap stopped a reservation, for the budget event (read only on the refusal path). */
   const exceededScope = async (
-    overGlobal: (u: UsageTotals) => boolean, overCoachShare: (u: UsageTotals) => boolean,
-  ): Promise<'global' | 'coach_share' | 'learner'> => {
+    overGlobal: (u: UsageTotals) => boolean,
+    overCoachShare: (u: UsageTotals) => boolean,
+    overLearnerCoachShare: (u: UsageTotals) => boolean,
+  ): Promise<'global' | 'coach_share' | 'learner_coach_share' | 'learner'> => {
     try {
-      const { global } = await readUsage(db, day, req.learnerId);
+      const { learner, global } = await readUsage(db, day, req.learnerId);
       if (overGlobal(global)) return 'global';
-      return pool === 'coaching' && overCoachShare(global) ? 'coach_share' : 'learner';
+      if (pool === 'coaching' && overCoachShare(global)) return 'coach_share';
+      return pool === 'coaching' && overLearnerCoachShare(learner) ? 'learner_coach_share' : 'learner';
     } catch {
       return 'learner';
     }
@@ -108,6 +112,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
           scope: await exceededScope(
             (g) => g.costUsd + g.reservedUsd + reserved > limits.globalUsd,
             (g) => g.coachCostUsd + g.coachReservedUsd + reserved > limits.coachGlobalUsd,
+            (l) => l.coachCostUsd + l.coachReservedUsd + reserved > limits.coachPerLearnerUsd,
           ),
         });
         break;
@@ -145,6 +150,7 @@ export async function runAi<T>(deps: AiDeps, req: AiRequest<T>): Promise<AiResul
     const scope = await exceededScope(
       (g) => g.workersAiRequests >= limits.workersAiGlobal,
       (g) => g.coachWorkersAiRequests >= limits.coachWorkersAiGlobal,
+      (l) => l.coachWorkersAiRequests >= limits.coachWorkersAiPerLearner,
     );
     await event('ai.budget_exceeded', { scope: scope === 'learner' ? 'workers_ai' : `workers_ai_${scope}` });
     throw new AiUnavailableError('budget');

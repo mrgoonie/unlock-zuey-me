@@ -155,6 +155,8 @@ export const api = {
   /** Reveals one quiz question / prediction answer; the server locks that answer from then on. */
   reveal: (runId: string, stepId: string, itemId: string) =>
     request<{ run: MissionRun; key: AnswerKeyEntry }>('POST', `/api/v1/runs/${enc(runId)}/reveal`, { stepId, itemId }),
+  /** "Bỏ lượt này": abandons an open run (idempotent) so the mission can be started over. */
+  abandonRun: (runId: string) => request<{ run: MissionRun }>('POST', `/api/v1/runs/${enc(runId)}/abandon`),
   submit: (runId: string, input: { idempotencyKey: string; confidence?: number; imageKeys?: string[] }) =>
     request<SubmitResponse>('POST', `/api/v1/runs/${enc(runId)}/submit`, input, { timeoutMs: 90_000 }),
   uploadEvidence: (file: File) => {

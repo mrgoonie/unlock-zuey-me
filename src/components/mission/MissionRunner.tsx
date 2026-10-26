@@ -1,13 +1,15 @@
 /**
  * Mission runner island (/missions/:id/run): one step per screen with progress dots, autosave, 4-level
  * hints, pre-submit self-assessment, then evaluating → needs_revision | evaluation_failed | passed.
- * A completed mission opens on its latest result (read-only) with an explicit "Làm lại".
+ * A completed mission opens on its latest result (read-only) with an explicit "Làm lại"; an open run can be
+ * given up with "Bỏ lượt này" (confirm step), which starts a fresh run.
  * `mission` is the learner-safe view (no answer keys); keys arrive from the server only when allowed.
  * Focus moves to the new screen's heading on every step/phase change.
  */
 import { useEffect, useRef } from 'react';
 import type { LearnerMission } from '../../lib/learning/learner-mission-view';
 import { isStepComplete, STEP_KIND_LABEL } from '../../lib/ui/mission-steps';
+import AbandonRunControl from './AbandonRunControl';
 import { EvaluatingView, EvaluationFailedView, NeedsRevisionView } from './EvaluationStates';
 import HintLadder from './HintLadder';
 import ResultsView from './ResultsView';
@@ -55,16 +57,19 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
   const answering = s.phase === 'steps' || s.phase === 'review';
   const header = (
     <RunnerHeader mission={mission} stepIndex={s.phase === 'review' ? mission.steps.length : s.stepIndex}
-      completed={completed} saveState={s.saveState} notice={s.saveNotice} onJump={answering ? s.goToStep : undefined} />
+      completed={completed} saveState={s.saveState} notice={s.saveNotice} onJump={answering ? s.goToStep : undefined}
+      lockedStepId={s.lockedStepId} onReloadLocked={s.reloadLockedStep} />
   );
+  // "Bỏ lượt này" is offered on every open-run screen except while grading (the server refuses it then).
+  const abandon = <AbandonRunControl onAbandon={s.abandon} />;
 
   if (s.phase === 'evaluating') return <div className="flex flex-col gap-6">{header}<EvaluatingView ref={heading} /></div>;
   if (s.phase === 'evaluation_failed') {
     return <div className="flex flex-col gap-6">{header}
-      <EvaluationFailedView ref={heading} message={s.error} onRetry={() => void s.submit()} onBack={() => s.goToStep(0)} /></div>;
+      <EvaluationFailedView ref={heading} message={s.error} onRetry={() => void s.submit()} onBack={() => s.goToStep(0)} />{abandon}</div>;
   }
   if (s.phase === 'needs_revision' && s.evaluation) {
-    return <div className="flex flex-col gap-6">{header}<NeedsRevisionView ref={heading} mission={mission} evaluation={s.evaluation} onFix={s.goToStep} /></div>;
+    return <div className="flex flex-col gap-6">{header}<NeedsRevisionView ref={heading} mission={mission} evaluation={s.evaluation} onFix={s.goToStep} />{abandon}</div>;
   }
   if (s.phase === 'passed' && s.evaluation) {
     return (
@@ -81,6 +86,7 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
           onConfidence={(v) => s.patchDraft((d) => ({ ...d, confidence: v }))} onJump={s.goToStep}
           onSubmit={() => void s.submit()} onBack={() => s.goToStep(mission.steps.length - 1)} error={s.error}
           busy={s.submitting || s.saveState === 'saving'} />
+        {abandon}
       </div>
     );
   }
@@ -100,6 +106,7 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
           revealed={run.revealed} answerKey={s.answerKey} onReveal={s.reveal} />
         <HintLadder step={step} runId={run.id} hints={draft.hints[step.id] ?? []} patchDraft={s.patchDraft} />
       </section>
+      {abandon}
       <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur pb-[max(env(safe-area-inset-bottom),0.75rem)]">
         {s.stepIndex > 0 && <button type="button" className="btn-ghost" onClick={() => s.goToStep(s.stepIndex - 1)} data-testid="runner-back">← Trước</button>}
         <button type="button" className="btn-primary flex-1" data-testid="runner-next"

@@ -15,7 +15,7 @@ export const LIMITER_RULES = {
   RL_GUEST_IP: { limit: 20, periodSeconds: 60 },
   /** AI and storage endpoints (chat, hints, submit, evidence upload), per endpoint per IP. */
   RL_AI_IP: { limit: 30, periodSeconds: 60 },
-  /** Row-writing endpoints (events, lab results, mission start, push subscribe), per endpoint per IP. */
+  /** Row-writing endpoints (events, lab results, mission start, run abandon, push subscribe), per endpoint per IP. */
   RL_WRITE_IP: { limit: 120, periodSeconds: 60 },
   /** The same row-writing endpoints, per endpoint per learner. */
   RL_WRITE_LEARNER: { limit: 30, periodSeconds: 60 },
@@ -23,7 +23,7 @@ export const LIMITER_RULES = {
 
 export type LimiterName = keyof typeof LIMITER_RULES;
 
-export type ThrottleScope = 'chat' | 'hint' | 'submit' | 'upload' | 'event' | 'lab' | 'start' | 'push';
+export type ThrottleScope = 'chat' | 'hint' | 'submit' | 'upload' | 'event' | 'lab' | 'start' | 'abandon' | 'push';
 
 export interface ThrottledRoute {
   scope: ThrottleScope;
@@ -40,6 +40,7 @@ const ROUTES: Array<[RegExp, ThrottledRoute]> = [
   [/^\/api\/v1\/events$/, { scope: 'event', ipLimiter: 'RL_WRITE_IP', learnerLimiter: 'RL_WRITE_LEARNER' }],
   [/^\/api\/v1\/labs\/[^/]+\/result$/, { scope: 'lab', ipLimiter: 'RL_WRITE_IP', learnerLimiter: 'RL_WRITE_LEARNER' }],
   [/^\/api\/v1\/missions\/[^/]+\/start$/, { scope: 'start', ipLimiter: 'RL_WRITE_IP', learnerLimiter: 'RL_WRITE_LEARNER' }],
+  [/^\/api\/v1\/runs\/[^/]+\/abandon$/, { scope: 'abandon', ipLimiter: 'RL_WRITE_IP', learnerLimiter: 'RL_WRITE_LEARNER' }],
   [/^\/api\/v1\/push\/subscribe$/, { scope: 'push', ipLimiter: 'RL_WRITE_IP', learnerLimiter: 'RL_WRITE_LEARNER' }],
 ];
 

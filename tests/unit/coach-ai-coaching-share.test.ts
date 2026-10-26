@@ -1,6 +1,6 @@
 /**
  * Grading is protected from coaching traffic: practice chat and hints together may only use a share of the
- * global daily caps (AI_DAILY_COACH_SHARE, default 0.5), while grading may use the full caps.
+ * per-learner and global daily caps (AI_DAILY_COACH_SHARE, default 0.5), while grading may use the full caps.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AiUnavailableError, runAi, type AiRequest } from '../../src/lib/coach/ai-gateway';
@@ -123,6 +123,57 @@ describe('coaching share of the global AI caps', () => {
     expect((await readUsage(env.DB, DAY, 'lrn_b')).learner).toMatchObject({ workersAiRequests: 2, coachWorkersAiRequests: 0 });
   });
 
+  it("a learner's chat exhausting their own coaching USD share leaves their grading able to reserve", async () => {
+    const limits = { ...budgetLimits(env), perLearnerUsd: 1, coachPerLearnerUsd: 0.5, globalUsd: 100, coachGlobalUsd: 50 };
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.5, limits, 'coaching')).toBe(true);
+    // The learner's coaching share is spent even though the learner and global totals are far from their caps.
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.01, limits, 'coaching')).toBe(false);
+    // Another learner's coaching is unaffected.
+    expect(await reserveUsd(env.DB, DAY, 'lrn_b', 0.5, limits, 'coaching')).toBe(true);
+    // The learner's own grading may still use the rest of their full cap.
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.5, limits, 'grading')).toBe(true);
+    expect(await reserveUsd(env.DB, DAY, 'lrn_a', 0.01, limits, 'grading')).toBe(false);
+    const { learner, global } = await readUsage(env.DB, DAY, 'lrn_a');
+    expect(learner).toMatchObject({ reservedUsd: 1, coachReservedUsd: 0.5 });
+    // Refusals left no partial reservation on the global row.
+    expect(global).toMatchObject({ reservedUsd: 1.5, coachReservedUsd: 1 });
+  });
+
+  it("caps a learner's coaching Workers AI calls at the share of their own request cap", async () => {
+    const limits = { ...budgetLimits(env), workersAiPerLearner: 4, coachWorkersAiPerLearner: 2, workersAiGlobal: 100, coachWorkersAiGlobal: 50 };
+    for (let i = 0; i < 2; i++) expect(await reserveWorkersAiCall(env.DB, DAY, 'lrn_a', limits, 'coaching')).toBe(true);
+    expect(await reserveWorkersAiCall(env.DB, DAY, 'lrn_a', limits, 'coaching')).toBe(false);
+    expect(await reserveWorkersAiCall(env.DB, DAY, 'lrn_b', limits, 'coaching')).toBe(true);
+    for (let i = 0; i < 2; i++) expect(await reserveWorkersAiCall(env.DB, DAY, 'lrn_a', limits, 'grading')).toBe(true);
+    expect(await reserveWorkersAiCall(env.DB, DAY, 'lrn_a', limits, 'grading')).toBe(false);
+    const { learner, global } = await readUsage(env.DB, DAY, 'lrn_a');
+    expect(learner).toMatchObject({ workersAiRequests: 4, coachWorkersAiRequests: 2 });
+    expect(global).toMatchObject({ workersAiRequests: 5, coachWorkersAiRequests: 3 });
+  });
+
+  it("with OpenRouter down, a learner's chats stop at their coaching share and their submissions still get graded", async () => {
+    const down = fakeEnv({ OPENROUTER_API_KEY: undefined });
+    down.AI.run.mockResolvedValue({ response: 'ok' });
+    const share = budgetLimits(down).coachWorkersAiPerLearner;
+    expect(share).toBe(30);
+    await down.DB.prepare('INSERT INTO ai_usage (day, learner_id, workers_ai_requests, coach_workers_ai_requests) VALUES (?, ?, ?, ?)')
+      .bind(DAY, 'lrn_a', share, share).run();
+    const err = await runAi({ env: down, now: () => NOW }, req()).catch((e) => e);
+    expect(err).toMatchObject({ reason: 'budget' });
+    expect(await budgetEvents(down)).toEqual([{ purpose: 'chat', scope: 'workers_ai_learner_coach_share' }]);
+    expect((await runAi({ env: down, now: () => NOW }, req({ purpose: 'grade' }))).provider).toBe('workers-ai');
+  });
+
+  it("reports a refusal by the learner's own coaching USD share in the budget event", async () => {
+    const tight = fakeEnv({ AI_DAILY_BUDGET_USD_PER_LEARNER: '0.004', AI_DAILY_BUDGET_USD_GLOBAL: '100' });
+    tight.AI.run.mockResolvedValue({ response: 'ok' });
+    // Worst case $0.003 per chat > the learner's coaching share ($0.002), but within their full cap ($0.004).
+    const { fetchImpl } = openRouterFetch(() => 'ok', { prompt_tokens: 0, completion_tokens: 2000 });
+    expect((await runAi({ env: tight, fetchImpl, now: () => NOW }, req())).provider).toBe('workers-ai');
+    expect(await budgetEvents(tight)).toEqual([{ purpose: 'chat', scope: 'learner_coach_share' }]);
+    expect((await runAi({ env: tight, fetchImpl, now: () => NOW }, req({ purpose: 'grade' }))).provider).toBe('openrouter');
+  });
+
   it('reads the share from AI_DAILY_COACH_SHARE, defaulting when missing or out of range', () => {
     expect(coachShare(undefined)).toBe(DEFAULT_COACH_SHARE);
     expect(DEFAULT_COACH_SHARE).toBe(0.5);
@@ -134,6 +185,9 @@ describe('coaching share of the global AI caps', () => {
     const limits = budgetLimits({
       AI_DAILY_BUDGET_USD_PER_LEARNER: '0.3', AI_DAILY_BUDGET_USD_GLOBAL: '5', AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL: '2001', AI_DAILY_COACH_SHARE: '0.5',
     });
-    expect(limits).toMatchObject({ coachGlobalUsd: 2.5, coachWorkersAiGlobal: 1000, globalUsd: 5, workersAiGlobal: 2001 });
+    expect(limits).toMatchObject({
+      coachGlobalUsd: 2.5, coachWorkersAiGlobal: 1000, globalUsd: 5, workersAiGlobal: 2001,
+      perLearnerUsd: 0.3, coachPerLearnerUsd: 0.15, workersAiPerLearner: 60, coachWorkersAiPerLearner: 30,
+    });
   });
 });

@@ -130,7 +130,7 @@ describe('autosave queue', () => {
      * Server where `quiz:q1` was revealed (locked at 'a'); a save changing `lockedField` is refused with a 403
      * shaped by `refusal`: the engine's explicit `answer_locked` + run, or 403s the client must not trust.
      */
-    function lockedHarness(opts: { refusal?: Refusal; lockedField?: string } = {}) {
+    function lockedHarness(opts: { refusal?: Refusal; lockedField?: string; fetchFails?: boolean } = {}) {
       const refusal = opts.refusal ?? 'answer_locked';
       const lockedField = opts.lockedField ?? 'q1';
       let server: MissionRun = { ...run(5, { quiz: { q1: 'a', q2: 'x' } }), revealed: ['quiz:q1'] };
@@ -140,9 +140,15 @@ describe('autosave queue', () => {
       const calls: Array<{ stepId: string; answers: Answers[string] }> = [];
       const states: SaveState[] = [];
       const notices: string[] = [];
+      const exhausted: string[] = [];
       const queue = createSaveQueue({
         getDraft: () => draft, getRun: () => current, setDraft: (d) => { draft = d; }, setRun: (r) => { current = r; },
         currentStepId: () => undefined, onState: (st) => states.push(st), onNotice: (m) => notices.push(m),
+        onLockExhausted: (stepId) => exhausted.push(stepId),
+        fetchRun: async () => {
+          if (opts.fetchFails) throw new ApiError('network', 'offline', 0);
+          return server;
+        },
         save: async (_id, input) => {
           calls.push({ stepId: input.stepId, answers: input.answers });
           if (input.rev !== server.rev) throw new ApiError('conflict', 'stale', 409, { error: { code: 'conflict' }, run: server });
@@ -158,7 +164,7 @@ describe('autosave queue', () => {
         },
       });
       return {
-        queue, calls, states, notices,
+        queue, calls, states, notices, exhausted,
         edit: (step: string, field: string, value: string) => { draft = setField(draft, step, field, value); },
         draft: () => draft, server: () => server,
       };
@@ -209,6 +215,43 @@ describe('autosave queue', () => {
       expect(h.draft().answers.quiz).toEqual({ q1: 'a', q2: 'y' });
       expect(h.draft().dirty.quiz).toEqual(['q2']);
       expect(h.states.at(-1)).toBe('offline');
+    });
+
+    it('flags the step once recovery is exhausted, and reloadStep drops only that step\'s edits then saves the rest', async () => {
+      const h = lockedHarness({ lockedField: 'q2' });
+      h.edit('quiz', 'q2', 'y');
+      h.edit('notes', 'text', 'kept');
+      expect(await h.queue.settle()).toBe(false);
+      expect(h.exhausted).toEqual(['quiz']);
+      expect(h.notices).not.toContain(SAVE_REFUSED_NOTICE);
+
+      expect(await h.queue.reloadStep('quiz')).toEqual({ reloaded: true, saved: true });
+      expect(h.draft().answers).toEqual({ quiz: { q1: 'a', q2: 'x' }, notes: { text: 'kept' } });
+      expect(h.draft().dirty).toEqual({});
+      expect(h.server().answers).toEqual({ quiz: { q1: 'a', q2: 'x' }, notes: { text: 'kept' } });
+      expect(h.states.at(-1)).toBe('saved');
+      expect(h.queue.pending()).toBe(false);
+    });
+
+    it('flags the step when the server locks a field the client cannot map from revealed', async () => {
+      const h = lockedHarness({ lockedField: 'q2' });
+      // The server run says nothing is revealed in this step, yet refuses it as locked.
+      const s0 = h.server();
+      Object.assign(s0, { revealed: ['other:q9'] });
+      h.edit('quiz', 'q2', 'y');
+      expect(await h.queue.settle()).toBe(false);
+      expect(h.calls).toHaveLength(1);
+      expect(h.exhausted).toEqual(['quiz']);
+      expect(h.draft().dirty.quiz).toEqual(['q2']);
+    });
+
+    it('keeps every edit when the server run cannot be loaded for the reload', async () => {
+      const h = lockedHarness({ lockedField: 'q2', fetchFails: true });
+      h.edit('quiz', 'q2', 'y');
+      expect(await h.queue.settle()).toBe(false);
+      expect(await h.queue.reloadStep('quiz')).toEqual({ reloaded: false, saved: false });
+      expect(h.draft().answers.quiz).toEqual({ q1: 'a', q2: 'y' });
+      expect(h.draft().dirty.quiz).toEqual(['q2']);
     });
   });
 });
