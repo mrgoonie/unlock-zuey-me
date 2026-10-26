@@ -39,6 +39,7 @@ describe('learnerPolicy', () => {
     ['/api/v1/runs', 'POST', null, 'read'],
     ['/api/health', 'GET', chrome, 'none'],
     ['/mcp', 'POST', chrome, 'none'],
+    ['/api/ingest/v1/turns', 'POST', 'node', 'none'],
     ['/.well-known/oauth-protected-resource/mcp', 'GET', chrome, 'none'],
     ['/oauth/zuey-client.json', 'GET', chrome, 'none'],
     ['/_astro/app.js', 'GET', chrome, 'none'],
