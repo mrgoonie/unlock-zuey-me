@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestD1 } from '../helpers/d1-sqlite';
-import { MAX_FAILURES, sendDueReminders } from '../../src/lib/push/reminder-job';
+import { createCronBudget, CRON_D1_QUERY_BUDGET, CRON_SUBREQUEST_BUDGET } from '../../src/lib/jobs/cron-budget';
+import { chunkCost, MAX_FAILURES, SEND_CONCURRENCY, sendDueReminders } from '../../src/lib/push/reminder-job';
 import { decryptPushBody, makeBrowserSubscription, makeVapidKeys } from './push-test-crypto';
 
 const NOW = new Date('2026-10-26T13:05:00Z'); // 20:05 in Asia/Saigon
@@ -126,6 +127,83 @@ describe('sendDueReminders', () => {
     const clock = () => (t += 1000);
     expect(await sendDueReminders(env, { now: NOW, fetchFn, clock, timeBudgetMs: 500 })).toMatchObject({ sent: 0, deferred: true });
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  describe('request budget', () => {
+    async function addMany(n: number) {
+      for (let i = 0; i < n; i++) {
+        const id = `psh_${String(i).padStart(3, '0')}`;
+        await addSub(id, 'lrn_a', '20:00', 'Asia/Saigon', `https://fcm.googleapis.com/fcm/send/${id}`);
+      }
+    }
+
+    it('charges batched D1 queries and one subrequest per push', async () => {
+      await addMany(250);
+      const budget = createCronBudget();
+      expect(await sendDueReminders(env, { now: NOW, fetchFn: okFetch(), budget })).toMatchObject({ sent: 250 });
+      // 1 zone list + 3 due batches (100, 100, 50) + 43 chunks of up to six x (claim + result batch) = 90 queries.
+      const chunks = Math.ceil(100 / SEND_CONCURRENCY) * 2 + Math.ceil(50 / SEND_CONCURRENCY);
+      const d1 = 1 + 3 + chunks * chunkCost(1).d1;
+      expect(CRON_D1_QUERY_BUDGET - budget.remainingD1Queries()).toBe(d1);
+      expect(CRON_SUBREQUEST_BUDGET - budget.remainingSubrequests()).toBe(d1 + 250);
+    });
+
+    it('sends far more than the old 176-per-tick cap within the D1 limit', async () => {
+      await addMany(600);
+      const budget = createCronBudget();
+      expect(await sendDueReminders(env, { now: NOW, fetchFn: okFetch(), budget })).toMatchObject({ sent: 600, deferred: false });
+      expect(CRON_D1_QUERY_BUDGET - budget.remainingD1Queries()).toBeLessThan(250);
+    });
+
+    it('never goes over the budget and carries the rest to the next tick within the catch-up window', async () => {
+      await addMany(8);
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const fetchFn = okFetch();
+      // Zones (1) + due batch (1) + one chunk of six (2 D1 + 6 pushes) = 10 subrequests: the second chunk does not fit.
+      const budget = createCronBudget({ subrequests: 11 });
+      expect(await sendDueReminders(env, { now: NOW, fetchFn, budget })).toMatchObject({ sent: 6, deferred: true });
+      expect(budget.remainingSubrequests()).toBe(1);
+      // The two rows that were read but not claimed are still due.
+      const left = await db.prepare(`SELECT COUNT(*) AS n FROM push_subscriptions WHERE last_sent_day IS NULL`).first<{ n: number }>();
+      expect(left?.n).toBe(2);
+      // 45 minutes later (21:05 local) the 20:00 reminders are still inside the 60-minute look-back.
+      const later = new Date(NOW.getTime() + 45 * 60_000);
+      expect(await sendDueReminders(env, { now: later, fetchFn })).toMatchObject({ sent: 2, deferred: false });
+      expect(fetchFn).toHaveBeenCalledTimes(8);
+    });
+
+    it('stops at the D1 query limit even with subrequests to spare', async () => {
+      await addMany(20);
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      // Zones + due batch + two chunks = 6 queries; a third chunk would need 2 more.
+      const budget = createCronBudget({ d1Queries: 7 });
+      expect(await sendDueReminders(env, { now: NOW, fetchFn: okFetch(), budget })).toMatchObject({ sent: 12, deferred: true });
+      expect(budget.remainingD1Queries()).toBe(1);
+    });
+
+    it('starts nothing when the budget cannot cover one send', async () => {
+      await addMany(1);
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const fetchFn = okFetch();
+      const budget = createCronBudget({ d1Queries: 3 });
+      expect(await sendDueReminders(env, { now: NOW, fetchFn, budget })).toMatchObject({ sent: 0, deferred: true });
+      expect(fetchFn).not.toHaveBeenCalled();
+      expect(budget.remainingD1Queries()).toBe(3);
+    });
+
+    it('keeps subscription state when the event writes fail', async () => {
+      await addSub('psh_a', 'lrn_a');
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const realBatch = db.batch.bind(db);
+      let calls = 0;
+      db.batch = (async (stmts: D1PreparedStatement[]) => {
+        if (calls++ === 0) throw new Error('events table locked');
+        return realBatch(stmts);
+      }) as typeof db.batch;
+      const fetchFn = vi.fn(async () => new Response(null, { status: 410 }));
+      expect(await sendDueReminders(env, { now: NOW, fetchFn })).toMatchObject({ removed: 1 });
+      expect(await sub('psh_a')).toBeNull();
+    });
   });
 
   it('does not send reminders older than the look-back window', async () => {

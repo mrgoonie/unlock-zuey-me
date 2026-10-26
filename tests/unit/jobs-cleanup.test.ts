@@ -143,13 +143,23 @@ describe('inactive guest cleanup', () => {
   it('stops when the cron budget is spent and leaves the rest for the next run', async () => {
     for (let i = 0; i < 4; i++) await guest(`g_${i}`, 10 + i);
     const r2 = datedBucket({});
-    // 1 scan + 3 per guest: room for exactly two guests.
+    // 1 scan query + (1 D1 batch + 2 R2 calls) reserved per guest: room for exactly two guests.
     const res = await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW, 50, createCronBudget({ subrequests: 7 }));
     expect(res).toMatchObject({ removed: 2, deferred: false });
     expect((await findInactiveGuests(db, NOW)).length).toBe(2);
     expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW, 50, createCronBudget({ subrequests: 0 })))
       .toMatchObject({ removed: 0, deferred: true });
     expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW)).toMatchObject({ removed: 2 });
+  });
+
+  it('sizes the run to the D1 query budget as well as the subrequest budget', async () => {
+    for (let i = 0; i < 4; i++) await guest(`g_${i}`, 10 + i);
+    const r2 = datedBucket({});
+    const budget = createCronBudget({ d1Queries: 3 });
+    // 1 scan + 1 batch per guest: three D1 queries cover two guests, whatever the subrequest budget says.
+    expect(await removeInactiveGuests({ DB: db, EVIDENCE: r2.bucket }, NOW, 50, budget)).toMatchObject({ removed: 2 });
+    expect(budget.remainingD1Queries()).toBe(0);
+    expect((await findInactiveGuests(db, NOW)).length).toBe(2);
   });
 
   it('respects the batch limit', async () => {
@@ -216,13 +226,25 @@ describe('orphan evidence cleanup', () => {
     const r2 = datedBucket(objects);
     const { kv, store } = memoryKv();
     const env = { DB: db, EVIDENCE: r2.bucket, CACHE: kv };
-    // 2 KV + 1 list + 2 owner lookups (3 each) = 9: the third owner lookup does not fit.
-    const first = await deleteOrphanEvidence(env, NOW, 5, createCronBudget({ subrequests: 9 }));
+    // 2 KV + 1 list + 2 owner lookups (3 D1 each) + 1 R2 delete kept in hand = 10: the third lookup does not fit.
+    const first = await deleteOrphanEvidence(env, NOW, 5, createCronBudget({ subrequests: 10 }));
     expect(first).toMatchObject({ scanned: 2, deleted: 2, completedPass: false, deferred: true });
     expect(store.get(EVIDENCE_GC_POSITION_KEY)).toBe('ev/gone_2/x.png');
     expect([...r2.store.keys()]).toEqual(['ev/gone_3/x.png', 'ev/gone_4/x.png']);
     expect(await deleteOrphanEvidence(env, NOW)).toMatchObject({ scanned: 2, deleted: 2, completedPass: true, deferred: false });
     expect(r2.store.size).toBe(0);
+  });
+
+  it('stops when the D1 query budget cannot cover another owner lookup', async () => {
+    const objects: Record<string, Date> = {};
+    for (const owner of ['gone_1', 'gone_2', 'gone_3']) objects[`ev/${owner}/x.png`] = hoursAgo(30);
+    const r2 = datedBucket(objects);
+    const { kv } = memoryKv();
+    const budget = createCronBudget({ d1Queries: 7 });
+    const res = await deleteOrphanEvidence({ DB: db, EVIDENCE: r2.bucket, CACHE: kv }, NOW, 5, budget);
+    // Two lookups of three queries each fit in seven; the third would exceed the D1 limit.
+    expect(res).toMatchObject({ scanned: 2, deleted: 2, deferred: true });
+    expect(budget.remainingD1Queries()).toBe(1);
   });
 
   it('does nothing when the budget is already spent', async () => {

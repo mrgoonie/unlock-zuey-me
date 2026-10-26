@@ -74,6 +74,6 @@ Non-admins get `404 not_found` from every admin route and page (never 403). A le
 
 Push reminder cron (`src/lib/push/reminder-job.ts`): every 15 minutes, sends at most one reminder per subscription per local day when `remind_time` is in the current local quarter hour (or up to 60 minutes earlier that day, to catch up a run that hit its budget) and the learner has no `activity_days` row for that day. Due subscriptions are processed in batches until done, within a per-run time and send budget. A learner keeps at most 5 subscriptions (the least recently subscribed is replaced).
 
-All cron jobs of one tick share one Worker invocation and a subrequest budget kept under Cloudflare's 1,000 D1 queries per invocation (`src/lib/jobs/cron-budget.ts`); each job charges what it used and resumes on the next tick.
+All cron jobs of one tick share one Worker invocation, so they share a budget that tracks D1 queries (kept under Cloudflare's 1,000 per invocation) separately from subrequests (fetch, KV, R2 and D1; kept under 10,000) (`src/lib/jobs/cron-budget.ts`). Push reminders run first but cannot use a reserved slice kept for the cleanup jobs; each job charges what it used and resumes on the next tick.
 
 Cleanup cron (`src/lib/jobs/`): guests with no runs inactive for 7 days, and guests with no progress inactive for 30 days, are erased; evidence images older than 24 h that no submission references (and whose owner has no recently touched open run) are deleted from R2. A 404/410 from the push service deletes the subscription; 5 consecutive failures disable it.

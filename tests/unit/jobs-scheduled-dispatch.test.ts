@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCronBudget, CRON_SUBREQUEST_BUDGET, type CronBudget } from '../../src/lib/jobs/cron-budget';
-import { oauthPurgeSubrequests, runCronJobs, scheduledJobs, type CronJob } from '../../src/lib/jobs/scheduled-jobs';
+import { createCronBudget, type CronBudget } from '../../src/lib/jobs/cron-budget';
+import { CLEANUP_RESERVE, oauthPurgeCost, runCronJobs, scheduledJobs, type CronJob } from '../../src/lib/jobs/scheduled-jobs';
 import { purgeExpiredAuthData } from '../../src/lib/mcp/oauth-purge';
+import { sendDueReminders } from '../../src/lib/push/reminder-job';
 
 // The real module pulls in the OAuth provider (cloudflare:* imports), which Node cannot load.
 vi.mock('../../src/lib/mcp/oauth-purge', () => ({ OAUTH_PURGE_BATCH_SIZE: 500, purgeExpiredAuthData: vi.fn() }));
+vi.mock('../../src/lib/push/reminder-job', () => ({ TIME_BUDGET_MS: 300_000, sendDueReminders: vi.fn() }));
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -41,15 +43,15 @@ describe('cron dispatcher', () => {
   it('shares one budget: jobs see what earlier jobs used and later jobs are deferred once it is spent', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const seen: Record<string, number> = {};
-    const job = (name: string, cost: number): CronJob => ({
+    const job = (name: string, d1: number): CronJob => ({
       name,
       run: async (budget: CronBudget) => {
-        seen[name] = budget.remainingSubrequests();
-        budget.charge(cost);
+        seen[name] = budget.remainingD1Queries();
+        budget.charge({ d1 });
       },
     });
     const late = vi.fn(async () => undefined);
-    await runCronJobs('t', [job('first', 60), job('second', 40), { name: 'late', run: late }], createCronBudget({ subrequests: 100 }));
+    await runCronJobs('t', [job('first', 60), job('second', 40), { name: 'late', run: late }], createCronBudget({ d1Queries: 100 }));
     expect(seen).toEqual({ first: 100, second: 40 });
     expect(late).not.toHaveBeenCalled();
   });
@@ -63,17 +65,42 @@ describe('cron dispatcher', () => {
     expect(late).not.toHaveBeenCalled();
   });
 
-  it('defers the push job when the remaining subrequests cannot cover one send', async () => {
-    const budget = createCronBudget({ subrequests: 15 });
-    const push = scheduledJobs({} as Env)[0];
-    // 15 subrequests cannot cover the push overhead plus one send: the job defers without touching D1.
-    expect(await push.run(budget)).toEqual({ deferred: true });
-    expect(budget.remainingSubrequests()).toBe(15);
-  });
+  describe('cleanup reserve', () => {
+    it('hands push reminders only the budget above the cleanup reserve', async () => {
+      let pushView: CronBudget | undefined;
+      vi.mocked(sendDueReminders).mockImplementationOnce(async (_env, deps) => {
+        pushView = deps?.budget;
+        return { sent: 0, removed: 0, failed: 0, skipped: 0, deferred: false };
+      });
+      const budget = createCronBudget({ d1Queries: 900, subrequests: 9000, timeMs: 480_000, clock: () => 0 });
+      await scheduledJobs({} as Env)[0].run(budget);
+      expect(pushView?.remainingD1Queries()).toBe(900 - CLEANUP_RESERVE.d1Queries);
+      expect(pushView?.remainingSubrequests()).toBe(9000 - CLEANUP_RESERVE.subrequests);
+      expect(pushView?.remainingMs()).toBe(480_000 - CLEANUP_RESERVE.timeMs);
+      // Charges through the view land on the shared budget.
+      pushView?.charge({ d1: 10, net: 5 });
+      expect(budget.remainingD1Queries()).toBe(890);
+      expect(budget.remainingSubrequests()).toBe(8985);
+    });
 
-  it('keeps the per-tick budget under the 1,000 D1 queries a Worker invocation may make', () => {
-    expect(CRON_SUBREQUEST_BUDGET).toBeLessThan(1000);
-    expect(createCronBudget().remainingSubrequests()).toBe(CRON_SUBREQUEST_BUDGET);
+    it('lets every cleanup job run even when push reminders use everything they are allowed', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const budget = createCronBudget();
+      const ran: string[] = [];
+      const greedyPush: CronJob = {
+        name: 'push',
+        run: async (b) => {
+          // Spend the whole push view, the way a busy reminder quarter hour would.
+          const view = b.reserving(CLEANUP_RESERVE);
+          view.charge({ d1: view.remainingD1Queries(), net: view.remainingSubrequests() - view.remainingD1Queries() });
+          expect(view.exhausted()).toBe(true);
+        },
+      };
+      const cleanup = (name: string): CronJob => ({ name, run: async (b) => { ran.push(name); b.charge({ d1: 30, net: 300 }); } });
+      await runCronJobs('t', [greedyPush, cleanup('oauth'), cleanup('guests'), cleanup('evidence')], budget);
+      expect(ran).toEqual(['oauth', 'guests', 'evidence']);
+      expect(budget.remainingD1Queries()).toBe(CLEANUP_RESERVE.d1Queries - 90);
+    });
   });
 
   describe('oauth purge charge', () => {
@@ -84,27 +111,35 @@ describe('cron dispatcher', () => {
       vi.mocked(purgeExpiredAuthData).mockResolvedValueOnce(idle);
       const budget = createCronBudget({ subrequests: 900 });
       await oauthJob().run(budget);
-      // 6 overhead + 2 list pages per phase + 8 records checked x 2.
-      expect(900 - budget.remainingSubrequests()).toBe(6 + 4 + 16);
+      // 2 D1 purges; KV: 4 overhead + 2 list pages per phase + 8 records checked x 2.
+      expect(900 - budget.remainingD1Queries()).toBe(2);
+      expect(900 - budget.remainingSubrequests()).toBe(2 + 4 + 4 + 16);
       // The batch was sized so even its worst case fits the budget.
       const batch = vi.mocked(purgeExpiredAuthData).mock.calls.at(-1)?.[2] ?? 0;
-      expect(6 + batch * 10).toBeLessThanOrEqual(900);
+      expect(2 + 4 + batch * 10).toBeLessThanOrEqual(900);
       // An idle sweep leaves almost everything for the cleanup jobs that run after it.
       expect(budget.remainingSubrequests()).toBeGreaterThan(850);
     });
 
     it('grows with purged records but never above the worst case reserved for the batch', () => {
       const busy = { grantsChecked: 40, grantsPurged: 40, tokensChecked: 40, tokensPurged: 40, done: false };
-      expect(oauthPurgeSubrequests(busy, 40)).toBe(6 + 40 * 10);
-      expect(oauthPurgeSubrequests({ ...idle, grantsPurged: 2 }, 100)).toBe(oauthPurgeSubrequests(idle, 100) + 2 * 4);
+      expect(oauthPurgeCost(busy, 40)).toEqual({ d1: 2, net: 4 + 40 * 10 });
+      expect(oauthPurgeCost({ ...idle, grantsPurged: 2 }, 100).net).toBe(oauthPurgeCost(idle, 100).net + 2 * 4);
     });
 
     it('charges the reserved worst case when the purge fails', async () => {
       vi.mocked(purgeExpiredAuthData).mockRejectedValueOnce(new Error('kv down'));
       const budget = createCronBudget({ subrequests: 106 });
       await expect(oauthJob().run(budget)).rejects.toThrow('kv down');
-      // batch = floor((106 - 6) / 10) = 10, so 6 + 10 x 10 is charged.
+      // batch = floor((106 - 2 - 4) / 10) = 10, so 2 D1 + 4 + 10 x 10 KV is charged.
       expect(budget.remainingSubrequests()).toBe(0);
+    });
+
+    it('defers without touching KV when no batch fits', async () => {
+      vi.mocked(purgeExpiredAuthData).mockClear();
+      const budget = createCronBudget({ subrequests: 15 });
+      expect(await oauthJob().run(budget)).toEqual({ deferred: true });
+      expect(purgeExpiredAuthData).not.toHaveBeenCalled();
     });
   });
 });

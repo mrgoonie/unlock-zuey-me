@@ -26,8 +26,10 @@ export const EVIDENCE_GC_PAGES_PER_RUN = 2;
 export const EVIDENCE_GC_POSITION_KEY = 'evidence-gc:after';
 const EVIDENCE_PREFIX = 'ev/';
 const OPEN_RUN_STATUSES = `'started','paused','awaiting_evidence','evaluating','needs_revision','evaluation_failed'`;
-/** D1 queries one owner lookup costs (learner row, submissions, open run). */
-const SUBREQUESTS_PER_OWNER = 3;
+/** One owner lookup: three D1 queries (learner row, submissions, open run). */
+const OWNER_LOOKUP_COST = { d1: 3 } as const;
+/** R2 delete of the objects already marked on the current page; kept affordable before every other step. */
+const FLUSH_COST = { net: 1 } as const;
 
 export interface EvidenceGcResult {
   scanned: number;
@@ -71,26 +73,26 @@ export async function deleteOrphanEvidence(
   budget: CronBudget = createCronBudget(),
 ): Promise<EvidenceGcResult> {
   const result: EvidenceGcResult = { scanned: 0, deleted: 0, completedPass: false, deferred: false };
-  // The position read and the final write/delete are two KV subrequests.
-  if (budget.remainingSubrequests() < 4 || budget.exhausted()) return { ...result, deferred: true };
+  // The position read and the final write/delete are two KV calls; at least one list page must fit after them.
+  if (!budget.canAfford({ net: 2 + 1 + FLUSH_COST.net })) return { ...result, deferred: true };
   const uploadedBefore = now.getTime() - ORPHAN_MIN_AGE_HOURS * 60 * 60 * 1000;
   const openRunSince = new Date(now.getTime() - OPEN_RUN_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  budget.charge(2);
+  budget.charge({ net: 2 });
   const saved = (await env.CACHE.get(EVIDENCE_GC_POSITION_KEY)) ?? undefined;
   let after = saved;
   const owners = new Map<string, OwnerState>();
 
   walk: for (let page = 0; page < pages; page++) {
-    if (budget.exhausted()) {
+    if (!budget.canAfford({ net: 1 + FLUSH_COST.net })) {
       result.deferred = true;
       break;
     }
-    budget.charge(1);
+    budget.charge({ net: 1 });
     const listing = await env.EVIDENCE.list({ prefix: EVIDENCE_PREFIX, startAfter: after, limit: 1000 });
     const doomed: string[] = [];
     const flush = async () => {
       if (doomed.length === 0) return;
-      budget.charge(1);
+      budget.charge(FLUSH_COST);
       await env.EVIDENCE.delete(doomed);
       result.deleted += doomed.length;
     };
@@ -100,13 +102,13 @@ export async function deleteOrphanEvidence(
       if (ownerId) {
         let state = owners.get(ownerId);
         if (!state) {
-          if (budget.exhausted()) {
+          if (!budget.canAfford({ d1: OWNER_LOOKUP_COST.d1, net: FLUSH_COST.net })) {
             // Stop before this object; `after` still points at the last one fully examined.
             await flush();
             result.deferred = true;
             break walk;
           }
-          budget.charge(SUBREQUESTS_PER_OWNER);
+          budget.charge(OWNER_LOOKUP_COST);
           state = await ownerState(env.DB, ownerId, openRunSince);
           owners.set(ownerId, state);
         }

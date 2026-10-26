@@ -84,34 +84,38 @@ async function deleteGuestRowsIfStillEligible(db: D1Database, guestId: string, n
   return Number(results[results.length - 1]?.meta?.changes ?? 0) > 0;
 }
 
-/** Subrequests one removal costs at least: the D1 batch, one R2 list page and one R2 delete. */
-const SUBREQUESTS_PER_GUEST = 3;
+/** One removal costs at least: the D1 batch, plus one R2 list page and one R2 delete. */
+const GUEST_COST = { d1: 1, net: 2 } as const;
 
 export async function removeInactiveGuests(
   env: Pick<Env, 'DB' | 'EVIDENCE'>, now = new Date(), limit = GUEST_CLEANUP_BATCH, budget: CronBudget = createCronBudget(),
 ): Promise<GuestCleanupResult> {
   const result: GuestCleanupResult = { removed: 0, skipped: 0, failed: 0, deferred: false };
-  if (budget.exhausted()) return { ...result, deferred: true };
-  const take = Math.min(limit, Math.floor((budget.remainingSubrequests() - 1) / SUBREQUESTS_PER_GUEST));
-  if (take <= 0) return { ...result, deferred: true };
-  budget.charge(1);
+  // Size the scan to what the budget can actually remove after the scan query itself.
+  const take = Math.min(
+    limit,
+    Math.floor((budget.remainingD1Queries() - 1) / GUEST_COST.d1),
+    Math.floor((budget.remainingSubrequests() - 1) / (GUEST_COST.d1 + GUEST_COST.net)),
+  );
+  if (take <= 0 || !budget.canAfford({ d1: 1 + GUEST_COST.d1, net: GUEST_COST.net })) return { ...result, deferred: true };
+  budget.charge({ d1: 1 });
   const ids = await findInactiveGuests(env.DB, now, take);
   for (const id of ids) {
-    if (budget.exhausted()) {
+    if (!budget.canAfford(GUEST_COST)) {
       result.deferred = true;
       break;
     }
     try {
-      budget.charge(1);
+      budget.charge({ d1: GUEST_COST.d1 });
       if (!(await deleteGuestRowsIfStillEligible(env.DB, id, now))) {
         result.skipped++;
         continue;
       }
       const keys = await listR2Keys(env.EVIDENCE, evidencePrefix(id));
-      budget.charge(Math.max(1, Math.ceil(keys.length / 1000)));
+      budget.charge({ net: Math.max(1, Math.ceil(keys.length / 1000)) });
       for (let i = 0; i < keys.length; i += 1000) {
         await env.EVIDENCE.delete(keys.slice(i, i + 1000));
-        budget.charge(1);
+        budget.charge({ net: 1 });
       }
       result.removed++;
     } catch (err) {
