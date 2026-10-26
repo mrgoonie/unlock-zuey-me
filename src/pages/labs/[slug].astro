@@ -1,7 +1,29 @@
 ---
+/** Lab runner: renders the island for a known lab id; unknown ids get a friendly 404. */
 import AppLayout from '../../layouts/AppLayout.astro';
+import ContextLab from '../../components/labs/ContextLab';
+import HallucinationDetectiveLab from '../../components/labs/HallucinationDetectiveLab';
+import TokenPredictorLab from '../../components/labs/TokenPredictorLab';
+import { getLab } from '../../lib/labs/registry';
+
+const lab = getLab(Astro.params.slug ?? '');
+if (!lab) Astro.response.status = 404;
 ---
-<AppLayout title="Lab">
-  <h1 class="text-2xl font-bold mt-2">Lab</h1>
-  <p class="mt-2 text-ink-muted">Thí nghiệm tương tác.</p>
-</AppLayout>
+{lab ? (
+  <AppLayout title={lab.title} description={lab.summary}>
+    <a href="/labs" class="btn-ghost mt-2 min-h-[44px] px-3 text-sm">← Tất cả lab</a>
+    <h1 class="mt-3 text-2xl font-bold"><span aria-hidden="true" class="mr-2">{lab.emoji}</span>{lab.title}</h1>
+    <div class="mt-3">
+      {lab.id === 'token-predictor' && <TokenPredictorLab client:load />}
+      {lab.id === 'context-lab' && <ContextLab client:load />}
+      {lab.id === 'hallucination-detective' && <HallucinationDetectiveLab client:load />}
+    </div>
+    <noscript><p class="card mt-4">Lab cần bật JavaScript để chơi nhé.</p></noscript>
+  </AppLayout>
+) : (
+  <AppLayout title="Không tìm thấy lab">
+    <h1 class="mt-2 text-2xl font-bold">🙈 Không tìm thấy lab này</h1>
+    <p class="mt-2 text-ink-muted">Có thể đường dẫn bị gõ nhầm. Quay lại danh sách lab để chọn nhé.</p>
+    <a href="/labs" class="btn-primary mt-4">Xem tất cả lab</a>
+  </AppLayout>
+)}
