@@ -50,12 +50,19 @@ Rewards rules: XP only from a **passed** evaluation (once per run, via `xp_ledge
 
 | Method & path | Purpose |
 |---|---|
-| `POST /api/v1/push/subscribe` | `{ subscription, remindTime: "HH:MM", timezone }` |
-| `POST /api/v1/push/unsubscribe` | `{ endpoint }` |
-| `PATCH /api/v1/push/settings` | `{ remindTime?, enabled? }` |
-| `GET /api/v1/push/public-key` | `{ key }` (VAPID public key) |
-| `PATCH /api/v1/me/consent` | `{ observer: boolean }` |
-| `GET /api/v1/me/export` | JSON download of all the learner's data |
-| `POST /api/v1/me/delete` | `{ confirm: "XOA" }` deletes the learner's data and ends the session |
+| `POST /api/v1/push/subscribe` | `{ subscription, remindTime: "HH:MM", timezone }` → `{ status }`. Endpoint must be a known push service (FCM, Mozilla, Apple, WNS) |
+| `POST /api/v1/push/unsubscribe` | `{ endpoint }` → `{ status }` (idempotent) |
+| `GET /api/v1/push/settings` | `{ status: { devices, enabled, remindTime, timezone, lastSentDay } }` |
+| `PATCH /api/v1/push/settings` | `{ remindTime?, enabled? }` → `{ status }` (all of the learner's devices; 404 if none) |
+| `GET /api/v1/push/public-key` | `{ key }` (VAPID public key; 503 when not configured) |
+| `POST /api/v1/push/opened` | `{ tag?, url? }` sent by `public/sw.js` on notification click → `push.opened` event |
+| `PATCH /api/v1/me/consent` | `{ observer: boolean }` → `{ observerConsent }` (emits `consent.granted` / `consent.revoked` on change) |
+| `GET /api/v1/me/export` | JSON download of all the learner's data (credentials such as token hashes and push keys omitted) |
+| `POST /api/v1/me/delete` | `{ confirm: "XOA" }` deletes the learner's rows (incl. merged guests) and R2 `ev/<learnerId>/*`, expires cookies; idempotent |
 | `GET /api/v1/admin/learners` | admin only; learners with consent |
-| `GET /api/v1/admin/learners/:id` | admin only; timeline, funnel, hints, scores, evidence (consent required, checked per request) |
+| `GET /api/v1/admin/learners/:id` | admin only; timeline (first page), funnel, hints, scores, calibration, competencies, first win, evidence, coach chats (consent required, checked per request) |
+| `GET /api/v1/admin/learners/:id/events?cursor=&limit=` | admin only; older timeline pages `{ events, nextCursor }` |
+
+Non-admins get `404 not_found` from every admin route and page (never 403). A learner without `observer_consent = 1` is `not_found` for admins too. Evidence images on `/admin` load from `GET /api/v1/evidence/<key>` with each `/`-separated key segment URL-encoded.
+
+Push reminder cron (`src/lib/push/reminder-job.ts`): every 15 minutes, sends at most one reminder per subscription per local day when `remind_time` is in the current local quarter hour and the learner has no `activity_days` row for that day. A 404/410 from the push service deletes the subscription; 5 consecutive failures disable it.

@@ -1,7 +1,71 @@
 ---
+/** Settings: account, sound/motion, daily reminders, observer consent, export and delete. */
 import AppLayout from '../layouts/AppLayout.astro';
+import DataRightsPanel from '../components/settings/DataRightsPanel';
+import ObserverConsentToggle from '../components/settings/ObserverConsentToggle';
+import PreferenceToggles from '../components/settings/PreferenceToggles';
+import ReminderSettings from '../components/settings/ReminderSettings';
+import { getPushStatus, type PushStatus } from '../lib/push/subscription-store';
+import { DEFAULT_TIMEZONE } from '../lib/push/reminder-window';
+
+const learner = Astro.locals.learner;
+let push: PushStatus = { devices: 0, enabled: false, remindTime: '20:00', timezone: DEFAULT_TIMEZONE, lastSentDay: null };
+if (learner) {
+  try {
+    push = await getPushStatus(Astro.locals.runtime.env.DB, learner.id);
+  } catch (err) {
+    console.error('settings: push status unavailable', err);
+  }
+}
+const section = 'card flex flex-col gap-3';
 ---
 <AppLayout title="Cài đặt">
   <h1 class="text-2xl font-bold mt-2">Cài đặt</h1>
-  <p class="mt-2 text-ink-muted">Tài khoản, nhắc nhở, âm thanh, chuyển động, quyền riêng tư và dữ liệu.</p>
+  <div class="mt-4 flex flex-col gap-4">
+    <section class={section} aria-labelledby="s-account">
+      <h2 id="s-account" class="text-lg font-semibold">Tài khoản</h2>
+      {learner?.kind === 'member' ? (
+        <>
+          <p>
+            <span class="font-medium">{learner.displayName ?? 'Thành viên zuey.me'}</span>
+            {learner.email && <span class="block text-sm text-ink-muted">{learner.email}</span>}
+          </p>
+          <form method="post" action="/auth/logout">
+            <button type="submit" class="btn-ghost">Đăng xuất</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p class="text-sm text-ink-muted">
+            Bạn đang dùng chế độ khách: tiến độ chỉ lưu trên thiết bị này. Đăng nhập để giữ tiến độ trên mọi thiết bị (tiến độ hiện tại được giữ nguyên).
+          </p>
+          <a href="/auth/zuey/login?return_to=/settings" class="btn-primary self-start">Đăng nhập với zuey.me</a>
+        </>
+      )}
+    </section>
+
+    <section class={section} aria-labelledby="s-prefs">
+      <h2 id="s-prefs" class="text-lg font-semibold">Âm thanh và chuyển động</h2>
+      <PreferenceToggles client:visible sound={learner?.profile.sound === true} reducedMotion={learner?.profile.reducedMotion === true} />
+    </section>
+
+    <section class={section} aria-labelledby="s-remind">
+      <h2 id="s-remind" class="text-lg font-semibold">Nhắc nhở mỗi ngày</h2>
+      <ReminderSettings client:visible initial={push} />
+    </section>
+
+    <section class={section} aria-labelledby="s-observer">
+      <h2 id="s-observer" class="text-lg font-semibold">Quyền riêng tư</h2>
+      <ObserverConsentToggle client:visible initial={learner?.observerConsent === true} />
+    </section>
+
+    <section class={section} aria-labelledby="s-data">
+      <h2 id="s-data" class="text-lg font-semibold">Dữ liệu của bạn</h2>
+      <DataRightsPanel client:visible />
+    </section>
+
+    {learner?.isAdmin && (
+      <a href="/admin" class="btn-ghost self-start">Dashboard quan sát</a>
+    )}
+  </div>
 </AppLayout>

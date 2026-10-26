@@ -1,0 +1,23 @@
+---
+/** Hints per run over time (oldest first): a falling bar length means growing independence. */
+import type { RunHints } from '../../lib/observer/queries';
+import { formatDateTime, missionTitle } from './admin-format';
+
+interface Props { runs: RunHints[] }
+const { runs } = Astro.props;
+const max = Math.max(1, ...runs.map((r) => r.hintsUsed));
+---
+{runs.length === 0 ? <p class="text-ink-muted">Chưa có lượt làm nào.</p> : (
+  <ol class="flex flex-col gap-2 text-sm">
+    {runs.map((r) => (
+      <li class="grid grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-2">
+        <span class="truncate">
+          {missionTitle(r.missionId)}
+          <span class="block text-xs text-ink-muted">{formatDateTime(r.startedAt)}</span>
+        </span>
+        <span class="h-3 rounded-full bg-line/50" aria-hidden="true"><span class="block h-3 rounded-full bg-warn" style={`width:${Math.round((r.hintsUsed / max) * 100)}%`} /></span>
+        <span class="whitespace-nowrap tabular-nums">{r.hintsUsed} gợi ý · nấc {r.hintMaxLevel}</span>
+      </li>
+    ))}
+  </ol>
+)}

@@ -1,0 +1,39 @@
+---
+/** Newest-first event timeline with "older" pagination via ?cursor=. */
+import type { TimelinePage } from '../../lib/observer/queries';
+import { eventLabel, formatDateTime, missionTitle, propsSummary } from './admin-format';
+
+interface Props { page: TimelinePage; basePath: string; isFirstPage: boolean }
+const { page, basePath, isFirstPage } = Astro.props;
+---
+{page.events.length === 0 ? (
+  <p class="text-ink-muted">Chưa có sự kiện nào.</p>
+) : (
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[560px] text-sm">
+      <caption class="sr-only">Dòng thời gian sự kiện</caption>
+      <thead class="text-left text-ink-muted">
+        <tr><th scope="col" class="py-2 pr-3">Thời điểm</th><th scope="col" class="py-2 pr-3">Sự kiện</th><th scope="col" class="py-2">Chi tiết</th></tr>
+      </thead>
+      <tbody>
+        {page.events.map((e) => (
+          <tr class="border-t border-line align-top">
+            <td class="py-2 pr-3 whitespace-nowrap">{formatDateTime(e.occurredAt)}</td>
+            <td class="py-2 pr-3">
+              {eventLabel(e.name)}
+              <span class="block text-xs text-ink-muted">{e.name}{e.source === 'mcp' ? ' · MCP' : ''}</span>
+            </td>
+            <td class="py-2 break-words">
+              {e.missionId && <span class="block">{missionTitle(e.missionId)}</span>}
+              <span class="text-xs text-ink-muted">{propsSummary(e.props)}</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+<nav aria-label="Phân trang dòng thời gian" class="mt-3 flex gap-2">
+  {!isFirstPage && <a class="btn-ghost text-sm" href={`${basePath}#timeline`}>Mới nhất</a>}
+  {page.nextCursor && <a class="btn-ghost text-sm" href={`${basePath}?cursor=${encodeURIComponent(page.nextCursor)}#timeline`}>Cũ hơn →</a>}
+</nav>

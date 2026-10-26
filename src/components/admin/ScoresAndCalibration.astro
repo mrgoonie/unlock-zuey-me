@@ -1,0 +1,54 @@
+---
+/** Per-criterion scores per evaluation, calibration (predicted confidence vs actual score) and first verified win. */
+import type { EvaluationSummary, FirstWin } from '../../lib/observer/queries';
+import { formatDateTime, formatDuration, missionTitle, percent } from './admin-format';
+
+interface Props { evaluations: EvaluationSummary[]; firstWin: FirstWin }
+const { evaluations, firstWin } = Astro.props;
+const STATUS: Record<EvaluationSummary['status'], string> = { passed: 'Đạt', needs_revision: 'Cần sửa', failed: 'Chưa đạt' };
+const calibrated = evaluations.filter((e) => e.confidence !== null);
+const meanGap = calibrated.length
+  ? Math.round(calibrated.reduce((n, e) => n + ((e.confidence ?? 0) - e.score * 100), 0) / calibrated.length)
+  : null;
+---
+<div class="flex flex-col gap-4 text-sm">
+  <p>
+    <span class="font-medium">Lần đầu đạt (verified win):</span>
+    {firstWin.firstPassAt
+      ? <> {formatDuration(firstWin.msFromFirstStart)} sau khi bắt đầu mission đầu tiên ({formatDateTime(firstWin.firstPassAt)}).</>
+      : <> chưa có.</>}
+  </p>
+  {meanGap !== null && (
+    <p>
+      <span class="font-medium">Hiệu chỉnh:</span> độ tự tin dự đoán trung bình
+      {meanGap === 0 ? ' khớp với điểm thực tế' : ` ${meanGap > 0 ? 'cao hơn' : 'thấp hơn'} điểm thực tế ${Math.abs(meanGap)} điểm phần trăm`}
+      ({calibrated.length} lần chấm).
+    </p>
+  )}
+  {evaluations.length === 0 ? <p class="text-ink-muted">Chưa có lần chấm nào.</p> : (
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[560px]">
+        <caption class="sr-only">Kết quả chấm theo tiêu chí</caption>
+        <thead class="text-left text-ink-muted">
+          <tr><th scope="col" class="py-2 pr-3">Lần chấm</th><th scope="col" class="py-2 pr-3">Kết quả</th><th scope="col" class="py-2 pr-3">Dự đoán / thực tế</th><th scope="col" class="py-2">Tiêu chí</th></tr>
+        </thead>
+        <tbody>
+          {evaluations.map((e) => (
+            <tr class="border-t border-line align-top">
+              <td class="py-2 pr-3">{missionTitle(e.missionId)}<span class="block text-xs text-ink-muted">{formatDateTime(e.createdAt)}</span></td>
+              <td class="py-2 pr-3 whitespace-nowrap">{STATUS[e.status]} · {percent(e.score)}</td>
+              <td class="py-2 pr-3 whitespace-nowrap tabular-nums">{e.confidence === null ? '—' : `${e.confidence}%`} / {percent(e.score)}</td>
+              <td class="py-2">
+                <ul class="flex flex-col gap-0.5">
+                  {e.criteria.map((c) => (
+                    <li>{c.label}: <span class="tabular-nums">{percent(c.score)}</span>{c.method === 'ai' && <span class="chip ml-1">AI</span>}</li>
+                  ))}
+                </ul>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>

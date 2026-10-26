@@ -1,0 +1,58 @@
+---
+/** Submitted evidence: answers rendered per step/field with authored labels, plus screenshots. */
+import type { EvidenceItem } from '../../lib/observer/queries';
+import { answerLabels, evidenceImageUrl, formatDateTime, missionTitle } from './admin-format';
+
+interface Props { items: EvidenceItem[] }
+const { items } = Astro.props;
+const asRecord = (v: unknown): Record<string, unknown> | null =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+const show = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v, null, 2));
+---
+{items.length === 0 ? <p class="text-ink-muted">Chưa nộp bằng chứng nào.</p> : (
+  <div class="flex flex-col gap-4">
+    {items.map((it) => {
+      const labels = answerLabels(it.missionId);
+      return (
+        <article class="rounded-xl border border-line p-3">
+          <h4 class="font-semibold">{missionTitle(it.missionId)}</h4>
+          <p class="text-xs text-ink-muted">Nộp lúc {formatDateTime(it.createdAt)}</p>
+          <dl class="mt-2 flex flex-col gap-3 text-sm">
+            {Object.entries(it.answers).map(([stepId, value]) => {
+              const step = labels.get(stepId);
+              const fields = asRecord(value);
+              return (
+                <div>
+                  <dt class="font-medium">{step?.title ?? stepId}</dt>
+                  <dd>
+                    {fields ? (
+                      <dl class="mt-1 flex flex-col gap-1 border-l-2 border-line pl-3">
+                        {Object.entries(fields).map(([fieldId, v]) => (
+                          <div>
+                            <dt class="text-ink-muted">{step?.fields.get(fieldId) ?? fieldId}</dt>
+                            <dd>{Array.isArray(v)
+                              ? <ul class="list-disc pl-5">{v.map((x) => <li class="whitespace-pre-wrap break-words">{show(x)}</li>)}</ul>
+                              : <p class="whitespace-pre-wrap break-words">{show(v)}</p>}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : <p class="whitespace-pre-wrap break-words">{show(value)}</p>}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+          {it.imageKeys.length > 0 && (
+            <div class="mt-3 flex flex-wrap gap-2">
+              {it.imageKeys.map((k, i) => (
+                <a href={evidenceImageUrl(k)} target="_blank" rel="noopener" class="block">
+                  <img src={evidenceImageUrl(k)} alt={`Ảnh bằng chứng ${i + 1}`} loading="lazy" class="h-32 w-auto rounded-lg border border-line object-cover" />
+                </a>
+              ))}
+            </div>
+          )}
+        </article>
+      );
+    })}
+  </div>
+)}
