@@ -146,7 +146,7 @@ export interface HintResult {
 
 export class LearningError extends Error {
   constructor(
-    public code: 'not_found' | 'forbidden' | 'conflict' | 'invalid' | 'budget_exceeded' | 'unavailable',
+    public code: 'not_found' | 'forbidden' | 'conflict' | 'invalid' | 'rate_limited' | 'budget_exceeded' | 'unavailable',
     message: string,
   ) {
     super(message);

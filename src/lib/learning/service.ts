@@ -2,56 +2,74 @@
  * Learning service: the single entry point for learning state. Web routes and /mcp tools call only these
  * functions, so a mission started over MCP is visible on the web and vice versa.
  *
- * Every function takes the caller's LearnerContext and must scope all reads/writes to `learner.id`
- * (cross-user access is a LearningError('forbidden'/'not_found')).
+ * Every function takes the caller's LearnerContext and scopes all reads/writes to `learner.id`
+ * (another learner's run is LearningError('not_found'), never leaked).
  */
+import { getMission } from '../content/loader';
+import type { Mission } from '../content/schema';
+import { requestHintImpl } from './hints';
+import { getRunDetail, loadRun, saveAnswersImpl, startMissionImpl } from './mission-runs';
+import { getProgressImpl, listMissionsImpl } from './progress';
+import { submitEvidenceImpl } from './submit-evidence';
 import type {
-  Answers, HintResult, LearnerContext, MissionListItem, MissionRun, ProgressSummary, Source, SubmitResult,
+  Answers, Evaluation, HintResult, LearnerContext, MissionListItem, MissionRun, ProgressSummary, Source, SubmitResult,
 } from './types';
 import { LearningError } from './types';
-
-const todo = (name: string): never => {
-  throw new LearningError('unavailable', `${name} is not implemented yet`);
-};
 
 export interface LearningDeps {
   env: Env;
   /** Clock injection for tests. */
   now?: () => Date;
+  /** fetch used for OpenRouter calls (tests inject a fake). Defaults to global fetch. */
+  fetchImpl?: typeof fetch;
 }
 
-export async function getProgress(_deps: LearningDeps, _learner: LearnerContext): Promise<ProgressSummary> {
-  return todo('getProgress');
+export async function getProgress(deps: LearningDeps, learner: LearnerContext): Promise<ProgressSummary> {
+  return getProgressImpl(deps, learner);
 }
 
-export async function listMissions(_deps: LearningDeps, _learner: LearnerContext): Promise<MissionListItem[]> {
-  return todo('listMissions');
+export async function listMissions(deps: LearningDeps, learner: LearnerContext): Promise<MissionListItem[]> {
+  return listMissionsImpl(deps, learner);
+}
+
+/** A published mission's full content (steps, rubric), or not_found. */
+export function getMissionContent(missionId: string): Mission {
+  const m = getMission(missionId);
+  if (!m || m.status !== 'published') throw new LearningError('not_found', 'Không tìm thấy mission này.');
+  return m;
 }
 
 /** Starts (or resumes the open) run of a mission. Idempotent: an open run is returned instead of a new one. */
 export async function startMission(
-  _deps: LearningDeps, _learner: LearnerContext, _missionId: string, _source: Source,
+  deps: LearningDeps, learner: LearnerContext, missionId: string, source: Source,
 ): Promise<MissionRun> {
-  return todo('startMission');
+  return startMissionImpl(deps, learner, missionId, source);
 }
 
-export async function getRun(_deps: LearningDeps, _learner: LearnerContext, _runId: string): Promise<MissionRun> {
-  return todo('getRun');
+export async function getRun(deps: LearningDeps, learner: LearnerContext, runId: string): Promise<MissionRun> {
+  return loadRun(deps, learner, runId);
+}
+
+/** Run + its mission content + latest evaluation (null before the first submission). */
+export async function getRunWithEvaluation(
+  deps: LearningDeps, learner: LearnerContext, runId: string,
+): Promise<{ run: MissionRun; mission: Mission; evaluation: Evaluation | null }> {
+  return getRunDetail(deps, learner, runId);
 }
 
 /** Autosaves draft answers for one step. `rev` is the run's revision the client last saw (optimistic lock). */
 export async function saveAnswers(
-  _deps: LearningDeps, _learner: LearnerContext, _runId: string,
-  _input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number },
+  deps: LearningDeps, learner: LearnerContext, runId: string,
+  input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number },
 ): Promise<MissionRun> {
-  return todo('saveAnswers');
+  return saveAnswersImpl(deps, learner, runId, input);
 }
 
 /** Hint ladder level n (1..4). Levels unlock in order; AI failure falls back to the authored static hint. */
 export async function requestHint(
-  _deps: LearningDeps, _learner: LearnerContext, _runId: string, _stepId: string, _level: 1 | 2 | 3 | 4,
+  deps: LearningDeps, learner: LearnerContext, runId: string, stepId: string, level: 1 | 2 | 3 | 4,
 ): Promise<HintResult> {
-  return todo('requestHint');
+  return requestHintImpl(deps, learner, runId, stepId, level);
 }
 
 /**
@@ -60,8 +78,17 @@ export async function requestHint(
  * leaves the run in 'evaluation_failed' with the evidence intact (retry re-evaluates it).
  */
 export async function submitEvidence(
-  _deps: LearningDeps, _learner: LearnerContext, _runId: string,
-  _input: { idempotencyKey: string; answers?: Answers; confidence?: number; imageKeys?: string[]; source: Source },
+  deps: LearningDeps, learner: LearnerContext, runId: string,
+  input: { idempotencyKey: string; answers?: Answers; confidence?: number; imageKeys?: string[]; source: Source },
 ): Promise<SubmitResult> {
-  return todo('submitEvidence');
+  return submitEvidenceImpl(deps, learner, runId, input);
 }
+
+export { updateLearnerProfile } from './learner-profile';
+export { sendPracticeChat } from './practice-chat-service';
+export { recordLabResult, recordConceptView, LAB_IDS } from './labs-and-concepts';
+export { getRecap } from './recap';
+export { issueCertificate } from './certificates';
+export { recordClientEvent, CLIENT_EVENTS } from './client-events';
+export { storeEvidenceImage, readEvidence, EVIDENCE_MAX_BYTES } from './evidence-store';
+export { RunConflictError } from './errors';
