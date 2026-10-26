@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as turnsRoute } from '../../src/pages/api/ingest/v1/turns';
 import { createToken } from '../../src/lib/insights/ingest-tokens';
-import { DAILY_INGEST_CAP_PER_LEARNER, INGEST_DEBOUNCE_MS } from '../../src/lib/insights/ingest-contract';
+import { DAILY_INGEST_CAP_PER_LEARNER, INGEST_DEBOUNCE_MS, ingestTurnV1Schema } from '../../src/lib/insights/ingest-contract';
 import { readIngestBody } from '../../src/lib/insights/ingest-service';
 import { callRoute, count, ingestRequest, makeEnv, NOW, seedMember, sha, turnPayload, type TestEnv } from './insights-ingest-fixtures';
 
@@ -80,6 +80,30 @@ describe('ingest turns', () => {
     expect(Number(row.redactions)).toBeGreaterThanOrEqual(4);
     const payload = JSON.parse(stored);
     expect(payload.redaction.kinds).toEqual(expect.arrayContaining(['api_key', 'bearer', 'email', 'phone']));
+  });
+
+  it('stores what the analyzer reads: a schema-valid turn, payload_bytes, and ISO timestamp strings', async () => {
+    const secretRun = `run_${'aB3dE5gH7jK9mN1pQ3sT5vX7zA9cE1gI'}`;
+    const res = await post(turnPayload({
+      turnEndedAt: '2026-10-26T22:59:58+07:00',
+      turnOver: {
+        userPrompt: 'Mật khẩu: hunter2-secret',
+        tools: [{ name: 'Bash', ok: true, count: 2 }, { name: `sk-ant-api03-${'a1B2c3D4'.repeat(6)}`, ok: true, count: 1 }],
+        platform: { mcpTools: ['start_mission'], missionId: 'plan-weekend', runId: secretRun },
+      },
+    }));
+    expect(res.status).toBe(202);
+    const [row] = await rows();
+    const stored = JSON.parse(String(row.payload_json));
+    expect(ingestTurnV1Schema.shape.turn.safeParse(stored.turn).success).toBe(true);
+    expect(stored.turn.tools.map((t: { name: string }) => t.name)).toEqual(['Bash']);
+    expect(stored.turn.platform).toEqual({ mcpTools: ['start_mission'], missionId: 'plan-weekend', runId: null });
+    expect(String(row.payload_json)).not.toContain(secretRun);
+    expect(row.payload_bytes).toBe(new TextEncoder().encode(String(row.payload_json)).byteLength);
+    for (const col of ['next_attempt_at', 'turn_ended_at', 'received_at']) {
+      expect(row[col]).toBe(new Date(String(row[col])).toISOString());
+    }
+    expect(row.turn_ended_at).toBe('2026-10-26T15:59:58.000Z');
   });
 
   it('re-applies the field caps when placeholders make the text longer', async () => {

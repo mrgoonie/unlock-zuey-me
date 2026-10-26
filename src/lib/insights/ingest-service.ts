@@ -8,7 +8,7 @@
  * key replaces a still-pending payload; anything else is a no-op answered `duplicate: true`.
  */
 import type { z } from 'zod';
-import { redactValue } from '../../../skills/ai-unlocked/scripts/lib/redact.mjs';
+import { redactText } from '../../../skills/ai-unlocked/scripts/lib/redact.mjs';
 import { json } from '../http/api-response';
 import { newId, nowIso } from '../db/ids';
 import { getConsents } from './consent-store';
@@ -32,7 +32,11 @@ const TOO_LARGE_MESSAGE = `Dữ liệu vượt quá ${INGEST_MAX_BYTES} byte.`;
 const CLOCK_SKEW_MESSAGE = 'Đồng hồ máy bạn lệch quá 10 phút so với máy chủ. Hãy gửi lại với thời điểm mới.';
 const DAILY_CAP_MESSAGE = 'Đã đạt giới hạn lượt gửi hôm nay. Thử lại sau 00:00 UTC.';
 
-/** The queued payload (insight_events.payload_json). Identity, session and timing live in their own columns. */
+/**
+ * The queued payload (insight_events.payload_json). Identity, session and timing live in their own columns.
+ * `turn` always validates against `ingestTurnV1Schema.shape.turn` (the analyzer reads it that way), and
+ * `payload_bytes` is its UTF-8 size (the analyzer's window byte cap).
+ */
 export interface StoredTurnPayload {
   v: 1;
   adapter: IngestTurnV1['adapter'];
@@ -100,14 +104,40 @@ export async function readIngestJson<T>(request: Request, schema: z.ZodType<T>, 
 
 const clip = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text);
 
-/** Server-side redaction of `turn` (only: the envelope hashes would trip the high-entropy rule), then re-capped. */
+/**
+ * Server-side redaction of `turn` only (the envelope hashes would trip the high-entropy rule). Free text is
+ * masked and re-capped, because placeholders can be longer than what they replace. Identifier fields
+ * (tool names, MCP tool names, mission and run ids) cannot hold a placeholder and stay schema-valid, so an
+ * identifier the rules flag is dropped instead. The stored turn therefore always passes the strict v1 turn
+ * schema the analyzer validates it against.
+ */
 export function sanitizeTurn(turn: IngestTurnV1): { payload: StoredTurnPayload['turn']; count: number; kinds: string[]; clipped: boolean } {
-  const { value, count, kinds } = redactValue(turn.turn);
-  // Placeholders can be longer than what they replace, so the field caps are applied again.
-  const userPrompt = value.userPrompt === null ? null : clip(value.userPrompt, USER_PROMPT_MAX_CHARS);
-  const assistantFinal = clip(value.assistantFinal, ASSISTANT_FINAL_MAX_CHARS);
-  const clipped = userPrompt !== value.userPrompt || assistantFinal !== value.assistantFinal;
-  return { payload: { ...value, userPrompt, assistantFinal }, count, kinds, clipped };
+  let count = 0;
+  const kinds = new Set<string>();
+  const scan = (text: string) => {
+    const r = redactText(text);
+    count += r.count;
+    for (const k of r.kinds) kinds.add(k);
+    return r.text;
+  };
+  /** True when the identifier contains nothing the rules would redact. */
+  const clean = (id: string) => scan(id) === id;
+
+  const src = turn.turn;
+  const prompt = src.userPrompt === null ? null : scan(src.userPrompt);
+  const reply = scan(src.assistantFinal);
+  const userPrompt = prompt === null ? null : clip(prompt, USER_PROMPT_MAX_CHARS);
+  const assistantFinal = clip(reply, ASSISTANT_FINAL_MAX_CHARS);
+  const clipped = userPrompt !== prompt || assistantFinal !== reply;
+
+  const payload: StoredTurnPayload['turn'] = { userPrompt, assistantFinal, tools: src.tools.filter((t) => clean(t.name)) };
+  if (src.platform) {
+    const { mcpTools, missionId, runId } = src.platform;
+    payload.platform = { mcpTools: mcpTools.filter(clean) };
+    if (missionId !== undefined) payload.platform.missionId = missionId === null || clean(missionId) ? missionId : null;
+    if (runId !== undefined) payload.platform.runId = runId === null || clean(runId) ? runId : null;
+  }
+  return { payload, count, kinds: [...kinds].sort(), clipped };
 }
 
 const utcDayStart = (now: Date) => nowIso(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())));

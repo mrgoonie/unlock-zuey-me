@@ -4,7 +4,8 @@
  * cannot afford the next step the stage stops and the next tick resumes from the table state.
  *
  * 1. Reports past `expires_at` are deleted (their signal evidence cascades).
- * 2. Events still `pending` QUEUE_STALE_AFTER_HOURS after they were received become `skipped`/`stale`.
+ * 2. Events still `pending` QUEUE_STALE_AFTER_HOURS after they were received become `skipped`/`stale`
+ *    (same update as the analyzer queue's stale sweep; running both is idempotent).
  * 3. Any `done`/`skipped`/`dead` event still holding a payload has it NULLed (dead-letter rows included).
  * 4. `done`/`skipped`/`dead` events older than QUEUE_RETENTION_DAYS are deleted.
  * 5. Signals with no evidence left and no proposal are deleted.
