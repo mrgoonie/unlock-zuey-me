@@ -13,10 +13,19 @@ export interface RequestLearner {
   setCookieToken: string | null;
   /** The presented cookie is invalid and should be cleared. */
   clearCookie: boolean;
+  /** A guest was needed but `allowGuestCreation` refused it (per-IP limit). */
+  guestThrottled?: boolean;
 }
 
 export async function resolveRequestLearner(
-  env: Pick<Env, 'DB' | 'ADMIN_EMAILS'>, input: { token: string | undefined; policy: LearnerPolicy; now: Date },
+  env: Pick<Env, 'DB' | 'ADMIN_EMAILS'>,
+  input: {
+    token: string | undefined;
+    policy: LearnerPolicy;
+    now: Date;
+    /** Asked only when a new guest would be created; false leaves the request without a learner. */
+    allowGuestCreation?: () => Promise<boolean>;
+  },
 ): Promise<RequestLearner> {
   const { token, policy, now } = input;
   if (policy === 'none') return { learner: null, setCookieToken: null, clearCookie: false };
@@ -32,6 +41,9 @@ export async function resolveRequestLearner(
     };
   }
   if (policy !== 'create') return { learner: null, setCookieToken: null, clearCookie: !!token };
+  if (input.allowGuestCreation && !(await input.allowGuestCreation())) {
+    return { learner: null, setCookieToken: null, clearCookie: !!token, guestThrottled: true };
+  }
 
   const guest = guestInsert(env.DB, now);
   const session = await sessionInsert(env.DB, guest.row.id, now);

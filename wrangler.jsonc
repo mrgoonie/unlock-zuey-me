@@ -23,12 +23,22 @@
   // Private evidence screenshots; served only to the owner (and consenting observers) through the app.
   "r2_buckets": [{ "binding": "EVIDENCE", "bucket_name": "unlock-evidence" }],
   "ai": { "binding": "AI" },
+  // Abuse throttles (src/lib/identity/request-rate-limits.ts keeps the same numbers for its fallback).
+  // Counters are per Cloudflare location and approximate; period must be 10 or 60 seconds.
+  "ratelimits": [
+    { "name": "RL_GUEST_IP", "namespace_id": "261026001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "RL_AI_IP", "namespace_id": "261026002", "simple": { "limit": 30, "period": 60 } },
+    { "name": "RL_WRITE_IP", "namespace_id": "261026003", "simple": { "limit": 120, "period": 60 } },
+    { "name": "RL_WRITE_LEARNER", "namespace_id": "261026004", "simple": { "limit": 30, "period": 60 } }
+  ],
   "vars": {
     "PUBLIC_SITE_URL": "https://unlock.zuey.me",
     "ZUEY_ISSUER": "https://zuey.me",
     "ADMIN_EMAILS": "digitop.vn@gmail.com,goon.nguyen@gmail.com,duynguyen@wearetopgroup.com,duy@wearetopgroup.com",
     "AI_DAILY_BUDGET_USD_PER_LEARNER": "0.30",
     "AI_DAILY_BUDGET_USD_GLOBAL": "5",
+    // Global daily cap on Workers AI fallback calls (the per-learner cap lives in src/lib/coach/ai-models.ts).
+    "AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL": "2000",
     "VAPID_SUBJECT": "mailto:digitop.vn@gmail.com"
   }
   // Secrets (wrangler secret put / CI): OPENROUTER_API_KEY, SESSION_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
