@@ -11,6 +11,10 @@ import { str, strList, type StepOf, type StepProps } from './step-props';
 /**
  * The revealed result. After the learner's own tap the button that had focus disappears, so focus moves
  * here (`focusOnMount`) instead of dropping to <body>; a result already shown on load never steals focus.
+ * Moving focus is also what makes screen readers read the new result, so the element is deliberately not a
+ * live region: being both focused and live made some screen readers announce it twice. Every result that
+ * appears after the learner's tap gets focus; a result already on the page at load is read in document
+ * order like any other content and needs no announcement.
  */
 function Reveal({ correct, focusOnMount, children }: { correct: boolean; focusOnMount: boolean; children: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -18,7 +22,7 @@ function Reveal({ correct, focusOnMount, children }: { correct: boolean; focusOn
     if (focusOnMount) ref.current?.focus();
   }, [focusOnMount]);
   return (
-    <div ref={ref} tabIndex={-1} role="status" aria-live="polite"
+    <div ref={ref} tabIndex={-1}
       className={`rounded-xl border p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent ${correct ? 'border-calm/50 bg-calm/10' : 'border-warn/50 bg-warn/10'}`}>
       <p className="font-semibold">{correct ? '🎯 Chính xác!' : '🌱 Chưa đúng, không sao cả.'}</p>
       <p className="mt-1">{children}</p>

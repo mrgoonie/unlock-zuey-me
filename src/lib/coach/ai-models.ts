@@ -26,8 +26,8 @@ export const WORKERS_AI_TIMEOUT_MS = 30_000;
 export const DEFAULT_BUDGET_USD_PER_LEARNER = 0.3;
 export const DEFAULT_BUDGET_USD_GLOBAL = 5;
 /**
- * Fraction of the global daily USD budget and Workers AI cap that practice chat and hints together may use
- * (wrangler var AI_DAILY_COACH_SHARE); the rest stays available to grading.
+ * Fraction of the daily USD budgets and Workers AI caps (each learner's own and the global ones) that practice
+ * chat and hints together may use (wrangler var AI_DAILY_COACH_SHARE); the rest stays available to grading.
  */
 export const DEFAULT_COACH_SHARE = 0.5;
 

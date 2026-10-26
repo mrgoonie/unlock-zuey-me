@@ -11,9 +11,10 @@
  * A Worker that dies mid-call leaves its reservation until the day rolls over, erring on the safe side.
  *
  * Grading is protected from coaching traffic: calls in the 'coaching' pool (practice chat and hints) are
- * also tracked in the coach_* columns, and the same conditional UPDATE refuses them once the global row's
- * coaching spend would pass `coachShare` of the global caps. Grading ('grading' pool) may use the full caps,
- * so coaching alone can never leave grading without budget.
+ * also tracked in the coach_* columns of both rows, and the same conditional UPDATE refuses them once the
+ * coaching spend on either row would pass `coachShare` of that row's caps (the learner's own caps and the
+ * global caps). Grading ('grading' pool) may use the full caps, so coaching alone can never leave grading
+ * without budget, neither globally nor for the learner's own submissions.
  */
 import {
   DEFAULT_BUDGET_USD_GLOBAL, DEFAULT_BUDGET_USD_PER_LEARNER, DEFAULT_COACH_SHARE, DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL,
@@ -41,6 +42,10 @@ export interface BudgetLimits {
   globalUsd: number;
   workersAiPerLearner: number;
   workersAiGlobal: number;
+  /** A learner's USD that their own coaching (chat + hints) may use per day: perLearnerUsd × share. */
+  coachPerLearnerUsd: number;
+  /** A learner's Workers AI calls that their own coaching may use per day: floor(workersAiPerLearner × share). */
+  coachWorkersAiPerLearner: number;
   /** Global USD that coaching (chat + hints) may use per day: globalUsd × share. */
   coachGlobalUsd: number;
   /** Global Workers AI calls that coaching may use per day: floor(workersAiGlobal × share). */
@@ -52,7 +57,7 @@ const positive = (raw: string | undefined, fallback: number): number => {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 };
 
-/** Share of the global caps open to coaching, from AI_DAILY_COACH_SHARE; values outside [0, 1] use the default. */
+/** Share of the per-learner and global caps open to coaching, from AI_DAILY_COACH_SHARE; values outside [0, 1] use the default. */
 export function coachShare(raw: string | undefined): number {
   const n = positive(raw, DEFAULT_COACH_SHARE);
   return n <= 1 ? n : DEFAULT_COACH_SHARE;
@@ -63,12 +68,15 @@ export function budgetLimits(
 ): BudgetLimits {
   const globalUsd = positive(env.AI_DAILY_BUDGET_USD_GLOBAL, DEFAULT_BUDGET_USD_GLOBAL);
   const workersAiGlobal = Math.floor(positive(env.AI_DAILY_WORKERS_AI_REQUESTS_GLOBAL, DEFAULT_WORKERS_AI_DAILY_REQUESTS_GLOBAL));
+  const perLearnerUsd = positive(env.AI_DAILY_BUDGET_USD_PER_LEARNER, DEFAULT_BUDGET_USD_PER_LEARNER);
   const share = coachShare(env.AI_DAILY_COACH_SHARE);
   return {
-    perLearnerUsd: positive(env.AI_DAILY_BUDGET_USD_PER_LEARNER, DEFAULT_BUDGET_USD_PER_LEARNER),
+    perLearnerUsd,
     globalUsd,
     workersAiPerLearner: WORKERS_AI_DAILY_REQUESTS_PER_LEARNER,
     workersAiGlobal,
+    coachPerLearnerUsd: perLearnerUsd * share,
+    coachWorkersAiPerLearner: Math.floor(WORKERS_AI_DAILY_REQUESTS_PER_LEARNER * share),
     coachGlobalUsd: globalUsd * share,
     coachWorkersAiGlobal: Math.floor(workersAiGlobal * share),
   };
@@ -119,7 +127,7 @@ async function conditionalUpdateBothRows(db: D1Database, day: string, learnerId:
 
 /**
  * Reserves `amountUsd` against both the learner's and the global daily USD caps (and, for coaching, the
- * global coaching share). The cap check is an uncorrelated subquery, evaluated once for the statement, so
+ * coaching share of each). The cap check is an uncorrelated subquery, evaluated once for the statement, so
  * both rows move together or not at all.
  */
 export async function reserveUsd(
@@ -129,17 +137,21 @@ export async function reserveUsd(
     `UPDATE ai_usage SET reserved_usd = reserved_usd + ?1, coach_reserved_usd = coach_reserved_usd + ?1 * ?8
      WHERE day = ?2 AND learner_id IN (?3, ?4)
        AND (SELECT COUNT(*) FROM ai_usage WHERE day = ?2 AND (
-         (learner_id = ?3 AND cost_usd + reserved_usd + ?1 <= ?5)
+         (learner_id = ?3 AND cost_usd + reserved_usd + ?1 <= ?5
+             AND (?8 = 0 OR coach_cost_usd + coach_reserved_usd + ?1 <= ?9))
          OR (learner_id = ?4 AND cost_usd + reserved_usd + ?1 <= ?6
              AND (?8 = 0 OR coach_cost_usd + coach_reserved_usd + ?1 <= ?7))
        )) = 2`,
-  ).bind(amountUsd, day, learnerId, GLOBAL_USAGE_ID, limits.perLearnerUsd, limits.globalUsd, limits.coachGlobalUsd, coachFlag(pool));
+  ).bind(
+    amountUsd, day, learnerId, GLOBAL_USAGE_ID, limits.perLearnerUsd, limits.globalUsd, limits.coachGlobalUsd, coachFlag(pool),
+    limits.coachPerLearnerUsd,
+  );
   return conditionalUpdateBothRows(db, day, learnerId, update);
 }
 
 /**
- * Counts one Workers AI call against the per-learner and global daily caps (and, for coaching, the global
- * coaching share); false when any of them is spent.
+ * Counts one Workers AI call against the per-learner and global daily caps (and, for coaching, the
+ * coaching share of each); false when any of them is spent.
  */
 export async function reserveWorkersAiCall(
   db: D1Database, day: string, learnerId: string, limits: BudgetLimits, pool: BudgetPool,
@@ -148,10 +160,13 @@ export async function reserveWorkersAiCall(
     `UPDATE ai_usage SET workers_ai_requests = workers_ai_requests + 1, coach_workers_ai_requests = coach_workers_ai_requests + ?7
      WHERE day = ?1 AND learner_id IN (?2, ?3)
        AND (SELECT COUNT(*) FROM ai_usage WHERE day = ?1 AND (
-         (learner_id = ?2 AND workers_ai_requests < ?4)
+         (learner_id = ?2 AND workers_ai_requests < ?4 AND (?7 = 0 OR coach_workers_ai_requests < ?8))
          OR (learner_id = ?3 AND workers_ai_requests < ?5 AND (?7 = 0 OR coach_workers_ai_requests < ?6))
        )) = 2`,
-  ).bind(day, learnerId, GLOBAL_USAGE_ID, limits.workersAiPerLearner, limits.workersAiGlobal, limits.coachWorkersAiGlobal, coachFlag(pool));
+  ).bind(
+    day, learnerId, GLOBAL_USAGE_ID, limits.workersAiPerLearner, limits.workersAiGlobal, limits.coachWorkersAiGlobal, coachFlag(pool),
+    limits.coachWorkersAiPerLearner,
+  );
   return conditionalUpdateBothRows(db, day, learnerId, update);
 }
 

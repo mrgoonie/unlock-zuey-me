@@ -142,7 +142,9 @@ describe('global caps and concurrent reservations', () => {
       return Response.json({ model: 'google/gemini-3.1-flash-lite', choices: [{ message: { content: 'ok' } }], usage: { prompt_tokens: 10, completion_tokens: 10 } });
     }) as unknown as typeof fetch;
     // Worst case per call: 2000 output tokens × $1.5/M = $0.003, so only 3 fit in $0.01.
-    const calls = Array.from({ length: 10 }, () => runAi({ env: tight, fetchImpl, now: () => NOW }, req({ maxTokens: 2000 })));
+    // Grading may use the learner's full cap (coaching would stop at its share).
+    const calls = Array.from({ length: 10 }, () =>
+      runAi({ env: tight, fetchImpl, now: () => NOW }, req({ maxTokens: 2000, purpose: 'grade' })));
     await new Promise((r) => setTimeout(r, 20));
     release();
     const results = await Promise.all(calls);
