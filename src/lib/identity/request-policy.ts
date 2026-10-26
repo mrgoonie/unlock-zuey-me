@@ -24,7 +24,9 @@ export const isApiV1 = (pathname: string) => startsWithSegment(pathname, '/api/v
 export function learnerPolicy(pathname: string, method: string, userAgent: string | null): LearnerPolicy {
   if (
     startsWithSegment(pathname, '/_astro') || startsWithSegment(pathname, '/.well-known') ||
-    startsWithSegment(pathname, '/mcp') || pathname === '/api/health'
+    startsWithSegment(pathname, '/mcp') || pathname === '/api/health' ||
+    // Ingest is bearer-token only (non-browser clients): it must never resolve or create a cookie session.
+    startsWithSegment(pathname, '/api/ingest')
   ) return 'none';
   if (isApiV1(pathname)) return isBotUserAgent(userAgent) ? 'read' : 'create';
   if (startsWithSegment(pathname, '/oauth') || looksLikeStaticAsset(pathname)) return 'none';
