@@ -57,3 +57,10 @@ The production Playwright suite targets the deployed site with guest learners (`
 ## Rollback
 
 Flags as in the plan. Revert the PR range if needed. Migration 0008 stays, inert.
+
+## Implementation notes (2026-10-26)
+
+- Done: `tests/unit/insights-end-to-end-pipeline.test.ts`, `tests/unit/insights-feature-off-regression.test.ts`, `e2e/insights.spec.ts`, `docs/api-contract.md`, `docs/insights-ingest-contract.md`, `README.md`.
+- The rollout checklist, evaluation gate, rollback and manual QA script live in the new `docs/insights-rollout.md` (linked from README and both contract docs) instead of `docs/deployment.md`, which stays about deploys and migrations.
+- Production answers a session-less `/api/v1/**` request 401 in the middleware, nonexistent paths included; the e2e asserts the insights APIs answer exactly like a nonexistent path there, and 404 for a browser (guest) session.
+- Manual QA: only the parts without a member account were run (installer round-trip in a temp HOME against a local preview, ingest auth probes, E2E_INSIGHTS=1). Pairing, live turns, cron and hook timing in a real Claude Code session remain for a person. Report: `plans/reports/fullstack-developer-261026-insights-phase-6.md`.
