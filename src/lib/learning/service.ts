@@ -5,6 +5,7 @@
  * Every function takes the caller's LearnerContext and scopes all reads/writes to `learner.id`
  * (another learner's run is LearningError('not_found'), never leaked).
  */
+import { abandonRunImpl } from './abandon-run';
 import { revealAnswerImpl } from './answer-reveals';
 import { requestHintImpl } from './hints';
 import {
@@ -82,6 +83,14 @@ export async function saveAnswers(
   input: { stepId: string; answers: Answers[string]; currentStep?: string; rev: number },
 ): Promise<MissionRun> {
   return saveAnswersImpl(deps, learner, runId, input);
+}
+
+/**
+ * Abandons an open run ("Bỏ lượt này") so the learner can start the mission over. Idempotent on an abandoned
+ * run; a completed run or one still being graded is `conflict`. No XP, evaluation or other side effect.
+ */
+export async function abandonRun(deps: LearningDeps, learner: LearnerContext, runId: string): Promise<MissionRun> {
+  return abandonRunImpl(deps, learner, runId);
 }
 
 /** Hint ladder level n (1..4). Levels unlock in order; AI failure falls back to the authored static hint. */

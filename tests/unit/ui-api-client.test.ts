@@ -89,6 +89,20 @@ describe('api client error mapping', () => {
     }
   });
 
+  it('abandonRun POSTs to the run\'s abandon endpoint without a body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { run: { id: 'run 1', status: 'abandoned' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      expect((await api.abandonRun('run 1')).run.status).toBe('abandoned');
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/v1/runs/run%201/abandon');
+      expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin' });
+      expect(init.body).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('sends JSON with same-origin credentials and parses the reply', async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
     const res = await request<{ ok: boolean }>('POST', '/api/v1/events', { name: 'x' }, { fetcher });

@@ -5,7 +5,7 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 ## Conventions
 
 - JSON in and out. Errors are `{ "error": { "code", "message" } }`. Codes: `unauthorized` 401, `forbidden` 403, `answer_locked` 403 (only for a write that changes a revealed answer, see `reveal` below), `not_found` 404, `conflict` 409, `invalid` 400, `rate_limited` / `budget_exceeded` 429, `unavailable` 503, `internal` 500.
-- Throttles (`src/lib/identity/request-rate-limits.ts`, Workers Rate Limiting bindings in `wrangler.jsonc`): new guests per IP; `coach/chat`, `runs/:id/hints`, `runs/:id/submit`, `evidence/upload` per IP; `events`, `labs/:id/result`, `missions/:id/start`, `push/subscribe` per IP and per learner. Over the limit → `rate_limited` 429. AI budgets (per learner and global USD for OpenRouter, per learner and global daily request caps for Workers AI) live in `src/lib/coach/ai-usage.ts`.
+- Throttles (`src/lib/identity/request-rate-limits.ts`, Workers Rate Limiting bindings in `wrangler.jsonc`): new guests per IP; `coach/chat`, `runs/:id/hints`, `runs/:id/submit`, `evidence/upload` per IP; `events`, `labs/:id/result`, `missions/:id/start`, `push/subscribe` per IP and per learner; `runs/:id/abandon` per learner (checked in the route). Over the limit → `rate_limited` 429. AI budgets (per learner and global USD for OpenRouter, per learner and global daily request caps for Workers AI) live in `src/lib/coach/ai-usage.ts`.
 - Learner identity comes from `Astro.locals.learner` (`LearnerContext`). The middleware (identity module) guarantees it is set for `/api/v1/**` and every learner page by creating a guest learner + cookie session on first visit. It is **not** created for `/`, `/api/health`, `/certificates/*`, `/oauth/*`, `/mcp`, static assets.
 - State-changing requests (`POST/PATCH/PUT/DELETE` under `/api/v1`) must be same-origin; the middleware rejects a foreign `Origin` with 403.
 - Every query is scoped to `locals.learner.id`. Accessing another learner's run returns `not_found` (never leak existence).
@@ -22,7 +22,8 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 | `GET /api/v1/runs/:id` | – | `{ run, mission: LearnerMission, evaluation: Evaluation \| null, answerKey: AnswerKey }` |
 | `PATCH /api/v1/runs/:id/answers` | `{ stepId, answers, currentStep?, rev }` | `{ run }`; `409 conflict` with `{ error, run }` when `rev` is stale |
 | `POST /api/v1/runs/:id/hints` | `{ stepId, level: 1..4 }` | `HintResult`; charged once per (run, step, level): a retry returns the stored hint (the authored static hint while the first request is still generating or when the AI fails). Worst case ~45 s; the browser waits 55 s |
-| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards: `PATCH …/answers` or submit changing it gets `403 { error: { code: "answer_locked", message }, run }` with the current run. The browser restores locked fields only on exactly this code with a valid `run`; any other 403 (generic `forbidden`, non-JSON from the edge) keeps every local edit and is reported as an unsaved save (`src/lib/ui/autosave-queue.ts`). MCP tools report the same refusal as `forbidden` |
+| `POST /api/v1/runs/:id/reveal` | `{ stepId, itemId }` (quiz question id, or `prediction`) | `{ run, key: AnswerKeyEntry }`; the answer must be saved first and is locked afterwards: `PATCH …/answers` or submit changing it gets `403 { error: { code: "answer_locked", message }, run }` with the current run. The browser restores locked fields only on exactly this code with a valid `run`; any other 403 (generic `forbidden`, non-JSON from the edge) keeps every local edit and is reported as an unsaved save (`src/lib/ui/autosave-queue.ts`). MCP tools report the same refusal as `forbidden`. If the server still refuses a step after the client restored the locked fields it knows of (client and server disagree on what is locked), the runner keeps the edits and offers "Tải lại bước này từ máy chủ": reload the run, drop that step's unsaved edits only, save the other steps |
+| `POST /api/v1/runs/:id/abandon` | – | `{ run }` with status `abandoned` ("Bỏ lượt này"). Frees the one-open-run slot, so the next `POST /missions/:id/start { again: true }` creates a fresh run. Idempotent on an abandoned run; `409 conflict` for a completed run or one still being graded (a crashed evaluation, shown as `evaluation_failed`, can be abandoned). No XP, evaluation or other side effect; emits `mission.abandoned`. The browser then drops that run's local draft |
 | `POST /api/v1/runs/:id/submit` | `{ idempotencyKey, confidence?: 0..100, imageKeys?: string[] }` | `SubmitResult & { answerKey }` |
 | `POST /api/v1/evidence/upload` | multipart `file` (image ≤ 5 MB) | `{ key }` |
 | `GET /api/v1/evidence/:key` | – | image bytes (owner, or admin observer with consent) |
@@ -35,7 +36,7 @@ Shared contract between the learner UI, the learning engine, identity, MCP and o
 
 Answer keys: the browser only gets `LearnerMission` (`src/lib/learning/learner-mission-view.ts`), which has no claim verdicts, quiz/prediction answers, explanations, static hints or rubric checks. `answerKey` (`"stepId:itemId"` → `{ correct, explanation }`) holds only items revealed on the server, or every item once the run is `completed`.
 
-Runs: at most one open run per learner and mission (partial unique index). Evidence image keys stay readable and re-submittable by the member a guest uploader was merged into; admin reads follow that member's consent.
+Runs: at most one open run per learner and mission (partial unique index). `scripts/validate-content.ts` fails a mission whose quiz/prediction criteria (answers lockable by a reveal) weigh so much that a run with every revealed answer wrong could never reach `pass_score`. Evidence image keys stay readable and re-submittable by the member a guest uploader was merged into; admin reads follow that member's consent.
 
 Rewards rules: XP only from a **passed** evaluation, once per learner per mission (`xp_ledger` ref = mission id; later passing runs earn 0 XP). Badges from `content/badges.yaml`. Soft streak counts active days and tolerates 1 rest day per 7.
 
@@ -50,7 +51,7 @@ Rewards rules: XP only from a **passed** evaluation, once per learner per missio
 
 ## MCP (owner: MCP module)
 
-`/mcp` Streamable HTTP behind `@cloudflare/workers-oauth-provider` (`/authorize`, `/oauth/token`, `/oauth/register`, PRM at `/.well-known/oauth-protected-resource/mcp`). Tools call `src/lib/learning/service.ts` with the learner bound to the token: `get_profile`, `list_missions`, `get_mission`, `start_mission`, `get_run`, `submit_evidence`, `get_hint`.
+`/mcp` Streamable HTTP behind `@cloudflare/workers-oauth-provider` (`/authorize`, `/oauth/token`, `/oauth/register`, PRM at `/.well-known/oauth-protected-resource/mcp`). Tools call `src/lib/learning/service.ts` with the learner bound to the token: `get_profile`, `list_missions`, `get_mission`, `start_mission`, `get_run`, `submit_evidence`, `get_hint`, `abandon_mission` (learn:write; same rules as `POST /runs/:id/abandon`).
 
 ## PWA, push, observer, data rights (owner: platform module)
 

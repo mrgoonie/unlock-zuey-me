@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MissionRun } from '../../src/lib/learning/types';
 import {
-  clearAttempt, emptyDraft, ensureAttemptKey, evidenceFingerprint, hasDirty, loadDraft, markSaved, mergeServerRun,
-  removeDraft, restoreDraft, saveDraft, setField,
+  clearAttempt, discardStepEdits, emptyDraft, ensureAttemptKey, evidenceFingerprint, hasDirty, loadDraft, markSaved, mergeServerRun,
+  parseStoredDraft, removeDraft, restoreDraft, saveDraft, setField,
 } from '../../src/lib/ui/run-draft';
 
 const run = (over: Partial<MissionRun> = {}): MissionRun => ({
@@ -137,10 +137,57 @@ describe('run draft: localStorage mirror', () => {
     expect(d?.imageKeys).toEqual([]);
   });
 
+  it('drops a stored draft whose answers are malformed, and removes it from storage', () => {
+    const s = new MemoryStorage();
+    const bad = [
+      { runId: 'run_1', missionId: 'm', answers: [] },
+      { runId: 'run_1', missionId: 'm', answers: { s: 'not a field map' } },
+      { runId: 'run_1', missionId: 'm', answers: { s: { f: { nested: true } } } },
+      { runId: 'run_1', missionId: 'm', answers: { s: { f: [1, 2] } } },
+      'just a string',
+      null,
+    ];
+    for (const value of bad) {
+      s.setItem('aiu:draft:run_1', JSON.stringify(value));
+      expect(loadDraft('run_1', s)).toBeNull();
+      expect(s.getItem('aiu:draft:run_1')).toBeNull();
+    }
+  });
+
+  it('keeps valid answers but drops a malformed unsaved-edits map and other bad parts, so restore never throws', () => {
+    const stored = {
+      runId: 'run_1', missionId: 'plan-weekend', answers: { constraints: { goal: 'local', location: 'Q7' } },
+      dirty: { constraints: 'goal' }, imageKeys: 'k', confidence: 'high', attempt: { key: 1 }, hints: { s: 'x' }, updatedAt: 5,
+    };
+    const d = parseStoredDraft(JSON.stringify(stored), 'run_1');
+    expect(d).not.toBeNull();
+    expect(d).toMatchObject({ dirty: {}, imageKeys: [], confidence: null, attempt: null, hints: {} });
+    expect(d!.answers.constraints.goal).toBe('local');
+    // The server copy wins for fields that are not dirty.
+    const restored = restoreDraft(run({ answers: { constraints: { goal: 'server' } } }), d);
+    expect(restored.answers.constraints).toEqual({ goal: 'server' });
+    expect(restored.dirty).toEqual({});
+  });
+
+  it('keeps well-formed dirty flags and drops flags without a value', () => {
+    const stored = { runId: 'run_1', missionId: 'm', answers: { s: { a: 'x' } }, dirty: { s: ['a', 'a', 'gone'], t: ['b'] } };
+    expect(parseStoredDraft(JSON.stringify(stored), 'run_1')?.dirty).toEqual({ s: ['a'] });
+  });
+
   it('never throws when storage is unavailable', () => {
     const broken = { setItem: () => { throw new Error('quota'); }, getItem: () => { throw new Error('denied'); }, removeItem: () => { throw new Error('x'); } } as unknown as Storage;
     expect(() => saveDraft(emptyDraft('r', 'm'), broken)).not.toThrow();
     expect(loadDraft('r', broken)).toBeNull();
     expect(() => removeDraft('r', broken)).not.toThrow();
+  });
+});
+
+describe('run draft: discard one step after a lock disagreement', () => {
+  it('drops the unsaved edits of that step only; other steps keep theirs and stay dirty', () => {
+    let d = setField(emptyDraft('run_1', 'm'), 'quiz', 'q2', 'local');
+    d = setField(d, 'notes', 'text', 'kept');
+    const out = discardStepEdits(d, 'quiz', { answers: { quiz: { q1: 'a', q2: 'server' } } });
+    expect(out.answers).toEqual({ quiz: { q1: 'a', q2: 'server' }, notes: { text: 'kept' } });
+    expect(out.dirty).toEqual({ notes: ['text'] });
   });
 });

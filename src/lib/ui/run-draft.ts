@@ -81,6 +81,14 @@ export function clearDirtyFields(draft: RunDraft, stepId: string, fields: readon
   return { ...draft, dirty };
 }
 
+/**
+ * Drops every unsaved edit of `stepId` and adopts the server run (its value wins in that step); unsaved
+ * edits of other steps are re-applied on top and stay dirty.
+ */
+export function discardStepEdits(draft: RunDraft, stepId: string, server: Pick<MissionRun, 'answers'>): RunDraft {
+  return mergeServerRun(clearDirtyFields(draft, stepId, draft.dirty[stepId] ?? []), server);
+}
+
 export const hasDirty = (draft: RunDraft): boolean => Object.values(draft.dirty).some((f) => f.length > 0);
 
 /** Deterministic fingerprint of what a submit would send (answers, confidence, images). */
@@ -113,16 +121,84 @@ export const clearAttempt = (draft: RunDraft): RunDraft => ({ ...draft, attempt:
 
 const storageKey = (runId: string) => `aiu:draft:${runId}`;
 
-export function loadDraft(runId: string, storage: Storage | undefined = globalThis.localStorage): RunDraft | null {
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
+const isAnswerValue = (v: unknown): v is AnswerValue =>
+  typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)) || isStringArray(v);
+
+/** {stepId: {fieldId: string | string[] | number}}, or null when any part has another shape. */
+function parseAnswers(v: unknown): Answers | null {
+  if (!isRecord(v)) return null;
+  for (const fields of Object.values(v)) {
+    if (!isRecord(fields) || !Object.values(fields).every(isAnswerValue)) return null;
+  }
+  return v as Answers;
+}
+
+/** {stepId: fieldIds[]}, or null when malformed. */
+const parseDirty = (v: unknown): DirtyMap | null =>
+  isRecord(v) && Object.values(v).every(isStringArray) ? (v as DirtyMap) : null;
+
+const isHint = (v: unknown): boolean => isRecord(v) && [1, 2, 3, 4].includes(v.level as number) && typeof v.text === 'string';
+const parseHints = (v: unknown): RunDraft['hints'] | null =>
+  isRecord(v) && Object.values(v).every((list) => Array.isArray(list) && list.every(isHint)) ? (v as RunDraft['hints']) : null;
+
+const parseAttempt = (v: unknown): RunDraft['attempt'] =>
+  isRecord(v) && typeof v.key === 'string' && v.key.length >= 8 && typeof v.fingerprint === 'string' ? { key: v.key, fingerprint: v.fingerprint } : null;
+
+/**
+ * Validates a stored draft (localStorage is user-writable and survives app updates, so it is untrusted).
+ * Returns null when the draft is unusable: not JSON, another run, or answers of the wrong shape. Malformed
+ * optional parts are reset instead: a bad `dirty` map is dropped (those unsaved edits are lost, the server
+ * copy wins), as are bad hints, images, confidence or attempt. Never throws.
+ */
+export function parseStoredDraft(raw: string, runId: string): RunDraft | null {
+  let d: unknown;
   try {
-    const raw = storage?.getItem(storageKey(runId));
-    if (!raw) return null;
-    const d = JSON.parse(raw) as Partial<RunDraft>;
-    if (d.runId !== runId || typeof d.answers !== 'object' || d.answers === null) return null;
-    return { ...emptyDraft(runId, d.missionId ?? ''), ...d } as RunDraft;
+    d = JSON.parse(raw);
   } catch {
     return null;
   }
+  if (!isRecord(d) || d.runId !== runId) return null;
+  const answers = parseAnswers(d.answers);
+  if (!answers) return null;
+  const base = emptyDraft(runId, typeof d.missionId === 'string' ? d.missionId : '');
+  // Dirty fields only make sense with a value to save: drop flags whose value is missing.
+  const dirtyIn = parseDirty(d.dirty) ?? {};
+  const dirty: DirtyMap = {};
+  for (const [stepId, fields] of Object.entries(dirtyIn)) {
+    const kept = [...new Set(fields)].filter((f) => answers[stepId]?.[f] !== undefined);
+    if (kept.length) dirty[stepId] = kept;
+  }
+  const confidence = typeof d.confidence === 'number' && Number.isFinite(d.confidence) && d.confidence >= 0 && d.confidence <= 100
+    ? d.confidence : null;
+  return {
+    ...base,
+    answers,
+    dirty,
+    imageKeys: isStringArray(d.imageKeys) ? d.imageKeys : [],
+    confidence,
+    attempt: parseAttempt(d.attempt),
+    hints: parseHints(d.hints) ?? {},
+    updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,
+  };
+}
+
+/**
+ * The stored draft of a run, or null. An unusable stored draft is removed so it cannot block the runner
+ * on the next visit either.
+ */
+export function loadDraft(runId: string, storage: Storage | undefined = globalThis.localStorage): RunDraft | null {
+  let raw: string | null | undefined;
+  try {
+    raw = storage?.getItem(storageKey(runId));
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  const draft = parseStoredDraft(raw, runId);
+  if (!draft) removeDraft(runId, storage);
+  return draft;
 }
 
 export function saveDraft(draft: RunDraft, storage: Storage | undefined = globalThis.localStorage): void {
