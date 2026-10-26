@@ -23,9 +23,13 @@ export interface AiDeps {
   fetchImpl?: typeof fetch;
 }
 
-export type AiPurpose = 'grade' | 'hint' | 'chat';
+export type AiPurpose = 'grade' | 'hint' | 'chat' | 'insights';
 
-/** Grading may use the full caps; practice chat and hints share the capped coaching slice of each. */
+/**
+ * Grading may use the full caps. Practice chat, hints and the ai-tutor insights analyzer (a server-side
+ * background analyzer run by the cron) share the capped coaching slice of each, so insights can never
+ * starve grading.
+ */
 export const budgetPool = (purpose: AiPurpose): BudgetPool => (purpose === 'grade' ? 'grading' : 'coaching');
 
 export interface AiRequest<T> {
