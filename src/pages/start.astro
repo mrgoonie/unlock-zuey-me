@@ -1,7 +1,13 @@
 ---
+/** Onboarding: ≤3 skippable questions, then /home. */
 import AppLayout from '../layouts/AppLayout.astro';
+import OnboardingFlow from '../components/onboarding/OnboardingFlow';
+
+const profile = Astro.locals.learner?.profile ?? {};
 ---
 <AppLayout title="Bắt đầu" bare>
-  <h1 class="text-2xl font-bold mt-2">Bắt đầu</h1>
-  <p class="mt-2 text-ink-muted">Ba câu hỏi ngắn để gợi ý mission phù hợp (bỏ qua được).</p>
+  <div class="mx-auto flex max-w-md flex-col gap-6">
+    <p class="font-bold text-lg">🔓 AI Unlocked</p>
+    <OnboardingFlow client:load initial={{ goal: profile.goal, familiarity: profile.familiarity, obstacle: profile.obstacle }} />
+  </div>
 </AppLayout>

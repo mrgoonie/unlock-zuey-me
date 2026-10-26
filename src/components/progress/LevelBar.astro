@@ -1,0 +1,22 @@
+---
+/** Level name + progress towards the next level. */
+import type { LevelInfo } from '../../lib/learning/types';
+
+interface Props { level: LevelInfo; xp: number }
+const { level, xp } = Astro.props;
+const next = level.xpForNext;
+const percent = Math.round((next ? Math.min(1, level.xpIntoLevel / next) : 1) * 100);
+const NEXT_LEVEL: Record<LevelInfo['id'], string | null> = { L0: 'L1', L1: 'L2', L2: 'L3', L3: null };
+---
+<div class="flex flex-col gap-2" data-testid="level-bar">
+  <div class="flex items-baseline justify-between gap-2">
+    <p class="font-semibold">Cấp {level.id} · {level.name}</p>
+    <p class="text-sm text-ink-muted" data-testid="xp-total">⭐ {xp} XP</p>
+  </div>
+  <div class="bar" role="progressbar" aria-label="Tiến độ lên cấp" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+    <span class="bar-fill" style={`width:${percent}%`}></span>
+  </div>
+  <p class="text-xs text-ink-muted">
+    {next ? `Còn ${Math.max(0, next - level.xpIntoLevel)} XP nữa để lên ${NEXT_LEVEL[level.id]}` : 'Bạn đã ở cấp cao nhất. Tuyệt vời!'}
+  </p>
+</div>

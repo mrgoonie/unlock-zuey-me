@@ -1,7 +1,72 @@
 ---
+/** Buzzword decoder: accent-insensitive search + group filter (GET form, works without JS). */
 import AppLayout from '../../layouts/AppLayout.astro';
+import ConceptBadges from '../../components/concepts/ConceptBadges.astro';
+import { listConcepts } from '../../lib/content/loader';
+import type { Concept } from '../../lib/content/schema';
+import { filterConcepts } from '../../lib/ui/concept-search';
+import { CONCEPT_GROUP_LABEL } from '../../lib/ui/labels';
+
+const all = listConcepts();
+const q = (Astro.url.searchParams.get('q') ?? '').slice(0, 80);
+const rawG = Astro.url.searchParams.get('g') ?? '';
+const groups = Object.keys(CONCEPT_GROUP_LABEL) as Concept['group'][];
+const group = groups.includes(rawG as Concept['group']) ? (rawG as Concept['group']) : null;
+const concepts = filterConcepts(all, q, group);
+const presentGroups = groups.filter((g) => all.some((c) => c.group === g));
+const href = (g: string | null) => {
+  const p = new URLSearchParams();
+  if (q) p.set('q', q);
+  if (g) p.set('g', g);
+  const s = p.toString();
+  return s ? `/concepts?${s}` : '/concepts';
+};
+const chipClass = (on: boolean) => ['chip min-h-[40px] px-3 text-sm', on ? 'bg-accent text-accent-ink' : ''];
 ---
 <AppLayout title="Từ điển AI">
-  <h1 class="text-2xl font-bold mt-2">Từ điển AI</h1>
-  <p class="mt-2 text-ink-muted">Giải mã thuật ngữ AI bằng tiếng Việt dễ hiểu.</p>
+  <div class="flex flex-col gap-5 pt-2">
+    <header class="flex flex-col gap-1">
+      <h1 class="text-2xl font-bold">Từ điển AI</h1>
+      <p class="text-ink-muted">Giải mã các từ nghe “kêu” bằng lời dễ hiểu, kèm ví dụ đời thường.</p>
+    </header>
+
+    <form method="get" action="/concepts" role="search" class="flex gap-2">
+      <label for="concept-q" class="sr-only">Tìm khái niệm</label>
+      <input id="concept-q" name="q" type="search" value={q} class="field" placeholder="Ví dụ: prompt, ảo giác, agent…" autocomplete="off" />
+      {group && <input type="hidden" name="g" value={group} />}
+      <button type="submit" class="btn-primary shrink-0">Tìm</button>
+    </form>
+
+    <nav aria-label="Lọc theo nhóm" class="-mx-4 overflow-x-auto px-4">
+      <ul class="flex w-max gap-2">
+        <li><a href={href(null)} class:list={chipClass(!group)} aria-current={!group ? 'true' : undefined}>Tất cả</a></li>
+        {presentGroups.map((g) => (
+          <li><a href={href(g)} class:list={chipClass(group === g)} aria-current={group === g ? 'true' : undefined}>{CONCEPT_GROUP_LABEL[g]}</a></li>
+        ))}
+      </ul>
+    </nav>
+
+    <p class="text-sm text-ink-muted" aria-live="polite">{concepts.length} khái niệm{q ? ` khớp “${q}”` : ''}</p>
+    {concepts.length ? (
+      <ul class="flex flex-col gap-3">
+        {concepts.map((c) => (
+          <li>
+            <a href={`/concepts/${c.id}`} class="card flex items-start gap-3 hover:border-accent" data-testid={`concept-card-${c.id}`}>
+              <span aria-hidden="true" class="text-3xl">{c.emoji}</span>
+              <span class="flex flex-1 flex-col gap-1">
+                <span class="font-semibold">{c.label_vi} <span class="font-normal text-ink-muted">· {c.label_en}</span></span>
+                <span class="text-sm text-ink-muted">{c.one_liner}</span>
+                <ConceptBadges concept={c} />
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <div class="card flex flex-col items-start gap-3">
+        <p>Chưa có khái niệm nào khớp. Thử từ khác hoặc bỏ lọc nhé.</p>
+        <a href="/concepts" class="btn-ghost">Xem tất cả</a>
+      </div>
+    )}
+  </div>
 </AppLayout>

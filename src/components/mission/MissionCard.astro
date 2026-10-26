@@ -1,0 +1,25 @@
+---
+/** Compact mission card used on /home and /missions. The whole card is one link (44px+ target). */
+import type { MissionListItem } from '../../lib/learning/types';
+import { COMPETENCY_LABEL, MISSION_STATUS_LABEL, RISK_LABEL } from '../../lib/ui/labels';
+
+interface Props { mission: MissionListItem }
+const { mission: m } = Astro.props;
+---
+<a href={`/missions/${m.id}`} class="card flex items-start gap-3 transition hover:border-accent" data-testid={`mission-card-${m.id}`}>
+  <span aria-hidden="true" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-2xl">{m.emoji}</span>
+  <span class="flex min-w-0 flex-1 flex-col gap-1">
+    <span class="flex items-start justify-between gap-2">
+      <span class="font-semibold leading-snug">{m.title}</span>
+      {m.status !== 'new' && (
+        <span class:list={['chip shrink-0', m.status === 'completed' ? 'bg-calm/15 text-calm' : 'bg-accent/15 text-accent']}>
+          {m.status === 'completed' ? '✓ ' : ''}{MISSION_STATUS_LABEL[m.status]}
+        </span>
+      )}
+    </span>
+    <span class="text-sm text-ink-muted">{m.tagline}</span>
+    <span class="text-xs text-ink-muted">
+      ~{m.estimatedMinutes} phút · {RISK_LABEL[m.riskTier]} · luyện: {m.competencies.map((c) => COMPETENCY_LABEL[c].name.toLowerCase()).join(', ')}
+    </span>
+  </span>
+</a>

@@ -1,0 +1,11 @@
+---
+/** Friendly 404 body. The page sets Astro.response.status = 404 before rendering this. */
+interface Props { what: string; backHref: string; backLabel: string }
+const { what, backHref, backLabel } = Astro.props;
+---
+<section class="flex min-h-[50dvh] flex-col items-center justify-center gap-4 text-center" data-testid="not-found">
+  <p aria-hidden="true" class="text-5xl">🧭</p>
+  <h1 class="text-2xl font-bold">Không tìm thấy {what}</h1>
+  <p class="max-w-sm text-ink-muted">Có thể đường dẫn đã cũ hoặc gõ nhầm. Không sao, mình quay lại nhé.</p>
+  <a href={backHref} class="btn-primary">{backLabel}</a>
+</section>

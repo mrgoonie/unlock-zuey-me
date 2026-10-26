@@ -1,7 +1,23 @@
 ---
+/** Mission runner page: SSR validates the slug, the island starts/resumes the run via the API. */
 import AppLayout from '../../../layouts/AppLayout.astro';
+import MissionRunner from '../../../components/mission/MissionRunner';
+import NotFound from '../../../components/ui/NotFound.astro';
+import { getMission } from '../../../lib/content/loader';
+
+const slug = Astro.params.slug ?? '';
+const mission = getMission(slug);
+const visible = mission?.status === 'published' ? mission : null;
+if (!visible) Astro.response.status = 404;
+const sound = Astro.locals.learner?.profile.sound === true;
 ---
-<AppLayout title="Làm mission" bare>
-  <h1 class="text-2xl font-bold mt-2">Làm mission</h1>
-  <p class="mt-2 text-ink-muted">Từng bước, có gợi ý 4 nấc.</p>
+<AppLayout title={visible ? visible.title : 'Không tìm thấy'} bare>
+  {visible ? (
+    <MissionRunner client:load missionId={visible.id} mission={visible} sound={sound} />
+  ) : (
+    <NotFound what="mission này" backHref="/missions" backLabel="Xem danh sách mission" />
+  )}
+  <noscript>
+    <p class="card mt-4">Trang làm bài cần bật JavaScript. Hãy bật JavaScript hoặc mở bằng trình duyệt khác nhé.</p>
+  </noscript>
 </AppLayout>

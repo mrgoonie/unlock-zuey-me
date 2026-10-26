@@ -1,7 +1,84 @@
 ---
+/** Mission detail: outcome, why it matters, time, safety notes, competencies, Start/Continue. */
 import AppLayout from '../../../layouts/AppLayout.astro';
+import NotFound from '../../../components/ui/NotFound.astro';
+import { getConcept, getMission } from '../../../lib/content/loader';
+import { COMPETENCY_LABEL, RISK_LABEL } from '../../../lib/ui/labels';
+import { loadProgress, missionStatus } from '../../../lib/ui/server-data';
+
+const slug = Astro.params.slug ?? '';
+const mission = getMission(slug);
+const visible = mission && mission.status === 'published';
+if (!visible) Astro.response.status = 404;
+
+const progress = visible ? await loadProgress(Astro.locals) : null;
+const status = visible ? missionStatus(progress, mission.id) : 'new';
+const totalWeight = mission ? mission.competency_targets.reduce((s, c) => s + c.weight, 0) : 1;
+const concepts = mission ? mission.concept_refs.map(getConcept).filter((c) => c !== undefined) : [];
+const cta = status === 'in_progress' ? 'Làm tiếp' : status === 'completed' ? 'Làm lại' : 'Bắt đầu';
 ---
-<AppLayout title="Chi tiết mission">
-  <h1 class="text-2xl font-bold mt-2">Chi tiết mission</h1>
-  <p class="mt-2 text-ink-muted">Mục tiêu, thời lượng và kỹ năng luyện.</p>
+<AppLayout title={visible ? mission.title : 'Không tìm thấy'} description={visible ? mission.tagline : undefined}>
+  {!visible ? (
+    <NotFound what="mission này" backHref="/missions" backLabel="Xem danh sách mission" />
+  ) : (
+    <article class="flex flex-col gap-5 pt-2" data-testid="mission-detail">
+      <a href="/missions" class="self-start text-sm text-ink-muted hover:text-ink">← Tất cả mission</a>
+      <header class="flex flex-col gap-3">
+        <span aria-hidden="true" class="text-5xl">{mission.emoji}</span>
+        <h1 class="text-2xl font-bold leading-snug">{mission.title}</h1>
+        <p class="text-ink-muted">{mission.tagline}</p>
+        <ul class="flex flex-wrap gap-2" aria-label="Thông tin nhanh">
+          <li class="chip">⏱️ ~{mission.estimated_minutes} phút</li>
+          <li class="chip">🛡️ {RISK_LABEL[mission.risk_tier]}</li>
+          <li class="chip">🪜 {mission.steps.length} bước</li>
+          {status === 'completed' && <li class="chip bg-calm/15 text-calm">✓ Đã hoàn thành</li>}
+        </ul>
+      </header>
+
+      <section class="card flex flex-col gap-2" aria-labelledby="outcome">
+        <h2 id="outcome" class="font-semibold">🎯 Làm xong bạn sẽ có</h2>
+        <p>{mission.outcome}</p>
+      </section>
+      <section class="card flex flex-col gap-2" aria-labelledby="why">
+        <h2 id="why" class="font-semibold">💡 Vì sao đáng làm</h2>
+        <p>{mission.why_it_matters}</p>
+      </section>
+
+      {mission.safety_notes.length > 0 && (
+        <section class="card flex flex-col gap-2 border-warn/40 bg-warn/5" aria-labelledby="safety">
+          <h2 id="safety" class="font-semibold">🛡️ Lưu ý an toàn</h2>
+          <ul class="list-disc space-y-1 pl-5">{mission.safety_notes.map((n) => <li>{n}</li>)}</ul>
+        </section>
+      )}
+
+      <section class="flex flex-col gap-3" aria-labelledby="skills">
+        <h2 id="skills" class="font-semibold">Bạn sẽ luyện</h2>
+        <ul class="flex flex-col gap-2">
+          {mission.competency_targets.map((c) => (
+            <li class="flex items-center gap-3">
+              <span aria-hidden="true" class="text-xl">{COMPETENCY_LABEL[c.id].emoji}</span>
+              <span class="flex-1">
+                <span class="font-medium">{COMPETENCY_LABEL[c.id].name}</span>
+                <span class="block text-sm text-ink-muted">{COMPETENCY_LABEL[c.id].hint}</span>
+              </span>
+              <span class="w-16 bar" aria-hidden="true"><span class="bar-fill" style={`width:${Math.round((c.weight / totalWeight) * 100)}%`}></span></span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {concepts.length > 0 && (
+        <section class="flex flex-col gap-2" aria-labelledby="concepts">
+          <h2 id="concepts" class="font-semibold">Từ khoá liên quan</h2>
+          <ul class="flex flex-wrap gap-2">
+            {concepts.map((c) => <li><a class="chip min-h-[36px] hover:bg-line" href={`/concepts/${c.id}`}>{c.emoji} {c.label_vi}</a></li>)}
+          </ul>
+        </section>
+      )}
+
+      <div class="sticky bottom-20 z-10 md:bottom-4">
+        <a href={`/missions/${mission.id}/run`} class="btn-primary w-full text-lg shadow-card" data-testid="mission-start">{cta} →</a>
+      </div>
+    </article>
+  )}
 </AppLayout>
