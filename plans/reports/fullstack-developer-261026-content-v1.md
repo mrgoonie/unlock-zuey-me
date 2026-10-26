@@ -15,7 +15,7 @@ Status: done. Branch `feat/content-v1`. Gates: `bun run content:check` → 8 mis
 | `summarize-long-text` | Tóm tắt bài dài hay tin nhắn thoại | 12 | low | delegate, verify, describe, reflect |
 | `spot-the-ai-mistake` | Bắt lỗi AI | 15 | medium | verify, discover, reflect |
 
-Every mission has guided-input, ai-task, verification (≥4 claims; half cover all four verdicts), reflection, and a quiz and/or prediction step. Each has a 4-level hint ladder per step, a rubric of ≥6 criteria mixing deterministic checks with English AI guidance, and pass_score 0.7. Medium/high risk missions carry safety notes: verify with a professional, never pay via AI-supplied accounts, and call 115 in emergencies. `plan-weekend` and `plan-family-trip` point at each other via `transfer_variant`. `plan-weekend` was otherwise left as is, apart from adding the `knowledge-cutoff` concept ref.
+Every mission has guided-input, ai-task, verification (≥4 claims; half cover all four verdicts), reflection; every new mission also has a quiz and/or prediction step. Each has a 4-level hint ladder per step, a rubric of ≥6 criteria mixing deterministic checks with English AI guidance, and pass_score 0.7. Medium/high risk missions carry safety notes: verify with a professional, never pay via AI-supplied accounts, and call 115 in emergencies. `plan-weekend` and `plan-family-trip` point at each other via `transfer_variant`. `plan-weekend` was otherwise left as is, apart from adding the `knowledge-cutoff` concept ref.
 
 ## Concepts (41)
 
