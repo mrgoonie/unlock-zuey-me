@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": ["Bash(bun run test)"]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bun run lint --quiet", "timeout": 120 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "prettier --write \"$CLAUDE_FILE_PATH\"" }]
+      }
+    ]
+  }
+}

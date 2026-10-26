@@ -1,0 +1,6 @@
+{
+  "name": "ai-unlocked",
+  "version": "0.1.0",
+  "minNode": 18,
+  "hookMarker": "v1"
+}

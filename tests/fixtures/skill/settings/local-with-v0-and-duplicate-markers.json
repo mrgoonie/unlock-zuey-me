@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": ["Bash(git status)"]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "echo foreign-before" },
+          { "type": "command", "command": "node \"/old/path/stop-hook.mjs\" --ai-unlocked-hook=v0", "timeout": 30 }
+        ]
+      },
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"/older/path/stop-hook.mjs\" --ai-unlocked-hook=v0" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"/stray/stop-hook.mjs\" --ai-unlocked-hook=v0" }
+        ]
+      }
+    ]
+  }
+}
