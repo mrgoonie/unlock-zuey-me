@@ -35,7 +35,7 @@ describe('runInsightsPipeline', () => {
     expect(result).toEqual({
       mode: 'internal',
       retention: { status: 'failed', error: expect.any(String) }, // the real retention stage needs env.DB
-      analyzer: { status: 'ok', result: { stub: true } },
+      analyzer: { status: 'failed', error: expect.any(String) }, // the real analyzer needs env.DB
       proposal: { status: 'ok', result: { stub: true } },
     });
   });
