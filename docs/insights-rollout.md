@@ -2,7 +2,7 @@
 
 Operator runbook for turning on the ai-tutor insights feature (issue #25). Flags and wire contract: [insights-ingest-contract.md](insights-ingest-contract.md). Routes: [api-contract.md](api-contract.md#ai-tutor-insights-owner-insights-module-issue-25). Deploy mechanics and migration rules: [deployment.md](deployment.md).
 
-The feature ships **off** (`INSIGHTS_MODE=off` in `wrangler.jsonc`). Every flag is a wrangler var: change it in `wrangler.jsonc` through a PR (the deploy workflow applies it) or in the Cloudflare dashboard for an urgent change, then mirror the dashboard edit in `wrangler.jsonc` so the next deploy does not undo it.
+Production runs **`internal`** since 2026-10-27 (`INSIGHTS_MODE` in `wrangler.jsonc`): admins only, GitHub issues off. Every flag is a wrangler var: change it in `wrangler.jsonc` through a PR (the deploy workflow applies it) or in the Cloudflare dashboard for an urgent change, then mirror the dashboard edit in `wrangler.jsonc` so the next deploy does not undo it.
 
 ## Rollout checklist
 
@@ -38,4 +38,4 @@ Member flows cannot run in production E2E. They are covered by `tests/unit/insig
 5. `ai-unlocked uninstall --purge`: the settings file is back to the original (byte-identical when it was 2-space JSON; other formatting is normalised, content deep-equal), and the device shows as revoked in Settings.
 6. Time 20 turns of the hook (`time`), and record p95 in the PR.
 
-E2E against the preview: `E2E_BASE_URL=http://localhost:8787 E2E_INSIGHTS=1 bunx playwright test e2e/insights.spec.ts` (guest sign-in CTA on `/insights/pair`, `/skill` manifest hashes verified against the served files).
+E2E: `e2e/insights.spec.ts` picks its block from `INSIGHTS_MODE` in `wrangler.jsonc`, so production E2E checks whatever the deploy ships. Against a preview started with another `--var`, set `E2E_INSIGHTS=1` (feature on) or `E2E_INSIGHTS=0` (off): `E2E_BASE_URL=http://localhost:8787 E2E_INSIGHTS=1 bunx playwright test e2e/insights.spec.ts`. With the feature on it checks the guest sign-in CTA on `/insights/pair`, the `/skill` manifest hashes against the served files, that member pages and APIs stay 404 for a guest, and that ingest rejects an unknown token with 401.

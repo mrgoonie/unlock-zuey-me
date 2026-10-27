@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { retryOnSocketReset } from './helpers/retry-socket-reset';
 
@@ -7,11 +8,18 @@ import { retryOnSocketReset } from './helpers/retry-socket-reset';
  * zuey.me member session), so they are covered by tests/unit/insights-end-to-end-pipeline.test.ts and the
  * manual QA script in docs/insights-rollout.md.
  *
- * Default (production today, INSIGHTS_MODE=off): every insights surface is absent for everyone.
- * E2E_INSIGHTS=1 (local preview with INSIGHTS_MODE=on): a guest gets the sign-in CTA on /insights/pair, and
- * /skill serves a manifest whose sha256 hashes match the files actually served.
+ * The mode under test is INSIGHTS_MODE from wrangler.jsonc (what the deploy ships); E2E_INSIGHTS=1 or 0 overrides
+ * it for a preview started with another --var.
+ * off: every insights surface is absent for everyone.
+ * internal, pilot, on: a guest gets the sign-in CTA on /insights/pair, /skill serves a manifest whose sha256
+ * hashes match the files actually served, and the member pages and APIs stay 404 for a guest.
  */
-const insightsOn = process.env.E2E_INSIGHTS === '1';
+function deployedInsightsMode(): string {
+  const m = /"INSIGHTS_MODE"\s*:\s*"([^"]*)"/.exec(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+  return (m?.[1] ?? 'off').trim().toLowerCase();
+}
+const override = process.env.E2E_INSIGHTS;
+const insightsOn = override === '1' || (override !== '0' && ['internal', 'pilot', 'on'].includes(deployedInsightsMode()));
 
 /** Guests never see the Settings section, in either mode. */
 test('Settings has no insights section for a guest', async ({ request }) => {
@@ -69,8 +77,8 @@ test.describe('insights flag off', () => {
   });
 });
 
-test.describe('insights flag on (local preview)', () => {
-  test.skip(!insightsOn, 'set E2E_INSIGHTS=1 against a preview running with INSIGHTS_MODE=on');
+test.describe('insights flag on', () => {
+  test.skip(!insightsOn, 'INSIGHTS_MODE is off (set E2E_INSIGHTS=1 against a preview running with the feature on)');
 
   test('a guest on /insights/pair gets the zuey.me sign-in CTA that returns with the code', async ({ page }) => {
     await page.goto('/insights/pair?code=ABCD-EFGH');
@@ -82,9 +90,20 @@ test.describe('insights flag on (local preview)', () => {
     await expect(page.getByTestId('pair-device')).toHaveCount(0);
   });
 
-  test('/insights stays a 404 for a guest', async ({ request }) => {
-    const res = await retryOnSocketReset(() => request.get('/insights'));
-    expect(res.status()).toBe(404);
+  for (const path of ['/insights', '/admin/insights', '/admin/insights/proposals', '/api/v1/insights/reports', '/api/v1/admin/insights/summary']) {
+    test(`GET ${path} stays a 404 for a guest`, async ({ request }) => {
+      const res = await retryOnSocketReset(() => request.get(path));
+      expect(res.status()).toBe(404);
+    });
+  }
+
+  test('ingest rejects an unknown device token', async ({ request }) => {
+    const res = await retryOnSocketReset(() => request.post('/api/ingest/v1/turns', {
+      headers: { 'content-type': 'application/json', authorization: `Bearer aiu_ing_${'A'.repeat(43)}` },
+      data: {},
+    }));
+    expect(res.status()).toBe(401);
+    expect(await res.json()).toMatchObject({ error: { code: 'unauthorized' } });
   });
 
   test('/skill serves a manifest whose file hashes verify', async ({ request }) => {
