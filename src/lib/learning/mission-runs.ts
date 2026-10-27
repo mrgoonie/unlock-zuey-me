@@ -11,6 +11,7 @@ import { recordEventSafe } from '../observer/events';
 import { recordActivityDay } from './activity';
 import { answerKeyForRun, assertRevealedUnchanged } from './answer-reveals';
 import { assertAnswersSize, findStep, mergeAnswers, validateStepAnswers } from './answers-validation';
+import { carriedReveals } from './carried-penalties';
 import { missionNotFound, RunConflictError, runNotFound } from './errors';
 import { learnerMissionView, type LearnerMission } from './learner-mission-view';
 import { effectiveStatus, transition } from './mission-state-machine';
@@ -38,16 +39,22 @@ export async function loadRun(deps: RunDeps, learner: LearnerContext, runId: str
   return { ...run, status: effectiveStatus(run, clock(deps)) };
 }
 
-/** Returns the open run of a mission, or starts a new one (the only way a new run is created). */
+/**
+ * Returns the open run of a mission, or starts a new one (the only way a new run is created). A new run after
+ * "Bỏ lượt này" starts with the reveals of the abandoned runs already recorded and their answers locked
+ * (carried-penalties.ts), so abandoning never turns a seen answer into a fresh one.
+ */
 export async function startMissionImpl(deps: RunDeps, learner: LearnerContext, missionId: string, source: Source): Promise<MissionRun> {
   const mission = publishedMission(missionId);
   const db = deps.env.DB;
   const open = await findOpenRun(db, learner.id, mission.id);
   if (open) return { ...open, status: effectiveStatus(open, clock(deps)) };
+  const carried = await carriedReveals(db, learner.id, mission);
   const at = nowIso(clock(deps));
   const run: MissionRun = {
     id: newId('run'), learnerId: learner.id, missionId: mission.id, missionVersion: mission.version, status: 'started',
-    currentStep: mission.steps[0]?.id ?? null, answers: {}, confidence: null, hintMaxLevel: 0, hintsUsed: 0, revealed: [], source, rev: 0,
+    currentStep: mission.steps[0]?.id ?? null, answers: carried.answers, confidence: null, hintMaxLevel: 0, hintsUsed: 0,
+    revealed: carried.revealed, source, rev: 0,
     startedAt: at, updatedAt: at, completedAt: null,
   };
   try {

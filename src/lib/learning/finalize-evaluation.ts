@@ -9,6 +9,7 @@
  * after the run was re-claimed (e.g. a retry of a stuck evaluation) therefore writes nothing and gets a
  * conflict, so it can neither overwrite the newer result nor apply competency scores twice.
  * Badges, streak and level are derived afterwards and the earned rewards are stored for idempotent replay.
+ * The no-hint XP bonus and badge count the hints of runs abandoned earlier in the attempt (carried-penalties.ts).
  */
 import type { Mission } from '../content/schema';
 import { newId, nowIso } from '../db/ids';
@@ -18,6 +19,7 @@ import { findRun } from '../db/run-repository';
 import { recordEventSafe } from '../observer/events';
 import { loadStreak } from './activity';
 import { grantEligibleBadges } from './badges';
+import { carriedHintsUsed } from './carried-penalties';
 import { RunConflictError, runNotFound } from './errors';
 import type { EvaluationDraft } from './evaluate-submission';
 import { transition } from './mission-state-machine';
@@ -48,7 +50,9 @@ export async function finalizeEvaluation(env: Env, input: {
   const nextStatus = draft.status === 'failed' ? transition('evaluating', { type: 'grading_failed' }) : transition('evaluating', { type: 'graded', passed });
 
   const xpBefore = await sumXp(db, learner.id);
-  const xp = passed ? computeMissionXp({ estimatedMinutes: mission.estimated_minutes, hintsUsed: run.hintsUsed, confidence: run.confidence, score: draft.score }) : null;
+  // Hints used in runs abandoned earlier in this attempt count too, so abandoning cannot restore the no-hint bonus.
+  const hintsUsed = passed ? run.hintsUsed + await carriedHintsUsed(db, learner.id, mission.id) : run.hintsUsed;
+  const xp = passed ? computeMissionXp({ estimatedMinutes: mission.estimated_minutes, hintsUsed, confidence: run.confidence, score: draft.score }) : null;
 
   // Every write after the first requires the evaluation row, which exists only if the claim still holds.
   const ifEvaluated = 'EXISTS (SELECT 1 FROM evaluations WHERE id = ?)';
@@ -92,7 +96,7 @@ export async function finalizeEvaluation(env: Env, input: {
   const streak = await loadStreak(db, learner, now);
   const newBadges = passed
     ? await grantEligibleBadges(env, learner, {
-      streakDays: streak.current, pass: { missionId: mission.id, hintsUsed: run.hintsUsed, confidence: run.confidence, score: draft.score },
+      streakDays: streak.current, pass: { missionId: mission.id, hintsUsed, confidence: run.confidence, score: draft.score },
       ref: input.submissionId, source: input.source, runId: run.id, missionId: mission.id, now,
     })
     : [];
