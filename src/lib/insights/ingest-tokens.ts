@@ -2,14 +2,17 @@
  * Device ingestion tokens (insight_tokens). A token is `aiu_ing_` + 32 random bytes (base64url), minted once
  * by device pairing and shown only to the paired CLI. D1 keeps only its SHA-256 hex, so a database leak
  * cannot be replayed. Scope `insights:write`, 90-day expiry, revocable per device by the learner (Settings)
- * or by the device itself (`DELETE /api/ingest/v1/token`). The token binds the learner: ingest never reads
- * a learner id from the request body.
+ * or by the device itself (`DELETE /api/ingest/v1/token`). A learner holds at most
+ * MAX_ACTIVE_TOKENS_PER_LEARNER active tokens: minting one more revokes the oldest. The token binds the
+ * learner: ingest never reads a learner id from the request body.
  */
 import { newId, nowIso } from '../db/ids';
 import { randomToken, sha256Hex } from '../identity/identity-crypto';
 import { LEARNER_COLUMNS, parseAdminEmails, toLearnerContext, type LearnerRow } from '../identity/learner-repository';
 import type { LearnerContext } from '../learning/types';
-import { INGEST_TOKEN_PATTERN, INGEST_TOKEN_PREFIX, INGEST_TOKEN_TTL_DAYS, type IngestAdapter } from './ingest-contract';
+import {
+  INGEST_TOKEN_PATTERN, INGEST_TOKEN_PREFIX, INGEST_TOKEN_TTL_DAYS, MAX_ACTIVE_TOKENS_PER_LEARNER, type IngestAdapter,
+} from './ingest-contract';
 
 /** last_used_at is refreshed at most this often, so ingest does not write the token row on every turn. */
 export const TOKEN_TOUCH_INTERVAL_MS = 60 * 60_000;
@@ -28,21 +31,37 @@ export interface CreatedToken {
 }
 
 /**
- * Mints and stores a token for an active member. Returns null when the learner is gone, merged or not a
- * member any more (the INSERT selects from learners, so the check and the write are one statement).
+ * Mints and stores a token for an active member, then revokes the learner's oldest active tokens beyond
+ * MAX_ACTIVE_TOKENS_PER_LEARNER (revoked_at = now, exactly like a revoke from Settings). Returns null when the
+ * learner is gone, merged or not a member any more (the INSERT selects from learners, so the check and the
+ * write are one statement). One batch, so the cap holds even when two pairings complete at once.
  */
 export async function createToken(
   db: D1Database, learnerId: string, label: string, adapter: IngestAdapter, now: Date = new Date(),
 ): Promise<CreatedToken | null> {
   const id = newId('itk');
   const token = mintToken();
+  const ts = nowIso(now);
   const expiresAt = nowIso(new Date(now.getTime() + INGEST_TOKEN_TTL_DAYS * DAY_MS));
-  const r = await db.prepare(
-    `INSERT INTO insight_tokens (id, learner_id, token_hash, label, adapter, created_at, expires_at)
-     SELECT ?, id, ?, ?, ?, ?, ? FROM learners
-      WHERE id = ? AND kind = 'member' AND deleted_at IS NULL AND merged_into IS NULL`,
-  ).bind(id, await hashToken(token), label, adapter, nowIso(now), expiresAt, learnerId).run();
-  return r.meta.changes ? { id, token, expiresAt } : null;
+  const [inserted] = await db.batch([
+    db.prepare(
+      `INSERT INTO insight_tokens (id, learner_id, token_hash, label, adapter, created_at, expires_at)
+       SELECT ?, id, ?, ?, ?, ?, ? FROM learners
+        WHERE id = ? AND kind = 'member' AND deleted_at IS NULL AND merged_into IS NULL`,
+    ).bind(id, await hashToken(token), label, adapter, ts, expiresAt, learnerId),
+    // Keeps the newest active tokens (the one just minted first) and revokes the rest; a no-op when the
+    // INSERT wrote nothing.
+    db.prepare(
+      `UPDATE insight_tokens SET revoked_at = ?1
+        WHERE id IN (
+          SELECT id FROM insight_tokens
+           WHERE learner_id = ?2 AND revoked_at IS NULL AND expires_at > ?1
+           ORDER BY id = ?3 DESC, created_at DESC, id DESC
+           LIMIT -1 OFFSET ${MAX_ACTIVE_TOKENS_PER_LEARNER})
+          AND EXISTS (SELECT 1 FROM insight_tokens WHERE id = ?3)`,
+    ).bind(ts, learnerId, id),
+  ]);
+  return inserted.meta.changes ? { id, token, expiresAt } : null;
 }
 
 export interface ResolvedIngestToken {
@@ -96,12 +115,15 @@ export interface DeviceToken {
   expiresAt: string;
 }
 
-/** The learner's usable devices (not revoked, not expired), newest first. Never exposes the hash. */
+/**
+ * The learner's usable devices (not revoked, not expired), newest first. Never exposes the hash. Minting
+ * keeps at most MAX_ACTIVE_TOKENS_PER_LEARNER of them, so the list is complete without paging.
+ */
 export async function listTokens(db: D1Database, learnerId: string, now: Date = new Date()): Promise<DeviceToken[]> {
   const r = await db.prepare(
     `SELECT id, label, adapter, created_at, last_used_at, expires_at FROM insight_tokens
       WHERE learner_id = ? AND revoked_at IS NULL AND expires_at > ?
-      ORDER BY created_at DESC, id LIMIT 50`,
+      ORDER BY created_at DESC, id`,
   ).bind(learnerId, nowIso(now)).all<{ id: string; label: string; adapter: string; created_at: string; last_used_at: string | null; expires_at: string }>();
   return r.results.map((t) => ({
     id: t.id, label: t.label, adapter: t.adapter, createdAt: t.created_at, lastUsedAt: t.last_used_at, expiresAt: t.expires_at,
