@@ -63,8 +63,9 @@ export default function AbandonRunControl({ onAbandon }: Props) {
           className="card flex w-full flex-col gap-3 border-warn/50 bg-warn/5" data-testid="abandon-run-confirm">
           <h2 id={titleId} className="font-semibold">Bỏ lượt này và làm lại từ đầu?</h2>
           <p className="text-sm text-ink-muted">
-            Lượt đang làm sẽ dừng lại và không được chấm. Các câu trả lời của lượt này sẽ không dùng tiếp, kể cả những
-            câu đã xem đáp án; bạn bắt đầu lại từ bước 1. XP và huy hiệu đã nhận vẫn giữ nguyên.
+            Lượt đang làm sẽ dừng lại và không được chấm; bạn bắt đầu lại từ bước 1. Riêng những câu đã xem đáp án vẫn
+            giữ câu trả lời cũ và không sửa được ở lượt mới, còn gợi ý đã xem vẫn được tính nên lượt mới không có thưởng
+            “không dùng gợi ý”. XP và huy hiệu đã nhận vẫn giữ nguyên.
           </p>
           {error && <p role="alert" className="rounded-xl border border-danger/40 bg-danger/5 p-3 text-sm">{error}</p>}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

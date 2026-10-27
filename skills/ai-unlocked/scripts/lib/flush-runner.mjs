@@ -5,7 +5,7 @@
 //   400 clock_skew               rebuild sentAt and retry once, then drop
 //   400 (other)                  drop the item
 //   401                          mark credentials invalid, keep the spool, stop until re-paired
-//   403 consent_required         delete the spool, back off 24 h
+//   403 consent_required         delete the spool, back off 1 h
 //   403 origin_forbidden         client bug: drop the item
 //   404 feature_off              delete the spool, back off 24 h
 //   429 daily_cap                keep the spool, retry after 00:00 UTC
@@ -13,7 +13,7 @@
 //
 // hook.log records only the timestamp, HTTP status and duration (capped at 64 KB).
 import fs from 'node:fs';
-import { LOG_MAX_BYTES, SERVER_BLOCK_MS } from './constants.mjs';
+import { CONSENT_BLOCK_MS, LOG_MAX_BYTES, SERVER_BLOCK_MS } from './constants.mjs';
 import { readCredentials } from './credentials.mjs';
 import { postTurn } from './ingest-client.mjs';
 import { nextUtcMidnight, readState, updateState } from './local-state.mjs';
@@ -77,7 +77,8 @@ export async function flushSpool(paths, env, options = {}) {
         result.stopped = outcome;
         if (outcome === 'consent_required' || outcome === 'feature_off') {
           clearSpool(paths);
-          updateState(paths, { serverBlockedUntil: Date.now() + SERVER_BLOCK_MS, blockReason: outcome });
+          const blockMs = outcome === 'consent_required' ? CONSENT_BLOCK_MS : SERVER_BLOCK_MS;
+          updateState(paths, { serverBlockedUntil: Date.now() + blockMs, blockReason: outcome });
         } else if (outcome === 'unauthorized') {
           updateState(paths, { credentialsInvalid: true, blockReason: outcome });
         } else if (outcome === 'daily_cap') {

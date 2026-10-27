@@ -1,7 +1,8 @@
 /**
  * Quiz and prediction steps. The learner answers, then taps "Kiểm tra" / "Chốt dự đoán" to reveal the
  * explanation. The reveal is recorded on the server (POST /api/v1/runs/:id/reveal), which returns the key
- * for that item only and locks the answer: the server rejects any later change to it.
+ * for that item only and locks the answer: the server rejects any later change to it. An answer revealed in
+ * an abandoned run stays revealed and locked in the next run; a short note says so (CarriedNote).
  */
 import { useEffect, useRef, useState } from 'react';
 import type { AnswerKeyEntry } from '../../../lib/learning/types';
@@ -30,6 +31,11 @@ function Reveal({ correct, focusOnMount, children }: { correct: boolean; focusOn
   );
 }
 
+/** Why a locked answer cannot be changed when it was revealed in an abandoned run of this attempt. */
+const CarriedNote = () => (
+  <p className="text-xs text-ink-muted" data-testid="reveal-carried">Bạn đã xem đáp án câu này ở lượt trước nên câu trả lời được giữ nguyên.</p>
+);
+
 /** Runs one reveal request with a busy flag and an inline error; remembers which item was just revealed. */
 function useReveal(onReveal: StepProps['onReveal']) {
   const [busy, setBusy] = useState(false);
@@ -53,7 +59,7 @@ function useReveal(onReveal: StepProps['onReveal']) {
 const isPicked = (picked: string[], key: AnswerKeyEntry): boolean =>
   picked.length === key.correct.length && key.correct.every((c) => picked.includes(c));
 
-export function QuizStep({ step, values, onField, revealed, answerKey, onReveal }: StepProps<StepOf<'quiz'>>) {
+export function QuizStep({ step, values, onField, revealed, carriedRevealed = [], answerKey, onReveal }: StepProps<StepOf<'quiz'>>) {
   const { busy, error, reveal, justRevealed } = useReveal(onReveal);
   return (
     <div className="flex flex-col gap-5">
@@ -83,6 +89,7 @@ export function QuizStep({ step, values, onField, revealed, answerKey, onReveal 
                 {entry?.correct.includes(o.id) && <span className="ml-auto text-calm" role="img" aria-label="đáp án đúng">✓</span>}
               </label>
             ))}
+            {locked && carriedRevealed.includes(key) && <CarriedNote />}
             {entry ? (
               <Reveal correct={isPicked(picked, entry)} focusOnMount={justRevealed === key}>{entry.explanation}</Reveal>
             ) : (
@@ -99,7 +106,7 @@ export function QuizStep({ step, values, onField, revealed, answerKey, onReveal 
   );
 }
 
-export function PredictionStep({ step, values, onField, revealed, answerKey, onReveal }: StepProps<StepOf<'prediction'>>) {
+export function PredictionStep({ step, values, onField, revealed, carriedRevealed = [], answerKey, onReveal }: StepProps<StepOf<'prediction'>>) {
   const { busy, error, reveal, justRevealed } = useReveal(onReveal);
   const key = `${step.id}:prediction`;
   const entry = answerKey[key];
@@ -119,6 +126,7 @@ export function PredictionStep({ step, values, onField, revealed, answerKey, onR
           </label>
         ))}
       </fieldset>
+      {locked && carriedRevealed.includes(key) && <CarriedNote />}
       {!locked && (
         <ConfidenceSlider label="Bạn chắc chắn bao nhiêu?" value={confidence} onChange={(v) => onField('confidence', v)} testId="prediction-confidence" />
       )}

@@ -7,13 +7,21 @@ import {
 let db: D1Database;
 const NOW = new Date('2026-10-26T05:00:00.000Z'); // 12:00 in Asia/Saigon
 const T = '2026-10-25T03:00:00.000Z';
+/** When the fixtures' proposals consent was granted: before every report written at T. */
+const PROPOSALS_AT = '2026-10-24T00:00:00.000Z';
 
-async function learner(id: string, consents: { analysis: boolean; proposals?: boolean }) {
+/** Account creation of established fixtures: well over 7 days before the reports, with a mission completed then. */
+const JOINED = '2026-09-25T03:00:00.000Z';
+
+async function learner(id: string, consents: { analysis: boolean; proposals?: boolean }, o: { established?: boolean } = {}) {
+  const established = o.established ?? true;
   await db.batch([
     db.prepare(`INSERT INTO learners (id, kind, display_name, email, profile_json, created_at, updated_at)
-      VALUES (?, 'member', ?, ?, '{}', ?, ?)`).bind(id, `Tên riêng ${id}`, `${id}@example.com`, T, T),
-    db.prepare(`INSERT INTO insight_consents (learner_id, analysis, share_operator, proposals, updated_at) VALUES (?, ?, 0, ?, ?)`)
-      .bind(id, consents.analysis ? 1 : 0, consents.proposals ? 1 : 0, T),
+      VALUES (?, 'member', ?, ?, '{}', ?, ?)`).bind(id, `Tên riêng ${id}`, `${id}@example.com`, established ? JOINED : T, T),
+    ...(established ? [db.prepare(`INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, answers_json, started_at, updated_at, completed_at)
+      VALUES (?, ?, 'plan-weekend', 1, 'completed', '{}', ?, ?, ?)`).bind(`run_done_${id}`, id, JOINED, JOINED, JOINED)] : []),
+    db.prepare(`INSERT INTO insight_consents (learner_id, analysis, share_operator, proposals, proposals_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)`)
+      .bind(id, consents.analysis ? 1 : 0, consents.proposals ? 1 : 0, consents.proposals ? PROPOSALS_AT : null, T),
   ]);
 }
 
@@ -95,6 +103,29 @@ describe('product signals', () => {
     const rows = await productSignals(db);
     expect(rows.map((r) => r.id)).toEqual(['sig_ok']);
     expect(rows[0]).toMatchObject({ title: 'Nút bắt đầu mission khó thấy', occurrences: 3, affectedLearners: 3, proposalStatus: null });
+  });
+
+  it('counts no evidence from reports written before the proposals consent was granted', async () => {
+    await signal('sig_ok', 'Nút bắt đầu mission khó thấy', ['r1', 'r2', 'r3']);
+    expect(await productSignals(db)).toHaveLength(1);
+    // lrn_3 turned proposals off and on again after r3 was written: r3 is no longer consented evidence.
+    await db.prepare(`UPDATE insight_consents SET proposals_at = ? WHERE learner_id = 'lrn_3'`).bind('2026-10-25T04:00:00.000Z').run();
+    expect(await productSignals(db)).toEqual([]);
+    // A consent row with proposals = 1 but no grant time counts nothing either.
+    await db.prepare(`UPDATE insight_consents SET proposals_at = NULL WHERE learner_id = 'lrn_3'`).run();
+    expect(await productSignals(db)).toEqual([]);
+  });
+
+  it('counts no evidence from new accounts or learners without a completed mission', async () => {
+    await signal('sig_ok', 'Nút bắt đầu mission khó thấy', ['r1', 'r2', 'r3']);
+    expect(await productSignals(db)).toHaveLength(1);
+    // lrn_3's account is younger than 7 days when r3 was written.
+    await db.prepare(`UPDATE learners SET created_at = ? WHERE id = 'lrn_3'`).bind('2026-10-20T00:00:00.000Z').run();
+    expect(await productSignals(db)).toEqual([]);
+    // Old enough again, but without any completed mission.
+    await db.prepare(`UPDATE learners SET created_at = ? WHERE id = 'lrn_3'`).bind(JOINED).run();
+    await db.prepare(`DELETE FROM mission_runs WHERE learner_id = 'lrn_3' AND status = 'completed'`).run();
+    expect(await productSignals(db)).toEqual([]);
   });
 
   it('includes the proposal status when one exists', async () => {

@@ -114,6 +114,35 @@ describe('device pairing', () => {
     expect(t.store.size).toBe(0);
   });
 
+  it('pair/start makes exactly one KV write; the poll/confirm contract is unchanged', async () => {
+    const put = vi.spyOn(t.env.CACHE, 'put');
+    const s = await started();
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(t.store.size).toBe(1);
+    // The device code starts with the user code, but only its full hash unlocks the record.
+    expect(s.deviceCode.slice(0, 8)).toBe(s.userCode.replace('-', ''));
+    expect((await poll(s.deviceCode)).status).toBe(428);
+    expect((await confirm(s.userCode, true)).status).toBe(200);
+    advance(5_000);
+    expect((await poll(s.deviceCode)).status).toBe(200);
+  });
+
+  it('a device code carrying a live user code but the wrong secret is expired, without any KV write', async () => {
+    const s = await started();
+    expect((await confirm(s.userCode, true)).status).toBe(200);
+    const put = vi.spyOn(t.env.CACHE, 'put');
+    const del = vi.spyOn(t.env.CACHE, 'delete');
+    const forged = `${s.deviceCode.slice(0, 8)}${'A'.repeat(35)}`;
+    const res = await poll(forged);
+    expect(res.status).toBe(410);
+    expect(await res.json()).toEqual({ status: 'expired' });
+    expect(put).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+    // The real device still gets its token.
+    expect((await poll(s.deviceCode)).status).toBe(200);
+    expect(await count(t.db, 'SELECT COUNT(*) AS n FROM insight_tokens')).toBe(1);
+  });
+
   it('answers 429 slow_down when polled faster than every 4 s', async () => {
     const s = await started();
     expect((await poll(s.deviceCode)).status).toBe(428);

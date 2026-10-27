@@ -6,6 +6,8 @@
  * - Evidence counts only while the report's learner has `proposals = 1`, the report was created at or after
  *   `proposals_at`, and the learner is not deleted. Revoking consent therefore drops the learner from every
  *   cohort at the next read. Deleting reports cascades their evidence rows (FK).
+ * - Evidence counts only from ESTABLISHED learners (see `ESTABLISHED_LEARNER_SQL`), so a handful of fresh
+ *   accounts cannot make up a cohort or put their wording into a draft.
  * - Signals and proposals carry no learner column; nothing here returns a learner id or name.
  */
 import { parseJson } from '../db/ids';
@@ -13,6 +15,7 @@ import { CONSENT_SQL } from './consent-store';
 import { utcDay } from '../learning/learner-day';
 import type { GateDecision, ProposalStatus, RiskLevel, SignalCategory } from './insight-types';
 import { readSetting, SYSTEM_ACTOR, writeSettingStatement } from './operator-settings';
+import { PROPOSAL_MIN_COHORT } from './proposal-policy-gate';
 
 /** Evidence window of cohort statistics, the gate and the issue body ("14 days"). */
 export const SIGNAL_WINDOW_DAYS = 14;
@@ -62,12 +65,27 @@ export interface CohortStats {
   avgConfidence: number;
 }
 
-/** Joins that keep only evidence from consenting, non-deleted learners (see file header). */
+/** Account age a member needs, when the report is written, for the report to count as evidence. */
+export const ESTABLISHED_ACCOUNT_DAYS = 7;
+
+/**
+ * An established learner, judged when the report `r` was written: a member whose account (`l.created_at`,
+ * the first visit; a promoted guest keeps it) was at least ESTABLISHED_ACCOUNT_DAYS old, with at least one
+ * completed mission before the report. A completed mission is a `mission_runs` row in the terminal status
+ * `completed`, which only a passed evaluation sets (finalize-evaluation.ts) together with `completed_at`.
+ * Judging at report time keeps a report's eligibility fixed: early reports never start counting later.
+ */
+export const ESTABLISHED_LEARNER_SQL = `l.kind = 'member'
+    AND r.created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', l.created_at, '+${ESTABLISHED_ACCOUNT_DAYS} days')
+    AND EXISTS (SELECT 1 FROM mission_runs mr WHERE mr.learner_id = l.id AND mr.status = 'completed'
+      AND mr.completed_at IS NOT NULL AND mr.completed_at <= r.created_at)`;
+
+/** Joins that keep only evidence from consenting, non-deleted, established learners (see file header). */
 const CONSENTED_EVIDENCE = `FROM insight_signal_evidence e
   JOIN insight_reports r ON r.id = e.report_id
   JOIN insight_consents ic ON ic.learner_id = r.learner_id AND ${CONSENT_SQL.proposalsConsented('r')}
     AND ic.proposals_at IS NOT NULL AND r.created_at >= ic.proposals_at
-  JOIN learners l ON l.id = r.learner_id AND l.deleted_at IS NULL`;
+  JOIN learners l ON l.id = r.learner_id AND l.deleted_at IS NULL AND ${ESTABLISHED_LEARNER_SQL}`;
 
 const toStats = (row: { learners?: number | null; occurrences?: number | null; avg_confidence?: number | null } | null): CohortStats => ({
   learners: Number(row?.learners ?? 0),
@@ -216,8 +234,19 @@ export async function proposalsWithStaleDrafts(db: D1Database, minCohort: number
   return r.results.map((x) => x.id);
 }
 
-export async function updateProposalDraft(db: D1Database, id: string, draftJson: string, now: Date): Promise<void> {
-  await db.prepare(`UPDATE insight_proposals SET draft_json = ?, updated_at = ? WHERE id = ?`).bind(draftJson, now.toISOString(), id).run();
+/**
+ * Stores a draft that replaces the previous text (the evidence-free template, or a privacy-driven swap).
+ * Decisions taken on the old text do not carry over: the ai-handle approval is voided and an acceptance
+ * (`accepted`, or a `filing` taken from it) loses its decider, so an accepted proposal returns to `proposed`.
+ * Never touches a proposal with an issue.
+ */
+export async function replaceProposalDraft(db: D1Database, id: string, draftJson: string, now: Date): Promise<void> {
+  await db.prepare(`UPDATE insight_proposals SET draft_json = ?, ai_handle_approved_by = NULL,
+      status = CASE WHEN status = 'accepted' THEN 'proposed' ELSE status END,
+      decided_by = CASE WHEN status IN ('accepted', 'filing') THEN NULL ELSE decided_by END,
+      decided_at = CASE WHEN status IN ('accepted', 'filing') THEN NULL ELSE decided_at END,
+      updated_at = ?
+    WHERE id = ? AND github_issue_number IS NULL`).bind(draftJson, now.toISOString(), id).run();
 }
 
 export async function getProposal(db: D1Database, id: string): Promise<ProposalRow | null> {
@@ -278,43 +307,61 @@ export const FILEABLE_STATUSES: readonly ProposalStatus[] = ['proposed', 'accept
  * Takes the filing lease. Exactly one concurrent caller wins (single guarded UPDATE); an expired lease from
  * a crashed attempt can be taken over. Never succeeds once an issue number is recorded.
  */
-export async function leaseForFiling(db: D1Database, id: string, now: Date, leaseMs = FILING_LEASE_MS): Promise<boolean> {
+export async function leaseForFiling(db: D1Database, id: string, now: Date, leaseMs = FILING_LEASE_MS): Promise<string | null> {
   const at = now.toISOString();
+  const until = new Date(now.getTime() + leaseMs).toISOString();
   const r = await db.prepare(`UPDATE insight_proposals SET status = 'filing', filing_lease_until = ?, updated_at = ?
     WHERE id = ? AND status IN ('proposed', 'accepted', 'filing') AND github_issue_number IS NULL
       AND (filing_lease_until IS NULL OR filing_lease_until < ?)`)
-    .bind(new Date(now.getTime() + leaseMs).toISOString(), at, id, at).run();
-  return (r.meta.changes ?? 0) === 1;
+    .bind(until, at, id, at).run();
+  return (r.meta.changes ?? 0) === 1 ? until : null;
 }
 
 /**
- * Gives the lease back after an attempt that filed nothing. The proposal returns to its prior status; a
+ * Gives the lease back after an attempt that filed nothing, only while `lease` is still the one it holds (an
+ * attempt whose lease another one took over must not release the newer attempt's row). The proposal returns to its prior status; a
  * proposal taken over from an expired lease returns to `accepted` when an operator decided on it, else to
  * `proposed` (where only the gate's issue tier can file it again).
  */
-export async function releaseFiling(db: D1Database, id: string, prior: ProposalStatus, now: Date): Promise<void> {
+export async function releaseFiling(db: D1Database, id: string, lease: string, prior: ProposalStatus, now: Date): Promise<void> {
   await db.prepare(`UPDATE insight_proposals SET filing_lease_until = NULL, updated_at = ?,
       status = CASE WHEN ? = 'filing' THEN (CASE WHEN decided_by IS NULL THEN 'proposed' ELSE 'accepted' END) ELSE ? END
-    WHERE id = ? AND status = 'filing'`)
-    .bind(now.toISOString(), prior, prior, id).run();
+    WHERE id = ? AND status = 'filing' AND filing_lease_until = ?`)
+    .bind(now.toISOString(), prior, prior, id, lease).run();
 }
 
-export async function recordFiled(
-  db: D1Database, id: string, issue: { number: number; url: string; aiHandle: boolean }, actor: string, now: Date,
-): Promise<void> {
+/**
+ * Filings whose lease expired while GitHub filing is off (no publisher can resolve them) return to their
+ * resting status: `accepted` when an operator decided on them, else `proposed`. A create that may have
+ * reached GitHub keeps its fingerprint claim (proposal-issue-ledger.ts), so the next filing with GitHub on
+ * links that issue instead of creating another. Returns the number of released rows.
+ */
+export async function releaseExpiredFilings(db: D1Database, now: Date): Promise<number> {
   const at = now.toISOString();
-  await db.prepare(`UPDATE insight_proposals SET status = 'issue_filed', github_issue_number = ?, github_issue_url = ?, ai_handle = ?,
+  const r = await db.prepare(`UPDATE insight_proposals SET filing_lease_until = NULL, updated_at = ?,
+      status = CASE WHEN decided_by IS NULL THEN 'proposed' ELSE 'accepted' END
+    WHERE status = 'filing' AND github_issue_number IS NULL AND (filing_lease_until IS NULL OR filing_lease_until < ?)`)
+    .bind(at, at).run();
+  return r.meta.changes ?? 0;
+}
+
+/** Marks the proposal filed, only while `lease` (from leaseForFiling) is still the one it holds. */
+export function recordFiledStatement(
+  db: D1Database, id: string, lease: string, issue: { number: number; url: string; aiHandle: boolean }, actor: string, now: Date,
+): D1PreparedStatement {
+  const at = now.toISOString();
+  return db.prepare(`UPDATE insight_proposals SET status = 'issue_filed', github_issue_number = ?, github_issue_url = ?, ai_handle = ?,
       filing_lease_until = NULL, decided_by = COALESCE(decided_by, ?), decided_at = COALESCE(decided_at, ?), updated_at = ?
-    WHERE id = ? AND status = 'filing'`)
-    .bind(issue.number, issue.url, issue.aiHandle ? 1 : 0, actor, at, at, id).run();
+    WHERE id = ? AND status = 'filing' AND filing_lease_until = ?`)
+    .bind(issue.number, issue.url, issue.aiHandle ? 1 : 0, actor, at, at, id, lease);
 }
 
 /** The fingerprint already has an issue closed inside the cooldown: the proposal becomes a duplicate. */
-export async function recordDuplicateOfIssue(db: D1Database, id: string, issueUrl: string, now: Date): Promise<void> {
+export async function recordDuplicateOfIssue(db: D1Database, id: string, lease: string, issueUrl: string, now: Date): Promise<void> {
   const at = now.toISOString();
   await db.prepare(`UPDATE insight_proposals SET status = 'duplicate', duplicate_of = ?, filing_lease_until = NULL,
-      decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND status = 'filing'`)
-    .bind(issueUrl, SYSTEM_ACTOR, at, at, id).run();
+      decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND status = 'filing' AND filing_lease_until = ?`)
+    .bind(issueUrl, SYSTEM_ACTOR, at, at, id, lease).run();
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -420,9 +467,19 @@ export const PROPOSAL_STATUSES: readonly ProposalStatus[] = [
   'proposed', 'duplicate', 'accepted', 'rejected', 'filing', 'issue_filed', 'shipped', 'monitored',
 ];
 
+/**
+ * Operators see a proposal only while it stands on the minimum consented cohort (any age), as the consent
+ * copy promises ("chỉ xuất hiện khi có từ 3 người học trở lên"), or once it has a GitHub issue (public
+ * anyway). A proposal whose draft was withdrawn, or whose cohort fell below the minimum, is hidden (list,
+ * detail and actions) until enough consented evidence is back.
+ */
+const VISIBLE_PROPOSAL_SQL = `(p.github_issue_number IS NOT NULL
+  OR (SELECT COUNT(DISTINCT r.learner_id) ${CONSENTED_EVIDENCE} WHERE e.signal_id = p.signal_id) >= ${PROPOSAL_MIN_COHORT})`;
+
 export async function listProposals(db: D1Database, status: ProposalStatus | null, limit = 200): Promise<ProposalListRow[]> {
   const r = await db.prepare(`SELECT p.*, s.fingerprint, s.category, s.area, s.title FROM insight_proposals p
-    JOIN insight_signals s ON s.id = p.signal_id ${status ? 'WHERE p.status = ?' : ''} ORDER BY p.updated_at DESC LIMIT ?`)
+    JOIN insight_signals s ON s.id = p.signal_id WHERE ${VISIBLE_PROPOSAL_SQL} ${status ? 'AND p.status = ?' : ''}
+    ORDER BY p.updated_at DESC LIMIT ?`)
     .bind(...(status ? [status, limit] : [limit])).all<ProposalListRow>();
   return r.results;
 }
@@ -479,7 +536,8 @@ export async function listProposalSummaries(db: D1Database, status: ProposalStat
   return rows.map((r) => toProposalSummary(r, stats.get(r.signal_id)));
 }
 
-export async function getProposalWithSignal(db: D1Database, id: string): Promise<ProposalListRow | null> {
+export async function getProposalWithSignal(db: D1Database, id: string, opts: { visibleOnly?: boolean } = {}): Promise<ProposalListRow | null> {
   return db.prepare(`SELECT p.*, s.fingerprint, s.category, s.area, s.title FROM insight_proposals p
-    JOIN insight_signals s ON s.id = p.signal_id WHERE p.id = ?`).bind(id).first<ProposalListRow>();
+    JOIN insight_signals s ON s.id = p.signal_id WHERE p.id = ?${opts.visibleOnly ? ` AND ${VISIBLE_PROPOSAL_SQL}` : ''}`)
+    .bind(id).first<ProposalListRow>();
 }

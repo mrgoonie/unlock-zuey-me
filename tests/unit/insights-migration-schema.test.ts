@@ -13,7 +13,7 @@ import { createTestD1 } from '../helpers/d1-sqlite';
 import { fakeBucket, seedLearner, T0 } from './observer-seed-fixtures';
 
 const INSIGHT_TABLES = [
-  'insight_access_audit', 'insight_consents', 'insight_events', 'insight_operator_settings', 'insight_proposals',
+  'insight_access_audit', 'insight_consents', 'insight_events', 'insight_issue_filings', 'insight_operator_settings', 'insight_proposals',
   'insight_reports', 'insight_signal_evidence', 'insight_signals', 'insight_tokens',
 ];
 const LEARNER_OWNED = ['insight_access_audit', 'insight_consents', 'insight_events', 'insight_reports', 'insight_tokens'];

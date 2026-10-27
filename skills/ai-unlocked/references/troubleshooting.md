@@ -16,7 +16,7 @@ Run `node "<skill dir>/scripts/ai-unlocked.mjs" doctor` (same CLI path as in SKI
 | `connection/consent` warn | "Phân tích" consent is off on the web | Turn it on in Settings, or leave ai-tutor off |
 | `connection/server` warn | Feature off on the server, or no network | Nothing to do; the hook backs off by itself |
 | `local/paused` warn | Capture paused | `resume` |
-| `local/blocked` warn | Server back-off after consent off or feature off (24 h) | Turn consent on, then wait or re-pair |
+| `local/blocked` warn | Server back-off after consent off (1 h) or feature off (24 h) | Turn consent on, then wait or re-pair |
 | `local/parser` warn | The latest prompt could not be read from the transcript; only the final reply is sent | Usually a Claude Code format change; `upgrade` |
 
 ## Remove the hook by hand

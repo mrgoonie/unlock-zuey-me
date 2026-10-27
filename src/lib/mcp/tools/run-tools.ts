@@ -71,7 +71,9 @@ export function registerRunTools(server: McpServer, ctx: McpToolContext): void {
     description:
       'Stops one of the learner\'s open runs (status becomes abandoned) so the mission can be started over with '
       + 'start_mission. Only when the learner explicitly asks to give up this attempt: its saved answers are no '
-      + 'longer graded. No XP or evaluation. Calling it again on an abandoned run returns that run unchanged. '
+      + 'longer graded. No XP or evaluation. Penalties are kept: the next run starts with every answer the learner '
+      + 'already revealed filled in and locked, and hints used still cancel the no-hint XP bonus. '
+      + 'Calling it again on an abandoned run returns that run unchanged. '
       + 'Errors: not_found (run), conflict (run completed or still being graded). Needs the learn:write scope.',
     inputSchema: z.object({ run_id: runIdSchema }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },

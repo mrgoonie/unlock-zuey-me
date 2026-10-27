@@ -9,8 +9,8 @@ import { proposalsApi, type AutomationSettings } from './proposals-admin-api';
 
 const MODE_LABELS: Record<AutomationSettings['githubMode'], string> = {
   off: 'Tắt: chỉ tạo đề xuất trong dashboard',
-  issues: 'Tạo issue GitHub (không tự gắn ai-handle)',
-  issues_ai_handle: 'Tạo issue GitHub, có thể gắn ai-handle khi đủ điều kiện',
+  issues: 'Tạo issue GitHub khi người vận hành bấm “Tạo issue GitHub” (không gắn ai-handle)',
+  issues_ai_handle: 'Tạo issue GitHub khi người vận hành bấm “Tạo issue GitHub”, có thể gắn ai-handle khi đủ điều kiện',
 };
 
 export default function OperatorAutomationSettings({ settings, onChange }: { settings: AutomationSettings; onChange: (s: AutomationSettings) => void }) {
@@ -53,7 +53,7 @@ export default function OperatorAutomationSettings({ settings, onChange }: { set
         <dd>{settings.issuesFiledToday} / {settings.dailyCap}</dd>
       </dl>
       <ToggleSwitch id="safe-auto-implement" label="Tự động xử lý an toàn (ai-handle)"
-        description="Chỉ có tác dụng khi chế độ là issues_ai_handle. Khi bật, chỉ đề xuất rủi ro thấp về nội dung hoặc lỗi, đủ từ 3 người học, qua kiểm tra quyền riêng tư và không chạm vùng nhạy cảm mới được gắn ai-handle. ai-handle không có nghĩa là tự merge: mọi thay đổi vẫn qua PR, CI và review."
+        description="Chỉ có tác dụng khi chế độ là issues_ai_handle. Khi bật, issue do người vận hành tạo cho đề xuất rủi ro thấp về nội dung hoặc lỗi, đủ từ 3 người học, qua kiểm tra quyền riêng tư và không chạm vùng nhạy cảm sẽ được gắn ai-handle. Hệ thống không bao giờ tự tạo issue. ai-handle không có nghĩa là tự merge: mọi thay đổi vẫn qua PR, CI và review."
         checked={settings.safeAutoImplement} disabled={busy} onChange={toggle} />
       {turningOn && (
         <label className="flex flex-col gap-1 text-sm">

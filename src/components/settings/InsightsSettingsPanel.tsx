@@ -121,6 +121,8 @@ export default function InsightsSettingsPanel({ observerConsent }: { observerCon
             ))}
           </ul>
         )}
+        {/* Must match MAX_ACTIVE_TOKENS_PER_LEARNER (ingest-contract.ts, not imported to keep zod out of the bundle). */}
+        <p className="text-sm text-ink-muted">Tối đa 10 thiết bị. Khi bạn kết nối thêm, thiết bị kết nối lâu nhất sẽ tự bị ngắt.</p>
         <div className="flex flex-wrap gap-2">
           <a href="/skill" className="btn-ghost text-sm">Cài kỹ năng ai-unlocked</a>
           <a href="/insights" className="btn-ghost text-sm">🧭 Xem báo cáo ai-tutor</a>

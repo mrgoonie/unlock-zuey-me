@@ -4,6 +4,8 @@
  * The run moves to `abandoned` (terminal), which frees the one-open-run-per-mission slot
  * (idx_runs_one_open_per_mission) so the next start creates a fresh run. Nothing else changes: no XP,
  * no evaluation, answers and reveals stay on the abandoned row for the learner's history and export.
+ * Penalties are not reset: the fresh run starts with this run's reveals locked, and its hints still count
+ * against the no-hint bonus when the mission is passed (carried-penalties.ts).
  * Idempotent: abandoning an already-abandoned run returns it unchanged. A completed run cannot be
  * abandoned, and neither can a run whose evaluation is still running (the grade would be thrown away);
  * a crashed evaluation (shown as evaluation_failed) can.

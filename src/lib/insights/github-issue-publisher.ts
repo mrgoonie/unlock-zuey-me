@@ -20,7 +20,17 @@ export const AI_HANDLE_LABEL = 'ai-handle';
 /** Minimal fetch signature (injected in tests; no real network there). */
 export type GithubFetch = (input: string, init: RequestInit) => Promise<Response>;
 
-export type GithubEndpoint = 'GET /search/issues' | 'POST /repos/:repo/issues' | 'POST /repos/:repo/issues/:n/labels' | 'GET /repos/:repo/issues/:n';
+export type GithubEndpoint =
+  | 'GET /search/issues' | 'GET /repos/:repo/issues' | 'POST /repos/:repo/issues' | 'POST /repos/:repo/issues/:n/labels' | 'GET /repos/:repo/issues/:n';
+
+/** Label every issue of the pipeline carries; the issue list is filtered by it. */
+export const INSIGHTS_LABEL = 'ai-insights';
+/** Pages of 100 read by `listByFingerprintSince` before it gives up (and reports an error instead of "absent"). */
+export const LIST_MAX_PAGES = 5;
+const fingerprintMarker = (fingerprint: string, endpoint: GithubEndpoint): string => {
+  if (!/^[0-9a-f]{64}$/.test(fingerprint)) throw new GithubIssueError(400, endpoint);
+  return `ai-unlocked-fp:${fingerprint}`;
+};
 
 /** A failed GitHub call. Carries status and endpoint template only, never the token or a body. */
 export class GithubIssueError extends Error {
@@ -37,12 +47,20 @@ export interface GithubIssueRef {
   closedAt: string | null;
   /** completed | not_planned | reopened | null */
   stateReason: string | null;
+  /** Whether the issue carries the `ai-handle` label (absent when the response had no labels). */
+  aiHandle?: boolean;
 }
 
 export interface GithubIssuePublisher {
   readonly repo: string;
-  /** Issues (open and closed) whose body carries the exact fingerprint marker. */
+  /** Issues (open and closed) whose body carries the exact fingerprint marker. The search index lags behind creates. */
   searchByFingerprint(fingerprint: string): Promise<GithubIssueRef[]>;
+  /**
+   * Pipeline issues (label `ai-insights`) updated since `since` whose body carries the marker, read from the
+   * repository issue list, which is not search-indexed and so sees an issue as soon as it exists. Throws
+   * instead of answering "none" when the listing is incomplete.
+   */
+  listByFingerprintSince(fingerprint: string, since: string): Promise<GithubIssueRef[]>;
   createIssue(input: { title: string; body: string; category: SignalCategory; aiHandle: boolean }): Promise<GithubIssueRef>;
   addLabels(issueNumber: number, labels: string[]): Promise<void>;
   getIssueState(issueNumber: number): Promise<GithubIssueRef>;
@@ -53,7 +71,7 @@ export const githubTokenConfigured = (env: Pick<Env, 'GITHUB_ISSUES_TOKEN'>): bo
 
 /** The labels an issue gets. `ai-handle` only on explicit request. */
 export function issueLabels(category: SignalCategory, aiHandle: boolean): string[] {
-  return ['ai-insights', `insight:${category}`, ...(aiHandle ? [AI_HANDLE_LABEL] : [])];
+  return [INSIGHTS_LABEL, `insight:${category}`, ...(aiHandle ? [AI_HANDLE_LABEL] : [])];
 }
 
 interface RawIssue {
@@ -64,6 +82,7 @@ interface RawIssue {
   state_reason?: unknown;
   body?: unknown;
   pull_request?: unknown;
+  labels?: unknown;
 }
 
 function toRef(raw: RawIssue, endpoint: GithubEndpoint): GithubIssueRef {
@@ -74,6 +93,8 @@ function toRef(raw: RawIssue, endpoint: GithubEndpoint): GithubIssueRef {
     state: raw.state === 'closed' ? 'closed' : 'open',
     closedAt: typeof raw.closed_at === 'string' ? raw.closed_at : null,
     stateReason: typeof raw.state_reason === 'string' ? raw.state_reason : null,
+    aiHandle: Array.isArray(raw.labels)
+      && raw.labels.some((l) => (typeof l === 'string' ? l : (l as { name?: unknown } | null)?.name) === AI_HANDLE_LABEL),
   };
 }
 
@@ -124,14 +145,33 @@ export function createGithubIssuePublisher(
   return {
     repo,
     async searchByFingerprint(fingerprint) {
-      if (!/^[0-9a-f]{64}$/.test(fingerprint)) throw new GithubIssueError(400, 'GET /search/issues');
-      const marker = `ai-unlocked-fp:${fingerprint}`;
+      const marker = fingerprintMarker(fingerprint, 'GET /search/issues');
       const q = encodeURIComponent(`repo:${repo} is:issue in:body "${marker}"`);
       const data = await call<{ items?: RawIssue[] }>('GET /search/issues', 'GET', `/search/issues?q=${q}&per_page=10`);
       // Search is fuzzy: keep only real issues whose body carries the exact marker.
       return (Array.isArray(data.items) ? data.items : [])
         .filter((i) => !i.pull_request && typeof i.body === 'string' && i.body.includes(marker))
         .map((i) => toRef(i, 'GET /search/issues'));
+    },
+    async listByFingerprintSince(fingerprint, since) {
+      const endpoint = 'GET /repos/:repo/issues';
+      const marker = fingerprintMarker(fingerprint, endpoint);
+      if (!Number.isFinite(Date.parse(since))) throw new GithubIssueError(400, endpoint);
+      const found: GithubIssueRef[] = [];
+      for (let page = 1; page <= LIST_MAX_PAGES; page++) {
+        const q = new URLSearchParams({
+          state: 'all', labels: INSIGHTS_LABEL, since: new Date(since).toISOString(), sort: 'created', direction: 'desc',
+          per_page: '100', page: String(page),
+        });
+        const items = await call<RawIssue[]>(endpoint, 'GET', `/repos/${repo}/issues?${q}`);
+        if (!Array.isArray(items)) throw new GithubIssueError(502, endpoint);
+        for (const i of items) {
+          if (!i.pull_request && typeof i.body === 'string' && i.body.includes(marker)) found.push(toRef(i, endpoint));
+        }
+        if (items.length < 100) return found;
+      }
+      // More pipeline issues changed since then than we read: "not found" would not be a proof.
+      throw new GithubIssueError(502, endpoint);
     },
     async createIssue({ title, body, category, aiHandle }) {
       const raw = await call<RawIssue>('POST /repos/:repo/issues', 'POST', `/repos/${repo}/issues`, {

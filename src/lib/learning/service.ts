@@ -87,7 +87,8 @@ export async function saveAnswers(
 
 /**
  * Abandons an open run ("Bỏ lượt này") so the learner can start the mission over. Idempotent on an abandoned
- * run; a completed run or one still being graded is `conflict`. No XP, evaluation or other side effect.
+ * run; a completed run or one still being graded is `conflict`. No XP, evaluation or other side effect, and
+ * no reset of penalties: the next run keeps this run's reveals locked and its hints count against the bonus.
  */
 export async function abandonRun(deps: LearningDeps, learner: LearnerContext, runId: string): Promise<MissionRun> {
   return abandonRunImpl(deps, learner, runId);

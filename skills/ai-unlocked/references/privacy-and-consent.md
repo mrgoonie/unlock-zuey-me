@@ -28,7 +28,7 @@ Operator dashboards otherwise show only anonymous counts over groups of at least
 
 ## What happens on this machine
 
-- The hook reads nothing and sends nothing while paused, while unpaired, after the server refused the token, or during a server back-off (24 h after "consent off" or "feature off").
+- The hook reads nothing and sends nothing while paused, while unpaired, after the server refused the token, or during a server back-off (1 h after "consent off", 24 h after "feature off").
 - Turns wait in `~/.config/ai-unlocked/spool/` (files 0600, at most 50 files, 1 MB, 24 h). `hook.log` records only time, HTTP status and duration.
 - The device token lives in `~/.config/ai-unlocked/credentials.json` (0600). Only its SHA-256 is stored on the server; it expires after 90 days and can be revoked per device in Settings or with `uninstall --purge`.
 

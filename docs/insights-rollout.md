@@ -12,19 +12,23 @@ Production runs **`on`** since 2026-10-27 (`INSIGHTS_MODE` in `wrangler.jsonc`):
    - useful-rate of reports marked by admins ("Hữu ích" / "Không hữu ích"), target ≥ 60 %;
    - AI spend: the `system:insights` row of `ai_usage`. The background analyzer reserves in the global coaching pool (so grading is never starved) but is charged to this system row, never to the learner's own per-learner coaching share: an analysis cannot use up a learner's hints and chat for the day. It stays bounded by the global daily caps (USD and Workers AI) and the insights quotas (per-learner and global daily analyses).
 3. **`pilot`** with `INSIGHTS_PILOT_EMAILS` (comma-separated). Pilot learners still opt in themselves: install, pair and consent are separate steps.
-4. **GitHub issues**, only after the evaluation gate below passes: create a fine-grained PAT (Issues: write on `INSIGHTS_GITHUB_REPO` only, 90-day rotation), `wrangler secret put GITHUB_ISSUES_TOKEN`, set `INSIGHTS_GITHUB_ISSUES=issues`. Later, and only deliberately, `issues_ai_handle` plus the operator toggle `safe_auto_implement` (typed confirm `BAT` on `/admin/insights/proposals`).
+4. **GitHub issues**, only after the evaluation gate below passes: create a fine-grained PAT (Issues: write on `INSIGHTS_GITHUB_REPO` only, 90-day rotation), `wrangler secret put GITHUB_ISSUES_TOKEN`, set `INSIGHTS_GITHUB_ISSUES=issues`. Even then nothing is filed automatically: each issue needs an operator's "Tạo issue GitHub" click on `/admin/insights/proposals`. Later, and only deliberately, `issues_ai_handle` plus the operator toggle `safe_auto_implement` (typed confirm `BAT`), which only decides whether an operator-filed issue may carry `ai-handle`.
 5. **`on`** (all members).
 
 ### Evaluation gate for GitHub issues
 
 Keep `INSIGHTS_GITHUB_ISSUES=off` until at least **20 proposals** have been reviewed by an operator on `/admin/insights/proposals` and **fewer than 10 %** of them were rejected as "not a general platform issue". Until then the dashboard plus "Sao chép nội dung issue" is the only path to GitHub.
 
+### First tick after the issue #37 deploy
+
+Proposal cohorts now count only established learners: a member whose account was at least 7 days old when the report was written, with at least one completed mission before it. After the deploy the cron re-checks open drafts under this rule over the next ticks (10 drafts per tick), while hiding proposals with a too-small cohort applies at once because it is checked on every read. Proposals supported mostly by newer accounts get the template text back or are withdrawn, which clears their acceptance and any ai-handle approval, and proposals whose cohort drops below 3 without an issue disappear from `/admin/insights/proposals`. This is intended. The product signals on `/admin/insights` use the same rule. Learners who held more than 10 device tokens before the deploy keep them until their next pairing, which revokes the oldest.
+
 ## Rollback
 
 - `INSIGHTS_MODE=off`: every route 404s, the UI hides, the cron stage stops. Tables stay, inert.
-- `INSIGHTS_GITHUB_ISSUES=off` or `wrangler secret delete GITHUB_ISSUES_TOKEN`: issue filing stops at once.
+- `INSIGHTS_GITHUB_ISSUES=off` or `wrangler secret delete GITHUB_ISSUES_TOKEN`: issue filing stops at once. A filing interrupted mid-way returns to `proposed`/`accepted` at the next tick once its 2-minute lease expires; its fingerprint claim stays, so turning GitHub back on links the issue it may have made instead of filing a second one.
 - On learner machines, `ai-unlocked uninstall [--purge]` removes only its own hook entries, plus any `*.ai-unlocked.bak` / `*.ai-unlocked.tmp` an older CLI left next to the project settings files. The current CLI deletes its settings backup as soon as a write is verified and keeps it only when a rollback failed. While the flag is off the hook gets 404, drops its spool and backs off for 24 h.
-- No down-migration; `0008` is additive and unreferenced by older code.
+- No down-migration; `0008` and `0010` (`insight_issue_filings`) are additive and unreferenced by older code.
 
 ## Manual QA (local preview)
 

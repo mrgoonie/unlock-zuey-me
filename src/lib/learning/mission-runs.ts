@@ -11,9 +11,10 @@ import { recordEventSafe } from '../observer/events';
 import { recordActivityDay } from './activity';
 import { answerKeyForRun, assertRevealedUnchanged } from './answer-reveals';
 import { assertAnswersSize, findStep, mergeAnswers, validateStepAnswers } from './answers-validation';
+import { carriedReveals } from './carried-penalties';
 import { missionNotFound, RunConflictError, runNotFound } from './errors';
 import { learnerMissionView, type LearnerMission } from './learner-mission-view';
-import { effectiveStatus, transition } from './mission-state-machine';
+import { effectiveStatus, isOpen, transition } from './mission-state-machine';
 import {
   LearningError, type AnswerKey, type Answers, type Evaluation, type LearnerContext, type MissionRun, type Source,
 } from './types';
@@ -38,16 +39,22 @@ export async function loadRun(deps: RunDeps, learner: LearnerContext, runId: str
   return { ...run, status: effectiveStatus(run, clock(deps)) };
 }
 
-/** Returns the open run of a mission, or starts a new one (the only way a new run is created). */
+/**
+ * Returns the open run of a mission, or starts a new one (the only way a new run is created). A new run after
+ * "Bỏ lượt này" starts with the reveals of the abandoned runs already recorded and their answers locked
+ * (carried-penalties.ts), so abandoning never turns a seen answer into a fresh one.
+ */
 export async function startMissionImpl(deps: RunDeps, learner: LearnerContext, missionId: string, source: Source): Promise<MissionRun> {
   const mission = publishedMission(missionId);
   const db = deps.env.DB;
   const open = await findOpenRun(db, learner.id, mission.id);
   if (open) return { ...open, status: effectiveStatus(open, clock(deps)) };
+  const carried = await carriedReveals(db, learner.id, mission);
   const at = nowIso(clock(deps));
   const run: MissionRun = {
     id: newId('run'), learnerId: learner.id, missionId: mission.id, missionVersion: mission.version, status: 'started',
-    currentStep: mission.steps[0]?.id ?? null, answers: {}, confidence: null, hintMaxLevel: 0, hintsUsed: 0, revealed: [], source, rev: 0,
+    currentStep: mission.steps[0]?.id ?? null, answers: carried.answers, confidence: null, hintMaxLevel: 0, hintsUsed: 0,
+    revealed: carried.revealed, source, rev: 0,
     startedAt: at, updatedAt: at, completedAt: null,
   };
   try {
@@ -82,6 +89,11 @@ export interface RunDetail {
   mission: LearnerMission;
   evaluation: Evaluation | null;
   answerKey: AnswerKey;
+  /**
+   * Revealed items ("stepId:itemId") whose locked answer came from a run abandoned earlier in this attempt,
+   * so the runner can say why the answer cannot be changed. Empty once the run is closed.
+   */
+  carriedRevealed: string[];
 }
 
 export async function getRunDetail(deps: RunDeps, learner: LearnerContext, runId: string): Promise<RunDetail> {
@@ -89,7 +101,11 @@ export async function getRunDetail(deps: RunDeps, learner: LearnerContext, runId
   const mission = getMission(run.missionId);
   if (!mission) throw new LearningError('unavailable', 'Mission này tạm thời không khả dụng.');
   const evaluation = await latestEvaluationForRun(deps.env.DB, learner.id, run.id);
-  return { run, mission: learnerMissionView(mission), evaluation, answerKey: answerKeyForRun(mission, run) };
+  const carried = isOpen(run.status) && run.revealed.length > 0 ? (await carriedReveals(deps.env.DB, learner.id, mission)).revealed : [];
+  return {
+    run, mission: learnerMissionView(mission), evaluation, answerKey: answerKeyForRun(mission, run),
+    carriedRevealed: carried.filter((k) => run.revealed.includes(k)),
+  };
 }
 
 /** The answer key a run's learner may see right now (e.g. returned with a submit result). */

@@ -18,10 +18,25 @@ export async function freshDb(learners: string[] = ['lrn_a', 'lrn_b', 'lrn_c', '
   return db;
 }
 
-export async function addLearner(db: D1Database, id: string, opts: { proposals?: boolean; proposalsAt?: string; name?: string } = {}) {
-  const at = daysAgo(60);
+/** A completed mission run (the "established learner" signal of the proposal cohort). */
+export async function completeMission(db: D1Database, learnerId: string, completedAt: string) {
+  await db.prepare(`INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, started_at, updated_at, completed_at)
+    VALUES (?, ?, 'plan-weekend', 1, 'completed', ?, ?, ?)`).bind(`run_${learnerId}_${completedAt}`, learnerId, completedAt, completedAt, completedAt).run();
+}
+
+/**
+ * A member with proposals consent. By default ESTABLISHED (account 60 days old, one mission completed 30
+ * days ago); `createdAt` and `missionCompletedAt` (null: none) override that.
+ */
+export async function addLearner(
+  db: D1Database, id: string,
+  opts: { proposals?: boolean; proposalsAt?: string; name?: string; createdAt?: string; missionCompletedAt?: string | null } = {},
+) {
+  const at = opts.createdAt ?? daysAgo(60);
   await db.prepare(`INSERT INTO learners (id, kind, display_name, email, profile_json, created_at, updated_at) VALUES (?, 'member', ?, ?, '{}', ?, ?)`)
     .bind(id, opts.name ?? `Học viên ${id.slice(4)}`, `${id}@example.com`, at, at).run();
+  const missionAt = opts.missionCompletedAt === undefined ? daysAgo(30) : opts.missionCompletedAt;
+  if (missionAt) await completeMission(db, id, missionAt);
   const proposals = opts.proposals ?? true;
   await db.prepare(`INSERT INTO insight_consents (learner_id, analysis, share_operator, proposals, analysis_at, proposals_at, updated_at)
     VALUES (?, 1, 0, ?, ?, ?, ?)`).bind(id, proposals ? 1 : 0, at, proposals ? (opts.proposalsAt ?? at) : null, at).run();
@@ -86,8 +101,12 @@ export interface FakeIssue {
   labels: string[];
 }
 
-/** Recording GitHub API mock. `issues` doubles as the search index (matched by body substring). */
-export function fakeGithub(opts: { createStatus?: number; searchStatus?: number; delayMs?: number } = {}) {
+/**
+ * Recording GitHub API mock. `issues` doubles as the search index (matched by body substring) and as the
+ * repository issue list (`GET /repos/:repo/issues`, filtered by label). `searchLag: true` hides every issue
+ * from search, like GitHub's index right after a create; the issue list always sees them.
+ */
+export function fakeGithub(opts: { createStatus?: number; createStatusAfterCreate?: number; searchStatus?: number; delayMs?: number; searchLag?: boolean } = {}) {
   const issues: FakeIssue[] = [];
   const calls: Array<{ method: string; url: string; headers: Record<string, string>; body: unknown }> = [];
   const fetchImpl = async (input: string, init: RequestInit): Promise<Response> => {
@@ -100,7 +119,14 @@ export function fakeGithub(opts: { createStatus?: number; searchStatus?: number;
     if (method === 'GET' && url.pathname === '/search/issues') {
       if (opts.searchStatus) return new Response('{"message":"boom"}', { status: opts.searchStatus });
       const marker = /"(ai-unlocked-fp:[0-9a-f]{64})"/.exec(url.searchParams.get('q') ?? '')?.[1] ?? '';
-      return Response.json({ items: issues.filter((i) => i.body.includes(marker)) });
+      return Response.json({ items: opts.searchLag ? [] : issues.filter((i) => i.body.includes(marker)) });
+    }
+    const list = /^\/repos\/[^/]+\/[^/]+\/issues$/.exec(url.pathname);
+    if (method === 'GET' && list) {
+      const label = url.searchParams.get('labels');
+      const page = Number(url.searchParams.get('page') ?? '1');
+      const matching = issues.filter((i) => !label || i.labels.includes(label)).reverse();
+      return Response.json(matching.slice((page - 1) * 100, page * 100));
     }
     const create = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(url.pathname);
     if (method === 'POST' && create) {
@@ -111,6 +137,8 @@ export function fakeGithub(opts: { createStatus?: number; searchStatus?: number;
         closed_at: null, state_reason: null, body: b.body, labels: b.labels,
       };
       issues.push(issue);
+      // The issue exists on GitHub, but the client sees a failure (timeout or 5xx after the POST).
+      if (opts.createStatusAfterCreate) return new Response('{"message":"boom"}', { status: opts.createStatusAfterCreate });
       return Response.json(issue, { status: 201 });
     }
     const labels = /^\/repos\/[^/]+\/[^/]+\/issues\/(\d+)\/labels$/.exec(url.pathname);

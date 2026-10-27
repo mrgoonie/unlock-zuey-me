@@ -5,6 +5,7 @@
  * reveal is stored on the run (mission_runs.revealed_json) and returns that one item's key. From then on
  * the revealed answer is locked: saveAnswers and submitEvidence reject any change to it. Verification
  * verdicts cannot be revealed early (they are graded); every key is visible once the run is completed.
+ * Abandoning the run does not undo a reveal: the next run of the mission starts with it (carried-penalties.ts).
  */
 import { getMission } from '../content/loader';
 import type { Mission, MissionStep } from '../content/schema';
@@ -20,7 +21,7 @@ import {
 } from './types';
 
 /** The key of one revealable item, or null when the step/item has none (verification claims included). */
-function revealableEntry(step: MissionStep, itemId: string): AnswerKeyEntry | null {
+export function revealableEntry(step: MissionStep, itemId: string): AnswerKeyEntry | null {
   if (step.type === 'quiz') {
     const q = step.questions.find((x) => x.id === itemId);
     return q ? { correct: [...q.correct], explanation: q.explanation } : null;
@@ -30,7 +31,7 @@ function revealableEntry(step: MissionStep, itemId: string): AnswerKeyEntry | nu
 }
 
 /** Answer fields a reveal locks: the question's field (quiz) or the choice and its confidence (prediction). */
-function lockedFields(step: MissionStep, itemId: string): string[] {
+export function lockedFields(step: MissionStep, itemId: string): string[] {
   if (step.type === 'quiz') return [itemId];
   if (step.type === 'prediction') return [...PREDICTION_LOCKED_FIELDS];
   return [];
@@ -81,7 +82,8 @@ export function assertRevealedUnchanged(mission: Mission, run: MissionRun, next:
   }
 }
 
-function isAnswered(step: MissionStep, itemId: string, answers: Answers): boolean {
+/** True when the item's answer (the question's field, or the prediction choice) has a value. */
+export function isAnswered(step: MissionStep, itemId: string, answers: Answers): boolean {
   const v = answers[step.id]?.[step.type === 'prediction' ? 'choice' : itemId];
   return Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== '';
 }
