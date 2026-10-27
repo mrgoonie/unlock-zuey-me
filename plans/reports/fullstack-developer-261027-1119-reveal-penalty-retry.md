@@ -30,5 +30,9 @@
 - Không đụng `src/lib/insights`, `src/pages/api/ingest`, `skills/**`, trang admin insights hay migrations.
 - Không push, không mở PR.
 
-## Câu hỏi còn mở
-- Có nên báo cho người học ngay trong runner, ở lượt mới (không chỉ trong hộp thoại bỏ lượt), rằng một số câu đã khoá từ lượt trước? Hiện UI hiển thị các câu đó như câu đã xem đáp án bình thường.
+## Bổ sung: dòng nhắc trong runner
+- `GET /runs/:id` trả thêm `carriedRevealed`: các mục đã xem đáp án của lượt đang mở mà câu trả lời khoá đến từ một lượt bị bỏ trước đó. Với lượt đã đóng, danh sách này rỗng.
+- Bước quiz/prediction hiện một dòng nhỏ (`text-xs text-ink-muted`) trên đúng mục được mang sang: "Bạn đã xem đáp án câu này ở lượt trước nên câu trả lời được giữ nguyên."
+- Test: dịch vụ (cờ đúng cho mục được mang sang, không gắn cờ cho mục vừa xem ở lượt này, rỗng cho lượt mới và lượt đã hoàn thành) và render (dòng nhắc chỉ hiện ở đúng câu).
+- Kiểm tra: `bun run build` 0 lỗi, `bunx tsc --noEmit` 0 lỗi (sau khi build sinh kiểu Astro). `bunx vitest run` pass 923/926; 3 test lỗi đều là test thời gian.
+- Chạy riêng lại vẫn lỗi vì timeout, trong khi máy đang quá tải (load average 90–150). Các test này không import file nào đã sửa.
