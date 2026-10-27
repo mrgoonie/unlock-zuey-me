@@ -3,7 +3,7 @@
 
 export const SKILL_NAME = 'ai-unlocked';
 /** Must equal manifest.json `version` (checked by tests/unit/skill-bundle-manifest.test.ts). */
-export const SKILL_VERSION = '0.1.0';
+export const SKILL_VERSION = '0.1.1';
 export const MIN_NODE_MAJOR = 18;
 
 export const DEFAULT_SERVER = 'https://unlock.zuey.me';
@@ -57,5 +57,10 @@ export const SPOOL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const FLUSH_LOCK_STALE_MS = 60 * 1000;
 export const POST_TIMEOUT_MS = 8000;
 export const LOG_MAX_BYTES = 64 * 1024;
-/** Back-off after `403 consent_required` or `404 feature_off` (docs/insights-ingest-contract.md). */
+/** Back-off after `404 feature_off` (docs/insights-ingest-contract.md). */
 export const SERVER_BLOCK_MS = 24 * 60 * 60 * 1000;
+/**
+ * Back-off after `403 consent_required`. Short, so turns flow again soon after the learner turns analysis
+ * back on in Settings, while a device whose consent stays off still makes at most one request an hour.
+ */
+export const CONSENT_BLOCK_MS = 60 * 60 * 1000;

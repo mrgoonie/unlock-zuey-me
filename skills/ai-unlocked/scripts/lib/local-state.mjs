@@ -1,7 +1,7 @@
 // Local state (`state.json` in the config dir). Read by the Stop hook on every turn, so it stays tiny.
 //
 // - paused:              learner ran `pause`; the hook reads no transcript and makes no network call.
-// - serverBlockedUntil:  epoch ms; set after `403 consent_required` / `404 feature_off` (24 h back-off). The hook
+// - serverBlockedUntil:  epoch ms; set after `403 consent_required` (1 h) / `404 feature_off` (24 h). The hook
 //                        captures nothing until then.
 // - uploadRetryAfter:    epoch ms; set after `429 daily_cap` (next 00:00 UTC). Turns still spool, uploads wait.
 // - blockReason:         reason of the last block, for `status` / `doctor`.
