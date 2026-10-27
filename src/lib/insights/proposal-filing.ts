@@ -19,7 +19,7 @@ import type { GateDecision, GateReason, ProposalStatus } from './insight-types';
 import { assessSignal, currentDraft, persistAssessment, readGateEnv, replacesDraft, type Assessment } from './proposal-assessment';
 import { claimIssueFiling, dropIssueClaim, getIssueFiling, knownIssues, recordIssueFilingStatement } from './proposal-issue-ledger';
 import {
-  cohortStats, daysBefore, FILEABLE_STATUSES, getProposal, getSignal, leaseForFiling, recordDuplicateOfIssue, recordFiledStatement, releaseFiling,
+  cohortStats, daysBefore, FILEABLE_STATUSES, FILING_LEASE_MS, getProposal, getSignal, leaseForFiling, recordDuplicateOfIssue, recordFiledStatement, releaseFiling,
   releaseIssueSlot, reserveIssueSlot, SIGNAL_WINDOW_DAYS,
 } from './proposal-store';
 
@@ -65,12 +65,27 @@ function filingRefusal(a: Assessment): FilingOutcome | null {
   return null;
 }
 
-/** Records an existing issue for the proposal and the fingerprint ledger in one batch. */
-async function linkIssue(db: D1Database, proposalId: string, fingerprint: string, issue: GithubIssueRef, aiHandle: boolean, actor: string, now: Date) {
-  await db.batch([
-    recordIssueFilingStatement(db, fingerprint, proposalId, issue, now),
-    recordFiledStatement(db, proposalId, { number: issue.number, url: issue.url, aiHandle }, actor, now),
+/**
+ * Time left on the lease below which an attempt does not start a create: a POST that may still be running
+ * when the lease expires could be missed by the attempt that takes the row over. Several GitHub timeouts.
+ */
+const CREATE_LEASE_HEADROOM_MS = 30_000;
+
+/** The lease and the fingerprint claim an attempt holds; its writes apply only while both are still its own. */
+interface Hold { lease: string; claimedAt: string | null }
+
+/**
+ * Records an issue for the proposal and the fingerprint ledger in one batch, guarded by the attempt's hold.
+ * Returns false when the hold was lost (another attempt took the row over): nothing was written.
+ */
+async function linkIssue(
+  db: D1Database, proposalId: string, fingerprint: string, issue: GithubIssueRef, aiHandle: boolean, actor: string, now: Date, hold: Hold,
+): Promise<boolean> {
+  const [, filed] = await db.batch([
+    recordIssueFilingStatement(db, fingerprint, proposalId, issue, now, hold),
+    recordFiledStatement(db, proposalId, hold.lease, { number: issue.number, url: issue.url, aiHandle }, actor, now),
   ]);
+  return (filed.meta.changes ?? 0) === 1;
 }
 
 /**
@@ -93,7 +108,9 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
   if (!signal) return { kind: 'not_found' };
   const fp = signal.fingerprint;
 
-  if (!(await leaseForFiling(db, p.id, now))) return { kind: 'busy' };
+  const started = Date.now(); // elapsed wall time, independent of how `now` was taken
+  const lease = await leaseForFiling(db, p.id, now);
+  if (!lease) return { kind: 'busy' };
   const prior = p.status;
   /** Where the row returns when this attempt files nothing (an acceptance voided by a draft change → proposed). */
   let resting: ProposalStatus = prior;
@@ -114,7 +131,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
       // no issue exists, so the claim goes and the row returns to rest; a new create needs an operator.
       const made = open ?? (ledger?.status === 'creating' ? known.ledgerIssue : null);
       if (made) {
-        await linkIssue(db, p.id, fp, made, false, opts.actor, now);
+        if (!(await linkIssue(db, p.id, fp, made, made.aiHandle ?? false, opts.actor, now, { lease, claimedAt: null }))) return { kind: 'busy' };
         return { kind: 'linked', number: made.number, url: made.url };
       }
       if (ledger?.status === 'creating') await dropIssueClaim(db, fp, ledger.claimed_at);
@@ -143,7 +160,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
 
     const { known, open } = await lookUp();
     if (open) {
-      await linkIssue(db, p.id, fp, open, false, opts.actor, now);
+      if (!(await linkIssue(db, p.id, fp, open, open.aiHandle ?? false, opts.actor, now, { lease, claimedAt: null }))) return { kind: 'busy' };
       return { kind: 'linked', number: open.number, url: open.url };
     }
     const recentClosed = known.all
@@ -166,9 +183,21 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
       await releaseFiling(db, p.id, resting, now);
       return { kind: 'busy' };
     }
+    if (Date.now() - started > FILING_LEASE_MS - CREATE_LEASE_HEADROOM_MS) {
+      // Too slow so far to be sure the POST ends inside the lease: give everything back, create nothing.
+      await dropIssueClaim(db, fp, claimedAt);
+      claimedAt = null;
+      await releaseIssueSlot(db, now);
+      slotReserved = false;
+      await releaseFiling(db, p.id, resting, now);
+      return { kind: 'busy' };
+    }
     const issue = await publisher.createIssue({ title: a.draft.title, body: a.markdown, category: signal.category, aiHandle });
     created = true;
-    await linkIssue(db, p.id, fp, issue, aiHandle, opts.actor, now);
+    if (!(await linkIssue(db, p.id, fp, issue, aiHandle, opts.actor, now, { lease, claimedAt }))) {
+      console.error('insights filing: issue created after the lease was lost', issue.number);
+      return { kind: 'github_error', status: 409 };
+    }
     return { kind: 'filed', number: issue.number, url: issue.url, aiHandle };
   } catch (err) {
     const status = err instanceof GithubIssueError ? err.status : 500;

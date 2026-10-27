@@ -15,6 +15,17 @@ import { FAKE_TOKEN, fakeGithub, NOW } from './insights-proposal-stage-fixtures'
 
 const FP = 'c'.repeat(64);
 const later = (ms: number) => new Date(NOW.getTime() + ms);
+const LEASE = later(120_000).toISOString();
+
+/** A proposal in `filing` holding LEASE, which recordIssueFilingStatement requires before it writes. */
+async function holding(db: D1Database, id = 'prp_a', lease = LEASE) {
+  const at = NOW.toISOString();
+  await db.prepare(`INSERT OR IGNORE INTO insight_signals (id, fingerprint, category, area, title, first_seen_at, last_seen_at, created_at)
+    VALUES ('sig_l', ?, 'content', 'concepts', 't', ?, ?, ?)`).bind(FP, at, at, at).run();
+  await db.prepare(`INSERT INTO insight_proposals (id, signal_id, status, risk, gate_json, draft_json, filing_lease_until, created_at, updated_at)
+    VALUES (?, 'sig_l', 'filing', 'low', '{}', '{}', ?, ?, ?)`).bind(id, lease, at, at).run();
+  return { lease, claimedAt: null as string | null };
+}
 
 describe('0010_insight_issue_filings migration', () => {
   const file = '0010_insight_issue_filings.sql';
@@ -56,9 +67,10 @@ describe('issue filing ledger', () => {
 
   it('takes a row over only if it is still exactly the row that was read', async () => {
     const db = createTestD1();
+    const hold = await holding(db);
     await claimIssueFiling(db, FP, 'prp_a', null, NOW);
     const seen = await getIssueFiling(db, FP);
-    await db.batch([recordIssueFilingStatement(db, FP, 'prp_a', { number: 7, url: 'https://github.com/o/r/issues/7' }, later(1_000))]);
+    await db.batch([recordIssueFilingStatement(db, FP, 'prp_a', { number: 7, url: 'https://github.com/o/r/issues/7' }, later(1_000), hold)]);
     expect(await claimIssueFiling(db, FP, 'prp_a', seen, later(2_000))).toBeNull(); // the row changed meanwhile
     const filed = await getIssueFiling(db, FP);
     expect(filed).toMatchObject({ status: 'filed', issue_number: 7 });
@@ -68,12 +80,31 @@ describe('issue filing ledger', () => {
 
   it('drops only the claim it names, never a recorded issue', async () => {
     const db = createTestD1();
+    const hold = await holding(db);
     await claimIssueFiling(db, FP, 'prp_a', null, NOW);
     await dropIssueClaim(db, FP, later(1).toISOString());
     expect(await getIssueFiling(db, FP)).not.toBeNull();
-    await db.batch([recordIssueFilingStatement(db, FP, 'prp_a', { number: 7, url: 'u' }, NOW)]);
+    await db.batch([recordIssueFilingStatement(db, FP, 'prp_a', { number: 7, url: 'u' }, NOW, hold)]);
     await dropIssueClaim(db, FP, NOW.toISOString());
     expect(await getIssueFiling(db, FP)).toMatchObject({ status: 'filed' });
+  });
+
+  it('writes nothing for an attempt that lost its lease or its claim to a later one', async () => {
+    const db = createTestD1();
+    await holding(db, 'prp_c', later(300_000).toISOString()); // the attempt that took the row over holds a newer lease
+    const staleClaim = (await claimIssueFiling(db, FP, 'prp_a', null, NOW)) as string;
+    const winnerClaim = (await claimIssueFiling(db, FP, 'prp_c', await getIssueFiling(db, FP), later(200_000))) as string;
+    // Stale lease: no write at all, even with no claim guard.
+    await db.batch([recordIssueFilingStatement(db, FP, 'prp_c', { number: 8, url: 'u8' }, later(210_000), { lease: LEASE, claimedAt: null })]);
+    expect(await getIssueFiling(db, FP)).toMatchObject({ status: 'creating', claimed_at: winnerClaim });
+    // Current lease but someone else's claim: the winner's claim stays.
+    await db.batch([recordIssueFilingStatement(db, FP, 'prp_c', { number: 8, url: 'u8' }, later(210_000),
+      { lease: later(300_000).toISOString(), claimedAt: staleClaim })]);
+    expect(await getIssueFiling(db, FP)).toMatchObject({ status: 'creating', claimed_at: winnerClaim });
+    // The holder of both records its issue.
+    await db.batch([recordIssueFilingStatement(db, FP, 'prp_c', { number: 9, url: 'u9' }, later(220_000),
+      { lease: later(300_000).toISOString(), claimedAt: winnerClaim })]);
+    expect(await getIssueFiling(db, FP)).toMatchObject({ status: 'filed', issue_number: 9, proposal_id: 'prp_c' });
   });
 
   it('resolves a recorded issue by number, treats a deleted one (404) as gone, and an unresolved create from the issue list', async () => {

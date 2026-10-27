@@ -117,13 +117,14 @@ export interface DeviceToken {
 
 /**
  * The learner's usable devices (not revoked, not expired), newest first. Never exposes the hash. Minting
- * keeps at most MAX_ACTIVE_TOKENS_PER_LEARNER of them, so the list is complete without paging.
+ * keeps at most MAX_ACTIVE_TOKENS_PER_LEARNER of them; the LIMIT only bounds learners who minted more before
+ * the cap existed, until their next pairing revokes the extras.
  */
 export async function listTokens(db: D1Database, learnerId: string, now: Date = new Date()): Promise<DeviceToken[]> {
   const r = await db.prepare(
     `SELECT id, label, adapter, created_at, last_used_at, expires_at FROM insight_tokens
       WHERE learner_id = ? AND revoked_at IS NULL AND expires_at > ?
-      ORDER BY created_at DESC, id`,
+      ORDER BY created_at DESC, id LIMIT 50`,
   ).bind(learnerId, nowIso(now)).all<{ id: string; label: string; adapter: string; created_at: string; last_used_at: string | null; expires_at: string }>();
   return r.results.map((t) => ({
     id: t.id, label: t.label, adapter: t.adapter, createdAt: t.created_at, lastUsedAt: t.last_used_at, expiresAt: t.expires_at,

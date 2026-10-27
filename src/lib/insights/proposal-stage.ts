@@ -24,7 +24,7 @@ import type { CronBudget, CronCost } from '../jobs/cron-budget';
 import { newId, parseJson } from '../db/ids';
 import { CONSENT_SQL } from './consent-store';
 import { DAILY_ISSUE_CAP, githubIssuesMode } from './feature-flags';
-import { createGithubIssuePublisher, githubTokenConfigured, type GithubFetch, type GithubIssuePublisher } from './github-issue-publisher';
+import { createGithubIssuePublisher, githubTokenConfigured, LIST_MAX_PAGES, type GithubFetch, type GithubIssuePublisher } from './github-issue-publisher';
 import type { GateDecision, GithubIssuesMode, ProposalStatus, SignalCategory, StoredAiTutorReport } from './insight-types';
 import {
   buildDraft, defaultDraftModel, DRAFT_EVIDENCE_MAX, parseStoredDraft, templateDraft, type DraftModel, type IssueDraft,
@@ -58,7 +58,8 @@ const COST = {
   draft: { d1: 6, net: 1 } satisfies CronCost, // runAi: reservation, settle and events rows + one model call
   evaluate: { d1: 16, net: 1 } satisfies CronCost,
   refresh: { d1: 12 } satisfies CronCost,
-  filing: { d1: 14, net: 2 } satisfies CronCost,
+  // Recovery: a ledger issue read or up to LIST_MAX_PAGES list pages, plus one marker search.
+  filing: { d1: 14, net: LIST_MAX_PAGES + 1 } satisfies CronCost,
   issueCheck: { d1: 2, net: 1 } satisfies CronCost,
 };
 

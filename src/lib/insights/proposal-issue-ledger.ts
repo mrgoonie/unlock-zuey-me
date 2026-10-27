@@ -49,16 +49,23 @@ export async function claimIssueFiling(
   return (r.meta.changes ?? 0) === 1 ? at : null;
 }
 
-/** Records the issue a fingerprint is filed as (after a create, or when an existing issue is linked). */
+/**
+ * Records the issue a fingerprint is filed as (after a create, or when an existing issue is linked). Writes
+ * nothing unless the proposal still holds `guard.lease`, and, after a create, unless the row is still this
+ * attempt's own claim (`guard.claimedAt`): an attempt that lost either never overwrites the winner's record.
+ */
 export function recordIssueFilingStatement(
   db: D1Database, fingerprint: string, proposalId: string, issue: { number: number; url: string }, now: Date,
+  guard: { lease: string; claimedAt: string | null },
 ): D1PreparedStatement {
   const at = now.toISOString();
   return db.prepare(`INSERT INTO insight_issue_filings (fingerprint, proposal_id, status, issue_number, issue_url, claimed_at, updated_at)
-      VALUES (?, ?, 'filed', ?, ?, ?, ?)
+      SELECT ?, ?, 'filed', ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM insight_proposals WHERE id = ? AND status = 'filing' AND filing_lease_until = ?)
       ON CONFLICT(fingerprint) DO UPDATE SET proposal_id = excluded.proposal_id, status = 'filed', issue_number = excluded.issue_number,
-        issue_url = excluded.issue_url, updated_at = excluded.updated_at`)
-    .bind(fingerprint, proposalId, issue.number, issue.url, at, at);
+        issue_url = excluded.issue_url, updated_at = excluded.updated_at
+      WHERE ? IS NULL OR (insight_issue_filings.status = 'creating' AND insight_issue_filings.claimed_at = ?)`)
+    .bind(fingerprint, proposalId, issue.number, issue.url, at, at, proposalId, guard.lease, guard.claimedAt, guard.claimedAt);
 }
 
 /** Drops a `creating` claim once it is proven that its create made no issue (only the claim it names). */

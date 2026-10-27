@@ -307,13 +307,14 @@ export const FILEABLE_STATUSES: readonly ProposalStatus[] = ['proposed', 'accept
  * Takes the filing lease. Exactly one concurrent caller wins (single guarded UPDATE); an expired lease from
  * a crashed attempt can be taken over. Never succeeds once an issue number is recorded.
  */
-export async function leaseForFiling(db: D1Database, id: string, now: Date, leaseMs = FILING_LEASE_MS): Promise<boolean> {
+export async function leaseForFiling(db: D1Database, id: string, now: Date, leaseMs = FILING_LEASE_MS): Promise<string | null> {
   const at = now.toISOString();
+  const until = new Date(now.getTime() + leaseMs).toISOString();
   const r = await db.prepare(`UPDATE insight_proposals SET status = 'filing', filing_lease_until = ?, updated_at = ?
     WHERE id = ? AND status IN ('proposed', 'accepted', 'filing') AND github_issue_number IS NULL
       AND (filing_lease_until IS NULL OR filing_lease_until < ?)`)
-    .bind(new Date(now.getTime() + leaseMs).toISOString(), at, id, at).run();
-  return (r.meta.changes ?? 0) === 1;
+    .bind(until, at, id, at).run();
+  return (r.meta.changes ?? 0) === 1 ? until : null;
 }
 
 /**
@@ -343,14 +344,15 @@ export async function releaseExpiredFilings(db: D1Database, now: Date): Promise<
   return r.meta.changes ?? 0;
 }
 
+/** Marks the proposal filed, only while `lease` (from leaseForFiling) is still the one it holds. */
 export function recordFiledStatement(
-  db: D1Database, id: string, issue: { number: number; url: string; aiHandle: boolean }, actor: string, now: Date,
+  db: D1Database, id: string, lease: string, issue: { number: number; url: string; aiHandle: boolean }, actor: string, now: Date,
 ): D1PreparedStatement {
   const at = now.toISOString();
   return db.prepare(`UPDATE insight_proposals SET status = 'issue_filed', github_issue_number = ?, github_issue_url = ?, ai_handle = ?,
       filing_lease_until = NULL, decided_by = COALESCE(decided_by, ?), decided_at = COALESCE(decided_at, ?), updated_at = ?
-    WHERE id = ? AND status = 'filing'`)
-    .bind(issue.number, issue.url, issue.aiHandle ? 1 : 0, actor, at, at, id);
+    WHERE id = ? AND status = 'filing' AND filing_lease_until = ?`)
+    .bind(issue.number, issue.url, issue.aiHandle ? 1 : 0, actor, at, at, id, lease);
 }
 
 /** The fingerprint already has an issue closed inside the cooldown: the proposal becomes a duplicate. */

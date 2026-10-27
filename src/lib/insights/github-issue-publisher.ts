@@ -47,6 +47,8 @@ export interface GithubIssueRef {
   closedAt: string | null;
   /** completed | not_planned | reopened | null */
   stateReason: string | null;
+  /** Whether the issue carries the `ai-handle` label (absent when the response had no labels). */
+  aiHandle?: boolean;
 }
 
 export interface GithubIssuePublisher {
@@ -80,6 +82,7 @@ interface RawIssue {
   state_reason?: unknown;
   body?: unknown;
   pull_request?: unknown;
+  labels?: unknown;
 }
 
 function toRef(raw: RawIssue, endpoint: GithubEndpoint): GithubIssueRef {
@@ -90,6 +93,8 @@ function toRef(raw: RawIssue, endpoint: GithubEndpoint): GithubIssueRef {
     state: raw.state === 'closed' ? 'closed' : 'open',
     closedAt: typeof raw.closed_at === 'string' ? raw.closed_at : null,
     stateReason: typeof raw.state_reason === 'string' ? raw.state_reason : null,
+    aiHandle: Array.isArray(raw.labels)
+      && raw.labels.some((l) => (typeof l === 'string' ? l : (l as { name?: unknown } | null)?.name) === AI_HANDLE_LABEL),
   };
 }
 

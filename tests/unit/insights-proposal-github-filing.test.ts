@@ -236,6 +236,34 @@ describe('one fingerprint is never filed twice', () => {
     expect(gh.posts()).toHaveLength(1);
   });
 
+  it('recovery after a failed record keeps the ai-handle label the created issue carries', async () => {
+    const { db, env } = await filedSetup();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const gh = fakeGithub({ searchLag: true });
+    await runProposalStage(env, budget(), NOW, { fetchImpl: gh.fetchImpl, draftModel: stubModel().model });
+    const [p] = await proposals(db);
+    const flaky = { ...db, batch: async () => { throw new Error('d1 unavailable'); } } as unknown as D1Database;
+    await fileProposal({ ...env, DB: flaky }, String(p.id), NOW, { operator: true, actor: 'lrn_admin', fetchImpl: gh.fetchImpl });
+    expect(gh.issues[0].labels).toContain('ai-handle');
+    await runProposalStage(env, budget(), later(3 * 60_000), { fetchImpl: gh.fetchImpl, draftModel: stubModel().model });
+    expect((await proposals(db))[0]).toMatchObject({ status: 'issue_filed', github_issue_number: 100, ai_handle: 1 });
+  });
+
+  it('an attempt too slow to finish its create inside the lease creates nothing and gives everything back', async () => {
+    const { db, env } = await filedSetup('issues');
+    const gh = fakeGithub();
+    await runProposalStage(env, budget(), NOW, { fetchImpl: gh.fetchImpl, draftModel: stubModel().model });
+    const [p] = await proposals(db);
+    const t0 = Date.now();
+    let calls = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => t0 + (calls++ === 0 ? 0 : 100_000)); // the first read starts the clock
+    expect(await fileProposal(env, String(p.id), NOW, { operator: true, actor: 'lrn_admin', fetchImpl: gh.fetchImpl })).toEqual({ kind: 'busy' });
+    expect(gh.posts()).toHaveLength(0);
+    expect((await proposals(db))[0]).toMatchObject({ status: 'proposed', filing_lease_until: null });
+    expect(await count(db, `SELECT COUNT(*) AS n FROM insight_issue_filings`)).toBe(0);
+    expect(await count(db, `SELECT COALESCE(SUM(CAST(value AS INTEGER)), 0) AS n FROM insight_operator_settings WHERE key LIKE 'issues_filed:%'`)).toBe(0);
+  });
+
   it('a 422 on create releases the lease, the daily slot and the fingerprint claim, and logs no token', async () => {
     const { db, env } = await filedSetup('issues');
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
