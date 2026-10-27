@@ -182,4 +182,16 @@ describe('completeWindow', () => {
     expect(await countReports()).toBe(0);
     expect((await db.prepare(`SELECT COUNT(*) AS n FROM insight_events`).first<{ n: number }>())!.n).toBe(0);
   });
+
+  it('some of the window\'s turns deleted mid-call (consent still on) → revoked, not a lost lease', async () => {
+    await event('e1');
+    await event('e2');
+    await claimWindow(db, { learnerId: 'lrn_a', sessionRef: 's1' }, NOW, 'l1');
+    // e1 is deleted by the learner; e2 has been re-leased by another worker after the lease expired.
+    await db.prepare(`DELETE FROM insight_events WHERE id = 'e1'`).run();
+    await db.prepare(`UPDATE insight_events SET lease_id = 'l2' WHERE id = 'e2'`).run();
+    expect(await completeWindow(db, 'l1', ['e1', 'e2'], reportRow(), NOW)).toBe('revoked');
+    expect(await countReports()).toBe(0);
+    expect(await row('e2')).toMatchObject({ status: 'processing', lease_id: 'l2' });
+  });
 });

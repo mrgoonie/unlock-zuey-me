@@ -56,6 +56,15 @@ const report = (over: Record<string, unknown> = {}) => JSON.stringify({
   ...over,
 });
 
+/** A finished analysis as the queue keeps it: a `done` event carrying its report id (the report itself may be gone). */
+async function analysisDone(reportId: string, session: string, processedMin: number) {
+  const id = `iev_${++seq}`;
+  await env.DB.prepare(`INSERT INTO insight_events (id, learner_id, idempotency_key, session_ref, source_runtime, adapter_version, payload_bytes,
+      status, report_id, attempts, next_attempt_at, turn_ended_at, received_at, processed_at)
+    VALUES (?, 'lrn_a', ?, ?, 'claude-code', '0.1.0', 10, 'done', ?, 1, ?, ?, ?, ?)`)
+    .bind(id, `key_${id}`, session, reportId, at(processedMin - 10), at(processedMin - 10), at(processedMin - 10), at(processedMin)).run();
+}
+
 const events = () => env.DB.prepare('SELECT * FROM insight_events ORDER BY id').all<Record<string, unknown>>().then((r) => r.results);
 const reports = () => env.DB.prepare('SELECT * FROM insight_reports ORDER BY created_at').all<Record<string, unknown>>().then((r) => r.results);
 const stored = (r: Record<string, unknown>) => JSON.parse(r.report_json as string) as StoredAiTutorReport;
@@ -304,11 +313,7 @@ describe('limits', () => {
   });
 
   it('skips a session that already had 3 analyses today', async () => {
-    for (let i = 0; i < 3; i++) {
-      await env.DB.prepare(`INSERT INTO insight_reports (id, learner_id, session_ref, report_json, intent_summary, confidence, source_runtime, model,
-          prompt_version, event_count, window_started_at, window_ended_at, created_at, expires_at)
-        VALUES (?, 'lrn_a', 's1', '{}', 'x', 0.5, 'claude-code', 'm', 1, 1, ?, ?, ?, ?)`).bind(`irp_${i}`, at(-60), at(-60), at(-60 + i), at(9999)).run();
-    }
+    for (let i = 0; i < 3; i++) await analysisDone(`irp_${i}`, 's1', -60 + i);
     await event(turn());
     const { fetchImpl } = openRouterFetch(() => report());
     expect(await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl })).toMatchObject({ skipped: { quota_session: 1 }, aiCalls: 0 });
@@ -319,12 +324,47 @@ describe('limits', () => {
     const capped = fakeEnv({ INSIGHTS_DAILY_ANALYSES_GLOBAL: '1' });
     env = capped;
     await member('lrn_a');
-    await env.DB.prepare(`INSERT INTO insight_reports (id, learner_id, session_ref, report_json, intent_summary, confidence, source_runtime, model,
-        prompt_version, event_count, window_started_at, window_ended_at, created_at, expires_at)
-      VALUES ('irp_x', 'lrn_a', 'other', '{}', 'x', 0.5, 'claude-code', 'm', 1, 1, ?, ?, ?, ?)`).bind(at(-60), at(-60), at(-60), at(9999)).run();
+    await analysisDone('irp_x', 'other', -60);
     await event(turn());
     const { fetchImpl } = openRouterFetch(() => report());
     expect(await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl })).toMatchObject({ stopped: 'global_quota', aiCalls: 0 });
-    expect((await events())[0]).toMatchObject({ status: 'pending', attempts: 0 });
+    expect((await events()).find((e) => e.status !== 'done')).toMatchObject({ status: 'pending', attempts: 0 });
+  });
+});
+
+describe('quota after report deletion', () => {
+  it('deleting every report does not give the learner their daily analyses back', async () => {
+    env = fakeEnv({ INSIGHTS_DAILY_ANALYSES_PER_LEARNER: '1' });
+    await member('lrn_a');
+    await event(turn());
+    const first = openRouterFetch(() => report());
+    expect(await runAnalyzerStage(env, createCronBudget(), NOW, { fetchImpl: first.fetchImpl })).toMatchObject({ analysed: 1 });
+    expect(await deleteAllReports(env.DB, 'lrn_a')).toBe(1);
+
+    await event(turn({ userPrompt: 'Một yêu cầu mới sau khi xoá báo cáo' }), { session: 's2', receivedMin: 20 });
+    const second = openRouterFetch(() => report());
+    expect(await runAnalyzerStage(env, createCronBudget(), new Date(Date.parse(at(30))), { fetchImpl: second.fetchImpl }))
+      .toMatchObject({ deferred: 1, aiCalls: 0 });
+    expect(second.fetchImpl).not.toHaveBeenCalled();
+    expect(await reports()).toEqual([]);
+  });
+});
+
+describe('leases inside one cron run', () => {
+  it('a window claimed minutes into the tick gets a full lease from its own claim', async () => {
+    for (const s of ['s1', 's2', 's3']) await event(turn({ userPrompt: `Câu hỏi riêng của phiên ${s} về kế hoạch` }), { session: s });
+    let t = 0;
+    const budget = createCronBudget({ timeMs: 30 * 60_000, clock: () => t });
+    const { fetchImpl } = openRouterFetch(() => report());
+    const leases: unknown[] = [];
+    const slow = (async (url: string, init?: RequestInit) => {
+      const r = await env.DB.prepare(`SELECT lease_until FROM insight_events WHERE status = 'processing'`).first<{ lease_until: string }>();
+      leases.push(r?.lease_until);
+      t += 4 * 60_000; // each model call takes 4 minutes of wall clock
+      return fetchImpl(url, init);
+    }) as unknown as typeof fetch;
+    expect(await runAnalyzerStage(env, budget, NOW, { fetchImpl: slow })).toMatchObject({ analysed: 3 });
+    // Without the claim clock the third lease would end at +5 min, already past when it was claimed (+8 min).
+    expect(leases).toEqual([at(5), at(9), at(13)]);
   });
 });
