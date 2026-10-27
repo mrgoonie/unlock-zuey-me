@@ -2,7 +2,7 @@
 
 Operator runbook for turning on the ai-tutor insights feature (issue #25). Flags and wire contract: [insights-ingest-contract.md](insights-ingest-contract.md). Routes: [api-contract.md](api-contract.md#ai-tutor-insights-owner-insights-module-issue-25). Deploy mechanics and migration rules: [deployment.md](deployment.md).
 
-Production runs **`internal`** since 2026-10-27 (`INSIGHTS_MODE` in `wrangler.jsonc`): admins only, GitHub issues off. Every flag is a wrangler var: change it in `wrangler.jsonc` through a PR (the deploy workflow applies it) or in the Cloudflare dashboard for an urgent change, then mirror the dashboard edit in `wrangler.jsonc` so the next deploy does not undo it.
+Production runs **`on`** since 2026-10-27 (`INSIGHTS_MODE` in `wrangler.jsonc`): every zuey.me member, GitHub issues off. The owner chose to skip the one-week `internal` and the `pilot` steps below so the first real learner can start; the cohort and quota hardening in issue #37 matters more now that any member can pair a device. Every flag is a wrangler var: change it in `wrangler.jsonc` through a PR (the deploy workflow applies it) or in the Cloudflare dashboard for an urgent change, then mirror the dashboard edit in `wrangler.jsonc` so the next deploy does not undo it.
 
 ## Rollout checklist
 

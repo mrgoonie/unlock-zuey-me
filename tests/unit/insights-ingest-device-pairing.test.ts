@@ -8,7 +8,7 @@ import { POST as pollRoute } from '../../src/pages/api/ingest/v1/pair/poll';
 import { POST as confirmRoute } from '../../src/pages/api/v1/insights/pair/confirm';
 import { POST as turnsRoute } from '../../src/pages/api/ingest/v1/turns';
 import { generateUserCode, peekPairing } from '../../src/lib/insights/device-pairing';
-import { setConsents } from '../../src/lib/insights/consent-store';
+import { getConsents, setConsents } from '../../src/lib/insights/consent-store';
 import { INGEST_TOKEN_PATTERN, PAIR_USER_CODE_PATTERN, type PairStartResponse } from '../../src/lib/insights/ingest-contract';
 import { learnerCtx } from './observer-seed-fixtures';
 import { callRoute, count, ingestRequest, makeEnv, NOW, SITE, seedMember, turnPayload, type TestEnv } from './insights-ingest-fixtures';
@@ -21,6 +21,11 @@ const poll = (deviceCode: string) => callRoute(pollRoute, t.env, ingestRequest('
 const confirm = (userCode: string, approve: boolean, learner: unknown = learnerCtx('lrn_a')) => callRoute(confirmRoute, t.env,
   new Request(`${SITE}/api/v1/insights/pair/confirm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode, approve }) }),
   { learner });
+const confirmWith = (body: unknown) => callRoute(confirmRoute, t.env,
+  new Request(`${SITE}/api/v1/insights/pair/confirm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+  { learner: learnerCtx('lrn_a') });
+const observerOf = async (id: string) =>
+  (await t.db.prepare('SELECT observer_consent AS c FROM learners WHERE id = ?').bind(id).first<{ c: number }>())?.c;
 const advance = (ms: number) => vi.setSystemTime(new Date(Date.now() + ms));
 
 beforeEach(async () => {
@@ -157,5 +162,36 @@ describe('device pairing', () => {
     advance(5_000);
     expect((await poll(s.deviceCode)).status).toBe(410);
     expect(await count(t.db, 'SELECT COUNT(*) AS n FROM insight_tokens')).toBe(0);
+  });
+
+  describe('consents granted with the approval', () => {
+    it('grant without share → analysis only; with share → share_operator and observer access too', async () => {
+      const a = await started();
+      expect((await confirmWith({ userCode: a.userCode, approve: true, grant: { share: false } })).status).toBe(200);
+      expect(await getConsents(t.db, 'lrn_a')).toMatchObject({ analysis: true, shareOperator: false, proposals: false });
+      expect(await observerOf('lrn_a')).toBe(0);
+
+      const b = await started();
+      expect((await confirmWith({ userCode: b.userCode, approve: true, grant: { share: true } })).status).toBe(200);
+      expect(await getConsents(t.db, 'lrn_a')).toMatchObject({ analysis: true, shareOperator: true, proposals: false });
+      expect(await observerOf('lrn_a')).toBe(1);
+    });
+
+    it('a wrong, decided or denied code grants nothing', async () => {
+      expect((await confirmWith({ userCode: 'ABCD-EFGH', approve: true, grant: { share: true } })).status).toBe(404);
+      const s = await started();
+      expect((await confirmWith({ userCode: s.userCode, approve: false, grant: { share: true } })).status).toBe(200);
+      expect((await confirmWith({ userCode: s.userCode, approve: true, grant: { share: true } })).status).toBe(404);
+      expect(await getConsents(t.db, 'lrn_a')).toMatchObject({ analysis: false, shareOperator: false });
+      expect(await observerOf('lrn_a')).toBe(0);
+    });
+
+    it('never revokes: an approval without grant leaves existing consents on', async () => {
+      await setConsents(t.db, 'lrn_a', { analysis: true, shareOperator: true });
+      const s = await started();
+      expect((await confirmWith({ userCode: s.userCode, approve: true })).status).toBe(200);
+      expect(await getConsents(t.db, 'lrn_a')).toMatchObject({ analysis: true, shareOperator: true });
+      expect((await confirmWith({ userCode: s.userCode, approve: true, grant: { share: true, extra: 1 } })).status).toBe(400);
+    });
   });
 });

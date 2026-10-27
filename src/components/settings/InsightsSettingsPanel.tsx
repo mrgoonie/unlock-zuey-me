@@ -77,7 +77,7 @@ export default function InsightsSettingsPanel({ observerConsent }: { observerCon
   return (
     <div className="flex flex-col gap-4" data-testid="insights-settings">
       <p className="text-sm text-ink-muted">
-        Khi bạn đồng ý, kỹ năng ai-unlocked trong Claude Code gửi các lượt làm việc với AI (đã che thông tin bí mật ngay trên máy) để bộ phân tích nền ai-tutor trên máy chủ tạo báo cáo học tập cho riêng bạn. Mặc định mọi quyền đều tắt.
+        Khi bạn đồng ý, kỹ năng ai-unlocked trong Claude Code gửi các lượt làm việc với AI (đã che thông tin bí mật ngay trên máy) để bộ phân tích nền ai-tutor trên máy chủ tạo báo cáo học tập cho riêng bạn. Mọi quyền đều tắt cho đến khi bạn đồng ý, ở đây hoặc ở bước kết nối thiết bị.
       </p>
       <p className="flex items-center gap-2 text-sm">
         Trạng thái: <span className={`chip ${status.tone}`} data-testid="insights-status">{status.label}</span>

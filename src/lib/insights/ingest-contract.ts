@@ -117,6 +117,11 @@ export type PairPollRequest = z.infer<typeof pairPollSchema>;
 export const pairConfirmSchema = z.object({
   userCode: z.string().trim().min(8).max(16),
   approve: z.boolean(),
+  /**
+   * Consents granted together with an approval (ignored on deny): present → `analysis`; `share` → also
+   * `share_operator` and `learners.observer_consent`. Only ever grants, never revokes.
+   */
+  grant: z.object({ share: z.boolean() }).strict().optional(),
 }).strict();
 export type PairConfirmRequest = z.infer<typeof pairConfirmSchema>;
 
