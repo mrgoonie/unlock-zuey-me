@@ -5,7 +5,8 @@
  *
  * - Aggregates ("learning patterns") are counts only, over learners with `analysis = 1`, and every bucket
  *   is suppressed unless it covers at least COHORT_MIN distinct learners (k-anonymity).
- * - Product signals count only evidence from learners with `proposals = 1`, again with k ≥ COHORT_MIN;
+ * - Product signals count only evidence from learners with `proposals = 1`, and only from reports written
+ *   after that consent was (last) granted (`proposals_at`, as in the proposal pipeline), again with k ≥ COHORT_MIN;
  *   the signal title is the only text shown, and it is already de-identified by the proposal pipeline.
  * - Per-learner detail requires learners.observer_consent = 1 AND insight_consents.share_operator = 1 AND
  *   analysis = 1 (insightDetailJoin). Unknown, non-consenting and revoked learners are indistinguishable.
@@ -188,6 +189,7 @@ export async function productSignals(db: D1Database): Promise<ProductSignalRow[]
      JOIN insight_signal_evidence e ON e.signal_id = s.id
      JOIN insight_reports r ON r.id = e.report_id
      JOIN insight_consents c ON c.learner_id = r.learner_id AND c.proposals = 1
+       AND c.proposals_at IS NOT NULL AND r.created_at >= c.proposals_at
      JOIN learners l ON l.id = r.learner_id AND l.deleted_at IS NULL
      LEFT JOIN insight_proposals p ON p.signal_id = s.id
      GROUP BY s.id
