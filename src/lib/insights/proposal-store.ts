@@ -318,15 +318,16 @@ export async function leaseForFiling(db: D1Database, id: string, now: Date, leas
 }
 
 /**
- * Gives the lease back after an attempt that filed nothing. The proposal returns to its prior status; a
+ * Gives the lease back after an attempt that filed nothing, only while `lease` is still the one it holds (an
+ * attempt whose lease another one took over must not release the newer attempt's row). The proposal returns to its prior status; a
  * proposal taken over from an expired lease returns to `accepted` when an operator decided on it, else to
  * `proposed` (where only the gate's issue tier can file it again).
  */
-export async function releaseFiling(db: D1Database, id: string, prior: ProposalStatus, now: Date): Promise<void> {
+export async function releaseFiling(db: D1Database, id: string, lease: string, prior: ProposalStatus, now: Date): Promise<void> {
   await db.prepare(`UPDATE insight_proposals SET filing_lease_until = NULL, updated_at = ?,
       status = CASE WHEN ? = 'filing' THEN (CASE WHEN decided_by IS NULL THEN 'proposed' ELSE 'accepted' END) ELSE ? END
-    WHERE id = ? AND status = 'filing'`)
-    .bind(now.toISOString(), prior, prior, id).run();
+    WHERE id = ? AND status = 'filing' AND filing_lease_until = ?`)
+    .bind(now.toISOString(), prior, prior, id, lease).run();
 }
 
 /**
@@ -356,11 +357,11 @@ export function recordFiledStatement(
 }
 
 /** The fingerprint already has an issue closed inside the cooldown: the proposal becomes a duplicate. */
-export async function recordDuplicateOfIssue(db: D1Database, id: string, issueUrl: string, now: Date): Promise<void> {
+export async function recordDuplicateOfIssue(db: D1Database, id: string, lease: string, issueUrl: string, now: Date): Promise<void> {
   const at = now.toISOString();
   await db.prepare(`UPDATE insight_proposals SET status = 'duplicate', duplicate_of = ?, filing_lease_until = NULL,
-      decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND status = 'filing'`)
-    .bind(issueUrl, SYSTEM_ACTOR, at, at, id).run();
+      decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND status = 'filing' AND filing_lease_until = ?`)
+    .bind(issueUrl, SYSTEM_ACTOR, at, at, id, lease).run();
 }
 
 // ---------------------------------------------------------------------------------------------------------

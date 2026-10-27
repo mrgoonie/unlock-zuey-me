@@ -21,7 +21,7 @@ Keep `INSIGHTS_GITHUB_ISSUES=off` until at least **20 proposals** have been revi
 
 ### First tick after the issue #37 deploy
 
-Proposal cohorts now count only established learners: a member whose account was at least 7 days old when the report was written, with at least one completed mission before it. The first cron tick after the deploy re-checks every open draft under this rule. Proposals supported mostly by newer accounts get the template text back or are withdrawn, which clears their acceptance and any ai-handle approval, and proposals whose cohort drops below 3 without an issue disappear from `/admin/insights/proposals`. This is intended. The product signals on `/admin/insights` use the same rule. Learners who held more than 10 device tokens before the deploy keep them until their next pairing, which revokes the oldest.
+Proposal cohorts now count only established learners: a member whose account was at least 7 days old when the report was written, with at least one completed mission before it. After the deploy the cron re-checks open drafts under this rule over the next ticks (10 drafts per tick), while hiding proposals with a too-small cohort applies at once because it is checked on every read. Proposals supported mostly by newer accounts get the template text back or are withdrawn, which clears their acceptance and any ai-handle approval, and proposals whose cohort drops below 3 without an issue disappear from `/admin/insights/proposals`. This is intended. The product signals on `/admin/insights` use the same rule. Learners who held more than 10 device tokens before the deploy keep them until their next pairing, which revokes the oldest.
 
 ## Rollback
 

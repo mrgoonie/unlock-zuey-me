@@ -135,7 +135,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
         return { kind: 'linked', number: made.number, url: made.url };
       }
       if (ledger?.status === 'creating') await dropIssueClaim(db, fp, ledger.claimed_at);
-      await releaseFiling(db, p.id, prior, now);
+      await releaseFiling(db, p.id, lease, prior, now);
       return { kind: 'released' };
     }
 
@@ -148,7 +148,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
     if (textChanged && prior === 'accepted') resting = 'proposed';
     const refusal = filingRefusal(a);
     if (refusal) {
-      if (state.action !== 'withdraw') await releaseFiling(db, p.id, prior, now);
+      if (state.action !== 'withdraw') await releaseFiling(db, p.id, lease, prior, now);
       await persistAssessment(db, p.id, state, a, now); // a withdrawal also drops the lease; a new text voids decisions
       return refusal;
     }
@@ -167,11 +167,11 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
       .filter((i) => i.closedAt && now.getTime() - Date.parse(i.closedAt) < ISSUE_COOLDOWN_DAYS * DAY_MS)
       .sort((x, y) => Date.parse(y.closedAt as string) - Date.parse(x.closedAt as string))[0];
     if (recentClosed) {
-      await recordDuplicateOfIssue(db, p.id, recentClosed.url, now);
+      await recordDuplicateOfIssue(db, p.id, lease, recentClosed.url, now);
       return { kind: 'duplicate', url: recentClosed.url };
     }
     if (!(await reserveIssueSlot(db, now, DAILY_ISSUE_CAP))) {
-      await releaseFiling(db, p.id, resting, now);
+      await releaseFiling(db, p.id, lease, resting, now);
       return { kind: 'daily_cap' };
     }
     slotReserved = true;
@@ -180,7 +180,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
     if (!claimedAt) {
       await releaseIssueSlot(db, now);
       slotReserved = false;
-      await releaseFiling(db, p.id, resting, now);
+      await releaseFiling(db, p.id, lease, resting, now);
       return { kind: 'busy' };
     }
     if (Date.now() - started > FILING_LEASE_MS - CREATE_LEASE_HEADROOM_MS) {
@@ -189,7 +189,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
       claimedAt = null;
       await releaseIssueSlot(db, now);
       slotReserved = false;
-      await releaseFiling(db, p.id, resting, now);
+      await releaseFiling(db, p.id, lease, resting, now);
       return { kind: 'busy' };
     }
     const issue = await publisher.createIssue({ title: a.draft.title, body: a.markdown, category: signal.category, aiHandle });
@@ -211,7 +211,7 @@ export async function fileProposal(env: Env, proposalId: string, now: Date, opts
     // Here GitHub answered the create with a 4xx (nothing created) or it was never reached.
     if (claimedAt) await dropIssueClaim(db, fp, claimedAt).catch(() => undefined);
     if (slotReserved) await releaseIssueSlot(db, now).catch(() => undefined);
-    await releaseFiling(db, p.id, resting, now);
+    await releaseFiling(db, p.id, lease, resting, now);
     if (!(err instanceof GithubIssueError)) console.error('insights filing failed', err instanceof Error ? err.name : 'error');
     return { kind: 'github_error', status };
   }

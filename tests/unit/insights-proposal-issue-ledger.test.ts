@@ -10,6 +10,7 @@ import { createGithubIssuePublisher } from '../../src/lib/insights/github-issue-
 import {
   claimIssueFiling, dropIssueClaim, getIssueFiling, knownIssues, recordIssueFilingStatement,
 } from '../../src/lib/insights/proposal-issue-ledger';
+import { releaseFiling } from '../../src/lib/insights/proposal-store';
 import { createTestD1 } from '../helpers/d1-sqlite';
 import { FAKE_TOKEN, fakeGithub, NOW } from './insights-proposal-stage-fixtures';
 
@@ -105,6 +106,16 @@ describe('issue filing ledger', () => {
     await db.batch([recordIssueFilingStatement(db, FP, 'prp_c', { number: 9, url: 'u9' }, later(220_000),
       { lease: later(300_000).toISOString(), claimedAt: winnerClaim })]);
     expect(await getIssueFiling(db, FP)).toMatchObject({ status: 'filed', issue_number: 9, proposal_id: 'prp_c' });
+  });
+
+  it('an attempt whose lease was taken over cannot release the newer attempt\'s row', async () => {
+    const db = createTestD1();
+    await holding(db, 'prp_a', later(300_000).toISOString());
+    await releaseFiling(db, 'prp_a', LEASE, 'filing', later(200_000));
+    expect(await db.prepare(`SELECT status, filing_lease_until FROM insight_proposals WHERE id = 'prp_a'`).first())
+      .toEqual({ status: 'filing', filing_lease_until: later(300_000).toISOString() });
+    await releaseFiling(db, 'prp_a', later(300_000).toISOString(), 'filing', later(200_000));
+    expect(await db.prepare(`SELECT status FROM insight_proposals WHERE id = 'prp_a'`).first('status')).toBe('proposed');
   });
 
   it('resolves a recorded issue by number, treats a deleted one (404) as gone, and an unresolved create from the issue list', async () => {
