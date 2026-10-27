@@ -206,6 +206,17 @@ async function processWindow(
   return 'ai_called';
 }
 
+/**
+ * The stage's `now` advanced by the wall-clock time the stage has spent so far, read from the cron budget's
+ * own clock. A window claimed minutes into the tick (the cron budget allows 8) then gets a full LEASE_MS from
+ * its own claim, which outlasts its worst case (two model calls of AI_TIMEOUT_MS plus D1 writes), instead of
+ * a lease that ended LEASE_MS after the tick started and could be reclaimed while the model call runs.
+ */
+export function claimClock(budget: CronBudget, now: Date): () => Date {
+  const startRemaining = budget.remainingMs();
+  return () => new Date(now.getTime() + Math.max(0, startRemaining - budget.remainingMs()));
+}
+
 async function recordFailure(db: D1Database, leaseId: string, err: unknown, now: Date, result: AnalyzerStageResult): Promise<void> {
   console.warn('ai-tutor window failed', err instanceof Error ? err.message : err);
   const { retried, dead } = await failWindow(db, leaseId, err, now);
@@ -224,12 +235,13 @@ export async function runAnalyzerStage(env: Env, budget: CronBudget, now: Date, 
   let globalUsed = await analysesTodayGlobal(db, now);
   if (globalUsed >= caps.global) return { ...result, stopped: 'global_quota' };
   const windows = await findReadyWindows(db, now, WINDOWS_PER_TICK);
+  const claimNow = claimClock(budget, now);
 
   for (const key of windows) {
     if (result.aiCalls >= INSIGHTS_MAX_ANALYSES_PER_TICK) return { ...result, stopped: 'tick_cap' };
     if (!canContinue(budget)) return { ...result, stopped: 'cron_budget' };
     budget.charge(WINDOW_COST);
-    const win = await claimWindow(db, key, now);
+    const win = await claimWindow(db, key, claimNow());
     if (!win) continue;
     const calls = result.aiCalls;
     const outcome = await processWindow(env, win, now, caps, () => globalUsed, result, deps);

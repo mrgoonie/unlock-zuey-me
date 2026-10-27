@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flushSpool } from '../../skills/ai-unlocked/scripts/lib/flush-runner.mjs';
-import { readState } from '../../skills/ai-unlocked/scripts/lib/local-state.mjs';
+import { readState, updateState } from '../../skills/ai-unlocked/scripts/lib/local-state.mjs';
 import { runStopHook } from '../../skills/ai-unlocked/scripts/lib/stop-hook-core.mjs';
 import { acquireFlushLock, enforceSpoolCaps, writeSpoolItem } from '../../skills/ai-unlocked/scripts/lib/spool.mjs';
 import {
@@ -63,19 +63,26 @@ describe('flushSpool', () => {
     expect(server.requests).toHaveLength(1);
   });
 
-  it('403 consent_required deletes the spool, backs off 24 h and makes no further POSTs', async () => {
+  it('403 consent_required deletes the spool, backs off 1 h and makes no further POSTs until then', async () => {
     server.setResponder(() => err(403, 'consent_required'));
     spool(1, 2, 3);
     const r = await flushSpool(paths, t.ctx.env);
     expect(r.stopped).toBe('consent_required');
     expect(spoolFiles(t)).toEqual([]);
     const state = readState(paths);
-    expect(state.serverBlockedUntil - Date.now()).toBeGreaterThan(23 * 3600_000);
+    expect(state.serverBlockedUntil - Date.now()).toBeGreaterThan(59 * 60_000);
+    expect(state.serverBlockedUntil - Date.now()).toBeLessThanOrEqual(3600_000);
     expect(state.blockReason).toBe('consent_required');
     spool(4);
     expect((await flushSpool(paths, t.ctx.env)).skipped).toBe('server_blocked');
     expect(runStopHook(stopPayload('stop.json', fixture('transcripts/garbage.jsonl')), { ctx: t.ctx }).outcome).toBe('server_blocked');
     expect(server.requests).toHaveLength(1);
+
+    // An hour later (the learner turned analysis back on meanwhile), uploads resume on their own.
+    updateState(paths, { serverBlockedUntil: Date.now() - 1 });
+    server.setResponder(() => ({ status: 202 }));
+    expect(await flushSpool(paths, t.ctx.env)).toMatchObject({ uploaded: 1, stopped: null });
+    expect(readState(paths).blockReason).toBeNull();
   });
 
   it('403 origin_forbidden drops only that item', async () => {

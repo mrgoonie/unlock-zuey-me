@@ -35,13 +35,18 @@ export const INGEST_TOKEN_PATTERN = /^aiu_ing_[A-Za-z0-9_-]{43}$/;
 export const INGEST_TOKEN_SCOPE = 'insights:write';
 export const INGEST_TOKEN_TTL_DAYS = 90;
 export const DEVICE_LABEL_MAX_CHARS = 64;
+/** Active (not revoked, not expired) device tokens per learner; minting one more revokes the oldest. */
+export const MAX_ACTIVE_TOKENS_PER_LEARNER = 10;
 
 /** Device pairing (RFC 8628 style). The user code alphabet has no 0/O/1/I. */
 export const PAIR_USER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const PAIR_USER_CODE_LENGTH = 8;
 /** Display and input format: XXXX-XXXX. Input is upper-cased and may omit the dash (`normalizeUserCode`). */
 export const PAIR_USER_CODE_PATTERN = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/;
-/** Device code: 32 random bytes as base64url (43 chars). Only its SHA-256 is used as a KV key. */
+/**
+ * Device code: 43 base64url chars, opaque to the client. The server issues the user code (no dash) followed
+ * by 35 random chars and stores only the SHA-256 of the whole code (device-pairing.ts).
+ */
 export const PAIR_DEVICE_CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 export const PAIR_TTL_SECONDS = 600;
 /** Interval the client is told to poll at. */

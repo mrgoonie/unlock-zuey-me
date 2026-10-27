@@ -112,10 +112,12 @@ describe('insights budget pool', () => {
   });
 
   it('with the learner at 12 analyses today: deferred to 00:05 UTC next day without a model call', async () => {
+    // Analyses are counted from the processed queue rows behind each report (the reports may be deleted).
     for (let i = 0; i < 12; i++) {
-      await env.DB.prepare(`INSERT INTO insight_reports (id, learner_id, session_ref, report_json, intent_summary, confidence, source_runtime, model,
-          prompt_version, event_count, window_started_at, window_ended_at, created_at, expires_at)
-        VALUES (?, 'lrn_a', ?, '{}', 'x', 0.5, 'claude-code', 'm', 1, 1, ?, ?, ?, ?)`).bind(`irp_${i}`, `old_${i}`, at(-600), at(-600), at(-600 + i), at(99999)).run();
+      await env.DB.prepare(`INSERT INTO insight_events (id, learner_id, idempotency_key, session_ref, source_runtime, adapter_version, payload_bytes,
+          status, report_id, attempts, next_attempt_at, turn_ended_at, received_at, processed_at)
+        VALUES (?, 'lrn_a', ?, ?, 'claude-code', '0.1.0', 10, 'done', ?, 1, ?, ?, ?, ?)`)
+        .bind(`iev_old_${i}`, `k_old_${i}`, `old_${i}`, `irp_${i}`, at(-610), at(-610), at(-610), at(-600 + i)).run();
     }
     expect(await analysesToday(env.DB, 'lrn_a', NOW)).toBe(12);
     const { fetchImpl } = openRouterFetch(() => validReport());
