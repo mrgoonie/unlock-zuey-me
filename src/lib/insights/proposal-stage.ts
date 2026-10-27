@@ -8,8 +8,12 @@
  *   2. eval    ≤ 10 signals with new evidence → cohort stats → draft → privacy check → risk → gate → proposal
  *   3. refresh ≤ 10 proposals whose draft lost its evidence (consent revoked, reports or account deleted)
  *              → evidence-free template, or withdrawn (draft erased, back to a non-fileable `proposed`)
- *   4. file    ≤ 3 proposals (auto-approved by the gate or accepted by an operator), only with GitHub on
+ *   4. recover ≤ 3 filings whose lease expired: link the issue an earlier attempt made, or release the row;
+ *              with GitHub off, every expired filing is released without any network call
  *   5. watch   ≤ 5 filed issues → shipped / rejected; shipped + 14 days → monitored
+ *
+ * The cron never creates a GitHub issue: that takes an operator's explicit "Tạo issue GitHub" click
+ * (`fileProposal` with `operator: true`), in every INSIGHTS_GITHUB_ISSUES mode.
  *
  * Learning feedback never reaches this stage (it stays in learner reports) and `personal_preference`
  * observations never become signals. A signal whose proposal is past triage (filed, shipped, rejected…)
@@ -26,12 +30,13 @@ import {
   buildDraft, defaultDraftModel, DRAFT_EVIDENCE_MAX, parseStoredDraft, templateDraft, type DraftModel, type IssueDraft,
 } from './issue-draft';
 import { getSafeAutoImplement, SYSTEM_ACTOR } from './operator-settings';
-import { assessSignal, currentDraft, persistAssessment, readGateEnv } from './proposal-assessment';
+import { assessSignal, currentDraft, persistAssessment, readGateEnv, syncProposalDraft } from './proposal-assessment';
 import { fileProposal } from './proposal-filing';
 import { PROPOSAL_MIN_COHORT, PROPOSAL_MIN_CONFIDENCE } from './proposal-policy-gate';
 import {
   applyIssueState, cohortStats, consentedEvidence, createProposal, daysBefore, filedProposalsToCheck, getProposalWithSignal, getSignal,
   issuesFiledToday, linkEvidenceStatements, MONITOR_WINDOW_DAYS, promoteMonitored, proposalsWithStaleDrafts, pruneIssueCounters, readCursor,
+  releaseExpiredFilings,
   REPORT_CURSOR_KEY, SIGNAL_CURSOR_KEY, SIGNAL_WINDOW_DAYS, toProposalSummary, writeCursorStatement,
   type CohortStats, type ProposalRow, type ProposalSummary, type SignalRow,
 } from './proposal-store';
@@ -70,9 +75,12 @@ export interface ProposalStageResult {
   proposalsCreated: number;
   /** Drafts replaced by the template or withdrawn because their evidence was withdrawn. */
   draftsRefreshed: number;
+  /** Issues created (always 0 since the cron stopped creating issues; kept for the result shape). */
   filed: number;
   linkedIssues: number;
   duplicates: number;
+  /** Expired filings returned to their resting status (issue not found on GitHub, or GitHub filing off). */
+  filingsReleased: number;
   shipped: number;
   monitored: number;
   githubMode: GithubIssuesMode;
@@ -226,54 +234,43 @@ async function refreshStaleDrafts(env: Env, budget: CronBudget, now: Date, resul
   const ids = await q(COST.query, () => proposalsWithStaleDrafts(db, PROPOSAL_MIN_COHORT, STAGE_LIMITS.draftRefreshes));
   if (!ids.length) return;
   const gateEnv = await q({ d1: 2 }, () => readGateEnv(env, now));
-  const since = daysBefore(now, SIGNAL_WINDOW_DAYS);
   for (const id of ids) {
     if (!budget.canAfford(COST.refresh)) {
       result.deferred = true;
       return;
     }
-    budget.charge(COST.refresh);
-    const row = await getProposalWithSignal(db, id);
-    const signal = row && await getSignal(db, row.signal_id);
-    if (!row || !signal) continue;
-    const stats = await cohortStats(db, signal.id, since);
-    const state = await currentDraft(db, signal, row.draft_json, stats);
-    if (state.action === 'keep') continue;
-    const a = await assessSignal(db, signal, state.draft, gateEnv, now, { stats });
-    await persistAssessment(db, id, state, a, now);
-    result.draftsRefreshed++;
+    if (await q(COST.refresh, () => syncProposalDraft(env, id, now, gateEnv))) result.draftsRefreshed++;
   }
 }
 
-async function fileApproved(env: Env, budget: CronBudget, now: Date, publisher: GithubIssuePublisher, result: ProposalStageResult): Promise<void> {
+/**
+ * Filings whose lease expired. With GitHub on, each is resolved through `fileProposal` (link the issue an
+ * earlier attempt made, else release); nothing is created here. With GitHub off nothing can be looked up, so
+ * the rows are released in one statement and their fingerprint claims wait for the next operator filing.
+ */
+async function recoverExpiredFilings(env: Env, budget: CronBudget, now: Date, publisher: GithubIssuePublisher | null, result: ProposalStageResult): Promise<void> {
   const db = env.DB;
   const q = charged(budget);
   if (!budget.canAfford({ d1: 2 })) {
     result.deferred = true;
     return;
   }
+  if (!publisher) {
+    result.filingsReleased += await q(COST.query, () => releaseExpiredFilings(db, now));
+    return;
+  }
   await q(COST.query, () => pruneIssueCounters(db, now));
-  // Only rows that can file now take a slot: accepted ones whose last gate has no evidence block, proposed
-  // ones at the issue tier or held back by nothing but the daily cap, and filings whose lease expired.
-  // Every attempt touches updated_at, so a row that keeps failing rotates behind the others.
-  const rows = await q(COST.query, () => db.prepare(`SELECT id FROM insight_proposals WHERE github_issue_number IS NULL AND (
-      (status = 'accepted' AND json_extract(gate_json, '$.decision') <> 'none' AND NOT EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons')
-        WHERE value IN ('personal_preference', 'cohort_too_small', 'low_confidence', 'privacy')))
-      OR (status = 'proposed' AND (json_extract(gate_json, '$.decision') IN ('issue', 'issue_ai_handle')
-        OR (EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons') WHERE value = 'daily_cap')
-          AND NOT EXISTS (SELECT 1 FROM json_each(gate_json, '$.reasons') WHERE value <> 'daily_cap'))))
-      OR (status = 'filing' AND filing_lease_until < ?)
-    ) ORDER BY updated_at, id LIMIT ?`).bind(now.toISOString(), STAGE_LIMITS.filings).all<Pick<ProposalRow, 'id'>>());
+  const rows = await q(COST.query, () => db.prepare(`SELECT id FROM insight_proposals
+    WHERE github_issue_number IS NULL AND status = 'filing' AND (filing_lease_until IS NULL OR filing_lease_until < ?)
+    ORDER BY updated_at, id LIMIT ?`).bind(now.toISOString(), STAGE_LIMITS.filings).all<Pick<ProposalRow, 'id'>>());
   for (const { id } of rows.results) {
     if (!budget.canAfford(COST.filing)) {
       result.deferred = true;
       return;
     }
     const outcome = await q(COST.filing, () => fileProposal(env, id, now, { operator: false, actor: SYSTEM_ACTOR, publisher }));
-    if (outcome.kind === 'filed') result.filed++;
-    else if (outcome.kind === 'linked') result.linkedIssues++;
-    else if (outcome.kind === 'duplicate') result.duplicates++;
-    else if (outcome.kind === 'daily_cap') return;
+    if (outcome.kind === 'linked') result.linkedIssues++;
+    else if (outcome.kind === 'released') result.filingsReleased++;
   }
 }
 
@@ -331,9 +328,10 @@ export interface ProposalDetail {
   monitoring: { before: CohortStats; after: CohortStats } | null;
 }
 
+/** Null for an unknown proposal and for one hidden from operators (see `VISIBLE_PROPOSAL_SQL` in proposal-store.ts). */
 export async function proposalDetail(env: Env, id: string, now: Date): Promise<ProposalDetail | null> {
   const db = env.DB;
-  const row = await getProposalWithSignal(db, id);
+  const row = await getProposalWithSignal(db, id, { visibleOnly: true });
   if (!row) return null;
   const signal = await getSignal(db, row.signal_id);
   if (!signal) return null;
@@ -373,16 +371,17 @@ export async function proposalDetail(env: Env, id: string, now: Date): Promise<P
 export async function runProposalStage(env: Env, budget: CronBudget, now: Date, deps: ProposalStageDeps = {}): Promise<ProposalStageResult> {
   const githubMode = githubIssuesMode(env);
   const result: ProposalStageResult = {
-    linked: 0, ignored: 0, evaluated: 0, proposalsCreated: 0, draftsRefreshed: 0, filed: 0, linkedIssues: 0, duplicates: 0, shipped: 0, monitored: 0,
-    githubMode, deferred: false,
+    linked: 0, ignored: 0, evaluated: 0, proposalsCreated: 0, draftsRefreshed: 0, filed: 0, linkedIssues: 0, duplicates: 0, filingsReleased: 0,
+    shipped: 0, monitored: 0, githubMode, deferred: false,
   };
   const model = deps.draftModel ?? defaultDraftModel({ env, now: () => now });
   await linkReports(env, budget, now, result);
   await evaluateSignals(env, budget, now, model, result);
-  await refreshStaleDrafts(env, budget, now, result);
   // Zero GitHub traffic unless the effective mode is on (which already requires the token).
   const publisher = githubMode === 'off' ? null : createGithubIssuePublisher(env, deps.fetchImpl);
-  if (publisher) await fileApproved(env, budget, now, publisher, result);
+  // Released filings rest in a status the draft refresh covers, so recover first.
+  await recoverExpiredFilings(env, budget, now, publisher, result);
+  await refreshStaleDrafts(env, budget, now, result);
   await watchIssues(env, budget, now, publisher, result);
   return result;
 }

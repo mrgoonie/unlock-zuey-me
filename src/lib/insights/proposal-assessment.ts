@@ -15,8 +15,8 @@ import { draftRiskHint, draftRiskText, parseStoredDraft, prepareIssue, templateD
 import { getSafeAutoImplement } from './operator-settings';
 import { classifyRisk, evaluateGate, PROPOSAL_MIN_COHORT } from './proposal-policy-gate';
 import {
-  cohortStats, consentedEvidence, contributorNames, daysBefore, evidenceStillConsented, issuesFiledToday, SIGNAL_WINDOW_DAYS,
-  updateProposalDraft, updateProposalGate, withdrawProposalDraft, WITHDRAWN_DRAFT_JSON, type CohortStats, type SignalRow,
+  cohortStats, consentedEvidence, contributorNames, daysBefore, evidenceStillConsented, getProposal, getSignal, issuesFiledToday,
+  replaceProposalDraft, SIGNAL_WINDOW_DAYS, updateProposalGate, withdrawProposalDraft, WITHDRAWN_DRAFT_JSON, type CohortStats, type SignalRow,
 } from './proposal-store';
 
 export interface GateEnv {
@@ -92,9 +92,14 @@ export async function currentDraft(db: D1Database, signal: SignalRow, storedJson
   return { draft: templateDraft(signal, windowStats), action: 'replace' };
 }
 
+/** True when persisting this assessment replaces the stored draft text (template or privacy-driven swap). */
+export const replacesDraft = (state: DraftState, a: Assessment): boolean =>
+  state.action !== 'withdraw' && !!a.draft && (state.action === 'replace' || a.draft !== state.draft);
+
 /**
  * Persists a draft state and the fresh gate of an assessment. A withdrawal also returns the proposal to a
  * non-fileable `proposed`; a privacy-driven template swap (`a.draft` differs) is stored like a replacement.
+ * Either way the acceptance and the ai-handle approval given on the old text are voided.
  */
 export async function persistAssessment(db: D1Database, proposalId: string, state: DraftState, a: Assessment, now: Date): Promise<void> {
   if (state.action === 'withdraw' || !a.draft) {
@@ -103,5 +108,24 @@ export async function persistAssessment(db: D1Database, proposalId: string, stat
     return;
   }
   await updateProposalGate(db, proposalId, a.gate, now);
-  if (state.action === 'replace' || a.draft !== state.draft) await updateProposalDraft(db, proposalId, JSON.stringify(a.draft), now);
+  if (replacesDraft(state, a)) await replaceProposalDraft(db, proposalId, JSON.stringify(a.draft), now);
+}
+
+/**
+ * Brings one proposal without an issue (and not mid-filing) in line with its current consented evidence:
+ * persists the replaced or withdrawn draft and the fresh gate. Run before an operator decides, so every
+ * acceptance or ai-handle approval is recorded against the stored text and a later replacement voids it.
+ * Returns whether the draft changed. `gateEnv` may be passed when the caller already read it.
+ */
+export async function syncProposalDraft(env: Env, proposalId: string, now: Date, gateEnv?: GateEnv): Promise<boolean> {
+  const db = env.DB;
+  const p = await getProposal(db, proposalId);
+  if (!p || p.github_issue_number !== null || p.status === 'filing') return false;
+  const signal = await getSignal(db, p.signal_id);
+  if (!signal) return false;
+  const stats = await cohortStats(db, signal.id, daysBefore(now, SIGNAL_WINDOW_DAYS));
+  const state = await currentDraft(db, signal, p.draft_json, stats);
+  const a = await assessSignal(db, signal, state.draft, gateEnv ?? await readGateEnv(env, now), now, { stats });
+  await persistAssessment(db, p.id, state, a, now);
+  return state.action !== 'keep' || replacesDraft(state, a);
 }

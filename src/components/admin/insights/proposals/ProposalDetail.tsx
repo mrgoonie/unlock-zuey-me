@@ -69,6 +69,8 @@ export default function ProposalDetail({ id, settings, onClose, onChanged }: Pro
   const can = (...statuses: string[]) => statuses.includes(p.status);
   const githubOn = settings.githubMode !== 'off';
   const copyText = detail.issueMarkdown ? `# ${detail.issueTitle}\n\n${detail.issueMarkdown}` : '';
+  // Mirrors fileProposal: ai-handle needs mode issues_ai_handle plus the gate's ai-handle tier or a recorded approval.
+  const filesWithAiHandle = settings.githubMode === 'issues_ai_handle' && (p.gate.decision === 'issue_ai_handle' || p.aiHandleApprovedBy !== null);
 
   return (
     <section className="card flex flex-col gap-4" aria-labelledby="proposal-title">
@@ -139,6 +141,13 @@ export default function ProposalDetail({ id, settings, onClose, onChanged }: Pro
         {can('accepted', 'issue_filed') && <button type="button" className="btn-ghost" disabled={busy} onClick={() => act({ action: 'mark_shipped' }, 'Đã đánh dấu đã triển khai.')}>Đánh dấu đã triển khai</button>}
         {can('rejected', 'duplicate') && <button type="button" className="btn-ghost" disabled={busy} onClick={() => act({ action: 'reopen' }, 'Đã mở lại đề xuất.')}>Mở lại</button>}
       </div>
+
+      {can('proposed', 'accepted') && githubOn && detail.issueMarkdown && (
+        <p className="text-sm text-ink-muted" data-testid="proposal-file-note">
+          Issue GitHub chỉ được tạo khi bạn bấm “Tạo issue GitHub”; hệ thống không tự tạo issue.
+          {filesWithAiHandle ? ' Issue này sẽ được gắn nhãn ai-handle.' : ' Issue này sẽ không có nhãn ai-handle.'}
+        </p>
+      )}
 
       {can('proposed', 'accepted') && (
         <div className="flex flex-wrap items-end gap-2 text-sm">
