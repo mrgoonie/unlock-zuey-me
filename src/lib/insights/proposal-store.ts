@@ -75,7 +75,7 @@ export const ESTABLISHED_ACCOUNT_DAYS = 7;
  * `completed`, which only a passed evaluation sets (finalize-evaluation.ts) together with `completed_at`.
  * Judging at report time keeps a report's eligibility fixed: early reports never start counting later.
  */
-const ESTABLISHED_LEARNER_SQL = `l.kind = 'member'
+export const ESTABLISHED_LEARNER_SQL = `l.kind = 'member'
     AND r.created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', l.created_at, '+${ESTABLISHED_ACCOUNT_DAYS} days')
     AND EXISTS (SELECT 1 FROM mission_runs mr WHERE mr.learner_id = l.id AND mr.status = 'completed'
       AND mr.completed_at IS NOT NULL AND mr.completed_at <= r.created_at)`;

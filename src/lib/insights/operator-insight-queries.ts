@@ -16,6 +16,7 @@
  * column name to keep it that way.
  */
 import { CONSENTED_LEARNER, consentJoin } from '../observer/consent-gate';
+import { ESTABLISHED_LEARNER_SQL } from './proposal-store';
 import { REPORT_VIEW_COLUMNS, toReportView, type InsightReportView, type ReportViewRow } from './learner-report-queries';
 
 /** Smallest number of distinct learners an aggregate bucket or a signal must cover to be shown. */
@@ -180,7 +181,7 @@ export interface ProductSignalRow {
   issueUrl: string | null;
 }
 
-/** Signals backed by evidence from at least COHORT_MIN distinct learners with `proposals` consent. */
+/** Signals backed by evidence from at least COHORT_MIN distinct established learners with `proposals` consent. */
 export async function productSignals(db: D1Database): Promise<ProductSignalRow[]> {
   const rows = await db.prepare(
     `SELECT s.id, s.category, s.area, s.title, COUNT(*) AS occurrences, COUNT(DISTINCT r.learner_id) AS learners,
@@ -190,7 +191,7 @@ export async function productSignals(db: D1Database): Promise<ProductSignalRow[]
      JOIN insight_reports r ON r.id = e.report_id
      JOIN insight_consents c ON c.learner_id = r.learner_id AND c.proposals = 1
        AND c.proposals_at IS NOT NULL AND r.created_at >= c.proposals_at
-     JOIN learners l ON l.id = r.learner_id AND l.deleted_at IS NULL
+     JOIN learners l ON l.id = r.learner_id AND l.deleted_at IS NULL AND ${ESTABLISHED_LEARNER_SQL}
      LEFT JOIN insight_proposals p ON p.signal_id = s.id
      GROUP BY s.id
      HAVING COUNT(DISTINCT r.learner_id) >= ${COHORT_MIN}
