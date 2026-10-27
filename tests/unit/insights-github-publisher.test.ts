@@ -116,3 +116,47 @@ describe('github issue publisher', () => {
     expect(await pub?.getIssueState(created?.number ?? 0)).toMatchObject({ number: 100, state: 'open', closedAt: null });
   });
 });
+
+describe('github issue publisher: issue list lookup by fingerprint', () => {
+  const issue = (n: number, body: string, extra: Record<string, unknown> = {}) =>
+    ({ number: n, html_url: `https://github.com/mrgoonie/unlock-zuey-me/issues/${n}`, state: 'open', body, ...extra });
+
+  it('lists ai-insights issues since a time and keeps only real issues carrying the exact marker', async () => {
+    const urls: string[] = [];
+    const pub = createGithubIssuePublisher(env(), async (url) => {
+      urls.push(url);
+      return Response.json([
+        issue(1, `x <!-- ai-unlocked-fp:${FP} --> y`), issue(2, 'other'), issue(3, `ai-unlocked-fp:${FP}`, { pull_request: {} }),
+      ]);
+    });
+    const found = await pub?.listByFingerprintSince(FP, '2026-10-26T09:00:00.000Z');
+    expect(found?.map((i) => i.number)).toEqual([1]);
+    expect(new URL(urls[0]).pathname).toBe('/repos/mrgoonie/unlock-zuey-me/issues');
+    expect(Object.fromEntries(new URL(urls[0]).searchParams)).toMatchObject({
+      state: 'all', labels: 'ai-insights', since: '2026-10-26T09:00:00.000Z', page: '1', per_page: '100',
+    });
+  });
+
+  it('pages through full pages and errors rather than answering "none" when the listing is incomplete', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const full = Array.from({ length: 100 }, (_, i) => issue(i + 10, 'unrelated'));
+    let pages = 0;
+    const pub = createGithubIssuePublisher(env(), async (url) => {
+      pages++;
+      return Response.json(new URL(url).searchParams.get('page') === '2' ? [issue(5, `ai-unlocked-fp:${FP}`)] : full);
+    });
+    expect((await pub?.listByFingerprintSince(FP, '2026-10-26T09:00:00.000Z'))?.map((i) => i.number)).toEqual([5]);
+    expect(pages).toBe(2);
+    const endless = createGithubIssuePublisher(env(), async () => Response.json(full));
+    expect(await endless?.listByFingerprintSince(FP, '2026-10-26T09:00:00.000Z').catch((e: unknown) => e))
+      .toMatchObject({ status: 502, endpoint: 'GET /repos/:repo/issues' });
+  });
+
+  it('rejects a malformed fingerprint or time before any network call', async () => {
+    const fetchImpl = vi.fn();
+    const pub = createGithubIssuePublisher(env(), fetchImpl);
+    expect(await pub?.listByFingerprintSince('nope', '2026-10-26T09:00:00.000Z').catch((e: unknown) => e)).toBeInstanceOf(GithubIssueError);
+    expect(await pub?.listByFingerprintSince(FP, 'yesterday').catch((e: unknown) => e)).toMatchObject({ status: 400 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});

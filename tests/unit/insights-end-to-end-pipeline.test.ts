@@ -68,10 +68,13 @@ const sessionRoute = (route: (c: never) => Response | Promise<Response>, learner
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
   }), { learner, params: opts.params });
 
+/** An established member (30-day-old account with a completed mission), so their reports count toward proposals. */
 async function seedMember(n: Name) {
-  const ts = new Date().toISOString();
+  const ts = new Date(Date.now() - 30 * 86_400_000).toISOString();
   await env.DB.prepare(`INSERT INTO learners (id, kind, display_name, email, profile_json, created_at, updated_at) VALUES (?, 'member', ?, ?, '{}', ?, ?)`)
     .bind(idOf(n), `Học viên ${n}`, `${idOf(n)}@example.com`, ts, ts).run();
+  await env.DB.prepare(`INSERT INTO mission_runs (id, learner_id, mission_id, mission_version, status, started_at, updated_at, completed_at)
+    VALUES (?, ?, 'plan-weekend', 1, 'completed', ?, ?, ?)`).bind(`run_${idOf(n)}`, idOf(n), ts, ts, ts).run();
 }
 
 /** The learner flips consents in Settings (PATCH /api/v1/insights/consent). */

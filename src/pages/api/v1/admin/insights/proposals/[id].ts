@@ -5,16 +5,20 @@
  *       accept | reject | mark_duplicate {duplicateOf?} | mark_shipped {shippedRef?} | reopen
  *       file_issue (409 while GitHub filing is off or the token is missing)
  *       approve_ai_handle {confirm: "AI-HANDLE", confirmHighRisk?: true for high risk}
- *       Invalid transitions answer 409. Admin only; 404 for everyone else and while INSIGHTS_MODE=off.
+ *       Invalid transitions answer 409. Admin only; 404 for everyone else and while INSIGHTS_MODE=off, and for
+ *       a proposal hidden from operators (no issue and fewer than 3 established consenting learners).
+ *       `file_issue` is the only way an issue is ever created. `accept` and `approve_ai_handle` first store the
+ *       draft the current evidence supports, so the decision applies to that text and is voided if it changes.
  */
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { apiError, json, readBody, toErrorResponse } from '../../../../../../lib/http/api-response';
 import { githubIssuesMode } from '../../../../../../lib/insights/feature-flags';
 import { AI_HANDLE_LABEL, createGithubIssuePublisher } from '../../../../../../lib/insights/github-issue-publisher';
+import { syncProposalDraft } from '../../../../../../lib/insights/proposal-assessment';
 import { fileProposal, proposalDetail, type FilingOutcome } from '../../../../../../lib/insights/proposal-stage';
 import {
-  applyTriage, approveAiHandle, getProposal, setAiHandleLabelled, type TriageAction,
+  applyTriage, approveAiHandle, getProposalWithSignal, setAiHandleLabelled, type TriageAction,
 } from '../../../../../../lib/insights/proposal-store';
 import { requireInsightsAdmin } from './_insights-admin-gate';
 
@@ -38,6 +42,7 @@ const FILING_ERRORS: Partial<Record<FilingOutcome['kind'], [code: 'conflict' | '
   not_found: ['not_found', 'Không tìm thấy.'],
   invalid_status: ['conflict', 'Đề xuất này không ở trạng thái có thể tạo issue.'],
   busy: ['conflict', 'Đang có một lượt tạo issue khác cho đề xuất này. Thử lại sau ít phút.'],
+  operator_required: ['conflict', 'Chỉ người vận hành mới tạo được issue.'],
   privacy_blocked: ['conflict', 'Nội dung issue chưa qua kiểm tra quyền riêng tư nên không thể tạo issue.'],
   not_allowed: ['conflict', 'Chính sách chưa cho phép tạo issue cho đề xuất này (cần từ 3 người học đã đồng ý và bằng chứng đủ tin cậy).'],
   released: ['conflict', 'Lượt tạo issue trước bị gián đoạn và GitHub chưa có issue này. Đề xuất đã trở lại trạng thái trước, hãy thử lại.'],
@@ -69,7 +74,8 @@ export const PATCH: APIRoute = async ({ locals, params, request }) => {
   const { env, learner } = ctx;
   const now = new Date();
   try {
-    if (!(await getProposal(env.DB, id))) return NOT_FOUND();
+    if (!(await getProposalWithSignal(env.DB, id, { visibleOnly: true }))) return NOT_FOUND();
+    if (input.action === 'accept' || input.action === 'approve_ai_handle') await syncProposalDraft(env, id, now);
 
     if (input.action === 'file_issue') {
       if (githubIssuesMode(env) === 'off') return apiError('conflict', GITHUB_OFF_MESSAGE);
