@@ -61,8 +61,9 @@ export const patchConsents = (patch: Partial<InsightConsentState>) =>
 export const revokeDevice = (id: string) =>
   apiRequest<unknown>(`/api/v1/insights/tokens/${encodeURIComponent(id)}`, 'DELETE');
 
-export const confirmPairing = (userCode: string, approve: boolean) =>
-  apiRequest<unknown>('/api/v1/insights/pair/confirm', 'POST', { userCode, approve });
+/** `grant` (approve only): grants analysis, plus operator sharing and observer access when `share`. */
+export const confirmPairing = (userCode: string, approve: boolean, grant?: { share: boolean }) =>
+  apiRequest<unknown>('/api/v1/insights/pair/confirm', 'POST', grant ? { userCode, approve, grant } : { userCode, approve });
 
 // ---------- Display helpers ----------
 

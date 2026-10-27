@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { apiRequest, errorMessage } from './settings-api';
 import ToggleSwitch from './ToggleSwitch';
 
-const SEES = [
+export const SEES = [
   'Dòng thời gian hoạt động: lúc bạn bắt đầu, xem, hoàn thành từng bước mission, xin gợi ý, nộp bài.',
   'Bài đã nộp: câu trả lời và ảnh chụp màn hình bạn gửi làm bằng chứng.',
   'Điểm theo từng tiêu chí, mức độ tự tin bạn dự đoán trước khi chấm, và năng lực theo 6 nhóm.',

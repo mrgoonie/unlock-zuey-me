@@ -46,7 +46,7 @@ const returnTo = `/insights/pair${code ? `?code=${encodeURIComponent(code)}` : '
           Một thiết bị đang xin quyền gửi các lượt làm việc với AI (đã che thông tin bí mật) để bộ phân tích nền ai-tutor trên máy chủ tạo báo cáo học tập cho riêng bạn.
         </p>
       </header>
-      <PairApproval client:load initialCode={code} device={device} />
+      <PairApproval client:load initialCode={code} device={device} observerConsent={learner?.observerConsent ?? false} />
       <p class="text-sm text-ink-muted">Quản lý hoặc ngắt kết nối thiết bị bất cứ lúc nào trong <a href="/settings#s-insights" class="font-semibold text-accent">Cài đặt</a>.</p>
     </div>
   </AppLayout>

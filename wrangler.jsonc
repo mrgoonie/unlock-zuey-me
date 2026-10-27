@@ -44,7 +44,7 @@
     "VAPID_SUBJECT": "mailto:digitop.vn@gmail.com",
     // ai-tutor insights (src/lib/insights/feature-flags.ts). off = every insights route 404, UI hidden, cron
     // no-op. Rollout: internal (admins) → pilot (+ INSIGHTS_PILOT_EMAILS) → on (all members).
-    "INSIGHTS_MODE": "internal",
+    "INSIGHTS_MODE": "on",
     "INSIGHTS_PILOT_EMAILS": "",
     // Report TTL in days; queue rows are always kept 7 days.
     "INSIGHTS_RETENTION_DAYS": "90",
