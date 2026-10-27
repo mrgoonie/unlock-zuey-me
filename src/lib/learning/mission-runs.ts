@@ -14,7 +14,7 @@ import { assertAnswersSize, findStep, mergeAnswers, validateStepAnswers } from '
 import { carriedReveals } from './carried-penalties';
 import { missionNotFound, RunConflictError, runNotFound } from './errors';
 import { learnerMissionView, type LearnerMission } from './learner-mission-view';
-import { effectiveStatus, transition } from './mission-state-machine';
+import { effectiveStatus, isOpen, transition } from './mission-state-machine';
 import {
   LearningError, type AnswerKey, type Answers, type Evaluation, type LearnerContext, type MissionRun, type Source,
 } from './types';
@@ -89,6 +89,11 @@ export interface RunDetail {
   mission: LearnerMission;
   evaluation: Evaluation | null;
   answerKey: AnswerKey;
+  /**
+   * Revealed items ("stepId:itemId") whose locked answer came from a run abandoned earlier in this attempt,
+   * so the runner can say why the answer cannot be changed. Empty once the run is closed.
+   */
+  carriedRevealed: string[];
 }
 
 export async function getRunDetail(deps: RunDeps, learner: LearnerContext, runId: string): Promise<RunDetail> {
@@ -96,7 +101,11 @@ export async function getRunDetail(deps: RunDeps, learner: LearnerContext, runId
   const mission = getMission(run.missionId);
   if (!mission) throw new LearningError('unavailable', 'Mission này tạm thời không khả dụng.');
   const evaluation = await latestEvaluationForRun(deps.env.DB, learner.id, run.id);
-  return { run, mission: learnerMissionView(mission), evaluation, answerKey: answerKeyForRun(mission, run) };
+  const carried = isOpen(run.status) && run.revealed.length > 0 ? (await carriedReveals(deps.env.DB, learner.id, mission)).revealed : [];
+  return {
+    run, mission: learnerMissionView(mission), evaluation, answerKey: answerKeyForRun(mission, run),
+    carriedRevealed: carried.filter((k) => run.revealed.includes(k)),
+  };
 }
 
 /** The answer key a run's learner may see right now (e.g. returned with a submit result). */

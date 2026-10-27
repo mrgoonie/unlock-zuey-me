@@ -52,3 +52,36 @@ describe('revealed result accessibility', () => {
     expect(resultTag(html)).not.toMatch(/aria-live|role="status"/);
   });
 });
+
+describe('answer carried over from an abandoned run', () => {
+  const NOTE = 'Bạn đã xem đáp án câu này ở lượt trước nên câu trả lời được giữ nguyên.';
+
+  it('quiz: explains the lock only on the carried question', () => {
+    const step = firstStep('quiz');
+    const [q1, q2] = step.questions;
+    const k1 = `${step.id}:${q1.id}`;
+    const k2 = `${step.id}:${q2.id}`;
+    const key = { correct: [q1.options[0].id], explanation: 'Giải thích' };
+    const render = (carriedRevealed?: string[]) => renderToStaticMarkup(createElement(QuizStep, {
+      step, ...baseProps([k1, k2], { [k1]: key, [k2]: key }), carriedRevealed,
+    }));
+    const html = render([k1]);
+    expect(html.split(NOTE)).toHaveLength(2);
+    // The note sits in the carried question's card, not in the one revealed during this run.
+    const card = (id: string) => html.slice(html.indexOf(`data-testid="quiz-${id}"`)).split('</fieldset>')[0];
+    expect(card(q1.id)).toContain(NOTE);
+    expect(card(q2.id)).not.toContain(NOTE);
+    expect(render()).not.toContain(NOTE);
+  });
+
+  it('prediction: explains the lock when carried, and never for an unlocked answer', () => {
+    const step = firstStep('prediction');
+    const key = `${step.id}:prediction`;
+    const entry = { [key]: { correct: [step.options[0].id], explanation: 'Giải thích' } };
+    const html = (revealed: string[]) => renderToStaticMarkup(createElement(PredictionStep, {
+      step, ...baseProps(revealed, revealed.length ? entry : {}), carriedRevealed: [key],
+    }));
+    expect(html([key])).toContain(NOTE);
+    expect(html([])).not.toContain(NOTE);
+  });
+});

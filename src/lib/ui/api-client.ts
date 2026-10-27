@@ -121,8 +121,13 @@ export async function request<T>(
 
 const enc = encodeURIComponent;
 
-/** Mission view without answer keys; `answerKey` holds revealed items, or all once the run is completed. */
-export interface RunDetail { run: MissionRun; mission: LearnerMission; evaluation: Evaluation | null; answerKey: AnswerKey }
+/**
+ * Mission view without answer keys; `answerKey` holds revealed items, or all once the run is completed.
+ * `carriedRevealed`: revealed items locked because they were revealed in an abandoned run of this attempt.
+ */
+export interface RunDetail {
+  run: MissionRun; mission: LearnerMission; evaluation: Evaluation | null; answerKey: AnswerKey; carriedRevealed?: string[];
+}
 export type SubmitResponse = SubmitResult & { answerKey: AnswerKey };
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 export interface ChatReply { reply: string; model: string; remainingToday: number }

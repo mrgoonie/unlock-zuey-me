@@ -50,6 +50,8 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [answerKey, setAnswerKey] = useState<AnswerKey>({});
+  /** Revealed items carried over (locked) from an abandoned run; only changes when a run is opened. */
+  const [carriedRevealed, setCarriedRevealed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const runRef = useRef<MissionRun | null>(null);
@@ -88,6 +90,7 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
     const { run: started } = await api.startMission(missionId, { again });
     const detail = await api.getRun(started.id).catch(() => null);
     setResult(null);
+    setCarriedRevealed(Array.isArray(detail?.carriedRevealed) ? detail.carriedRevealed : []);
     applyLoaded(detail?.run ?? started, detail?.mission ?? fallbackMission, detail?.evaluation ?? null, detail?.answerKey ?? {});
   }, [applyLoaded, fallbackMission, missionId]);
 
@@ -296,7 +299,7 @@ export function useRunSession(missionId: string, fallbackMission: LearnerMission
   }
 
   return {
-    phase, setPhase, mission, run, draft, stepIndex, result, evaluation, answerKey, error,
+    phase, setPhase, mission, run, draft, stepIndex, result, evaluation, answerKey, carriedRevealed, error,
     saveState: autosave.saveState, saveNotice: autosave.notice, lockedStepId: autosave.lockedStepId, reloadLockedStep: autosave.reloadLockedStep,
     submitting, load, startAgain, abandon, goToStep, openReview, updateField, patchDraft, reveal, submit,
   };

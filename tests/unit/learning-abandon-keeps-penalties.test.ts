@@ -56,8 +56,10 @@ describe('reveals survive abandoning a run', () => {
       // Only the locked fields come along; the unrevealed q-best-source starts empty again.
       answers: { predict: { choice: 'opt-more-right', confidence: 80 }, 'source-quiz': { 'q-link': 'trust' } },
     });
-    // The keys of the carried reveals are visible, as they were before abandoning.
-    expect(Object.keys((await getRunWithEvaluation(deps(), alice, retry.id)).answerKey).sort()).toEqual(['predict:prediction', 'source-quiz:q-link']);
+    // The keys of the carried reveals are visible, as they were before abandoning, and flagged as carried.
+    const detail = await getRunWithEvaluation(deps(), alice, retry.id);
+    expect(Object.keys(detail.answerKey).sort()).toEqual(['predict:prediction', 'source-quiz:q-link']);
+    expect(detail.carriedRevealed).toEqual(['predict:prediction', 'source-quiz:q-link']);
 
     // Correcting a carried answer is refused, by autosave and by an MCP submit with answers.
     const lockedErr = { code: 'forbidden' };
@@ -67,8 +69,10 @@ describe('reveals survive abandoning a run', () => {
     await expect(submitEvidence(deps(), alice, retry.id, {
       idempotencyKey: 'key-00000001', answers: { predict: { choice: 'opt-no-signal', confidence: 80 } }, source: 'mcp',
     })).rejects.toMatchObject(lockedErr);
-    // Other answers stay editable.
+    // Other answers stay editable; revealing one in this run is not flagged as carried.
     const edited = await saveAnswers(deps(), alice, retry.id, { stepId: 'source-quiz', answers: { 'q-link': 'trust', 'q-best-source': 'official' }, rev: 0 });
+    await revealAnswer(deps(), alice, retry.id, { stepId: 'source-quiz', itemId: 'q-best-source' });
+    expect((await getRunWithEvaluation(deps(), alice, retry.id)).carriedRevealed).toEqual(['predict:prediction', 'source-quiz:q-link']);
 
     // Grading sees the original (wrong) prediction, exactly as if the learner had not abandoned.
     const mission = getMission('spot-the-ai-mistake')!;
@@ -153,6 +157,8 @@ describe('hints survive abandoning a run', () => {
     tick();
     const again = await startMission(deps(), alice, 'spot-the-ai-mistake', 'web');
     expect(again).toMatchObject({ revealed: [], answers: {} });
+    expect((await getRunWithEvaluation(deps(), alice, again.id)).carriedRevealed).toEqual([]);
+    expect((await getRunWithEvaluation(deps(), alice, done.id)).carriedRevealed).toEqual([]);
     expect(await carriedHintsUsed(env.DB, alice.id, 'spot-the-ai-mistake')).toBe(0);
   });
 });
