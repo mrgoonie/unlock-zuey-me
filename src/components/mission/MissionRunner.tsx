@@ -103,7 +103,7 @@ export default function MissionRunner({ missionId, mission: initialMission, soun
         </div>
         <StepView step={step} values={draft.answers[step.id] ?? {}} onField={(f, v) => s.updateField(step.id, f, v)}
           runId={run.id} draft={draft} patchDraft={s.patchDraft}
-          revealed={run.revealed} answerKey={s.answerKey} onReveal={s.reveal} />
+          revealed={run.revealed} carriedRevealed={s.carriedRevealed} answerKey={s.answerKey} onReveal={s.reveal} />
         <HintLadder step={step} runId={run.id} hints={draft.hints[step.id] ?? []} patchDraft={s.patchDraft} />
       </section>
       {abandon}

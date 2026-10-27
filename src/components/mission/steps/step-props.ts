@@ -15,6 +15,8 @@ export interface StepProps<S extends LearnerStep = LearnerStep> {
   patchDraft: (fn: (d: RunDraft) => RunDraft) => void;
   /** Items revealed on the server ("stepId:itemId"); their answers are locked. */
   revealed: string[];
+  /** Revealed items whose answer was carried over (locked) from an abandoned run; absent means none. */
+  carriedRevealed?: string[];
   /** Keys of revealed items, from the server. */
   answerKey: AnswerKey;
   /** Saves pending edits, then reveals one item on the server. Resolves to an error message, or null. */
